@@ -240,12 +240,24 @@ Override with `OC_GO_CC_CONFIG` environment variable.
       "temperature": 0.7,
       "max_tokens": 8192
     },
+    "complex": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.1",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
     "long_context": {
       "provider": "opencode-go",
       "model_id": "minimax-m2.7",
       "temperature": 0.7,
       "max_tokens": 16384,
       "context_threshold": 60000
+    },
+    "fast": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.6-plus",
+      "temperature": 0.7,
+      "max_tokens": 4096
     },
     "deepseek_v4_max": {
       "provider": "opencode-go",
@@ -265,7 +277,9 @@ Override with `OC_GO_CC_CONFIG` environment variable.
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
     ],
     "think": [{ "provider": "opencode-go", "model_id": "glm-5" }],
-    "long_context": [{ "provider": "opencode-go", "model_id": "minimax-m2.5" }]
+    "complex": [{ "provider": "opencode-go", "model_id": "glm-5" }],
+    "long_context": [{ "provider": "opencode-go", "model_id": "minimax-m2.5" }],
+    "fast": [{ "provider": "opencode-go", "model_id": "qwen3.5-plus" }]
   },
 
   "opencode_go": {
