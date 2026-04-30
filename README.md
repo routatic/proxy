@@ -350,20 +350,20 @@ See [MODELS.md](MODELS.md) for **detailed model capabilities, costs, and routing
 
 Quick reference:
 
-| Model ID       | Quality | Context | Cost (req/5hr) | Best For                              |
-| -------------- | ------- | ------- | -------------- | ------------------------------------- |
-| `glm-5.1`      | ★★★★★   | 200K    | ~880           | Complex architecture, difficult tasks |
-| `glm-5`        | ★★★★☆   | 200K    | ~1,150         | High-quality coding, refactoring      |
-| `kimi-k2.6`    | ★★★★★   | 256K    | ~1,850         | **Default** - best balance            |
-| `kimi-k2.5`    | ★★★★☆   | 256K    | ~1,850         | Fallback - solid quality              |
-| `mimo-v2-pro`  | ★★★★☆   | 128K    | ~1,290         | Code completion, generation           |
-| `mimo-v2-omni` | ★★★☆☆   | 256K    | ~2,150         | Fast prototyping                      |
-| `qwen3.6-plus` | ★★★☆☆   | 128K    | ~3,300         | Cost-effective general coding         |
-| `minimax-m2.7` | ★★★☆☆   | **1M**  | ~3,400         | **Long context specialist**           |
-| `minimax-m2.5` | ★★☆☆☆   | **1M**  | ~6,300         | Long context on a budget              |
-| `deepseek-v4-pro` | ★★★★★ | **1M** | varies | Agentic coding, max thinking, long context |
-| `deepseek-v4-flash` | ★★★★☆ | **1M** | varies | Fast agent tasks, background/subagent work |
-| `qwen3.5-plus` | ★★☆☆☆   | 128K    | ~10,200        | **Cheapest** - background tasks       |
+| Model ID            | Quality | Context | Cost (req/5hr) | Best For                                   |
+| ------------------- | ------- | ------- | -------------- | ------------------------------------------ |
+| `glm-5.1`           | ★★★★★   | 200K    | ~880           | Complex architecture, difficult tasks      |
+| `glm-5`             | ★★★★☆   | 200K    | ~1,150         | High-quality coding, refactoring           |
+| `kimi-k2.6`         | ★★★★★   | 256K    | ~1,850         | **Default** - best balance                 |
+| `kimi-k2.5`         | ★★★★☆   | 256K    | ~1,850         | Fallback - solid quality                   |
+| `mimo-v2-pro`       | ★★★★☆   | 128K    | ~1,290         | Code completion, generation                |
+| `mimo-v2-omni`      | ★★★☆☆   | 256K    | ~2,150         | Fast prototyping                           |
+| `qwen3.6-plus`      | ★★★☆☆   | 128K    | ~3,300         | Cost-effective general coding              |
+| `minimax-m2.7`      | ★★★☆☆   | **1M**  | ~3,400         | **Long context specialist**                |
+| `minimax-m2.5`      | ★★☆☆☆   | **1M**  | ~6,300         | Long context on a budget                   |
+| `deepseek-v4-pro`   | ★★★★★   | **1M**  | varies         | Agentic coding, max thinking, long context |
+| `deepseek-v4-flash` | ★★★★☆   | **1M**  | varies         | Fast agent tasks, background/subagent work |
+| `qwen3.5-plus`      | ★★☆☆☆   | 128K    | ~10,200        | **Cheapest** - background tasks            |
 
 > **💡 Tip:** The cost column shows approximate requests per 5-hour block ($12). Qwen3.5 Plus gives you ~10x more requests than GLM-5.1!
 
