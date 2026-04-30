@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"oc-go-cc/internal/token"
@@ -19,27 +20,30 @@ func tokenMessagesFromAnthropic(messages []types.Message) []token.MessageContent
 	return tokenMessages
 }
 
-func systemAndToolsTokenText(system string, tools []types.Tool) string {
-	toolsText := toolsTokenText(tools)
+func systemAndToolsTokenText(system string, tools []types.Tool) (string, error) {
+	toolsText, err := toolsTokenText(tools)
+	if err != nil {
+		return "", err
+	}
 	if system == "" {
-		return toolsText
+		return toolsText, nil
 	}
 	if toolsText == "" {
-		return system
+		return system, nil
 	}
-	return system + "\n" + toolsText
+	return system + "\n" + toolsText, nil
 }
 
-func toolsTokenText(tools []types.Tool) string {
+func toolsTokenText(tools []types.Tool) (string, error) {
 	if len(tools) == 0 {
-		return ""
+		return "", nil
 	}
 
 	data, err := json.Marshal(tools)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("failed to marshal tools: %w", err)
 	}
-	return string(data)
+	return string(data), nil
 }
 
 // extractTokenTextFromBlocks extracts all text-like content that contributes to

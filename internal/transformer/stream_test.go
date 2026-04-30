@@ -249,6 +249,55 @@ func TestProxyStream_UsageOnlyChunk(t *testing.T) {
 	}
 }
 
+// TestProxyStream_NoDuplicateMessageDelta verifies that when finish_reason and
+// usage arrive in separate chunks, only ONE message_delta with a stop_reason
+// is emitted. Usage may arrive in a separate message_delta (without stop_reason)
+// if the upstream sends them in separate chunks.
+func TestProxyStream_NoDuplicateMessageDelta(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"content":"Hello"}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`{"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120}}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Count message_delta events with a stop_reason
+	var stopDeltas []types.MessageEvent
+	for _, ev := range events {
+		if ev.Type == "message_delta" && ev.Delta != nil && ev.Delta.StopReason != "" {
+			stopDeltas = append(stopDeltas, ev)
+		}
+	}
+
+	if len(stopDeltas) != 1 {
+		t.Fatalf("expected exactly 1 message_delta with stop_reason, got %d: %+v", len(stopDeltas), stopDeltas)
+	}
+
+	// Verify usage is somewhere in the stream
+	var totalUsage *types.Usage
+	for _, ev := range events {
+		if ev.Usage != nil {
+			totalUsage = ev.Usage
+		}
+	}
+	if totalUsage == nil {
+		t.Fatalf("no usage found in stream: %+v", events)
+	}
+	if got, want := totalUsage.InputTokens, 100; got != want {
+		t.Errorf("InputTokens = %d, want %d", got, want)
+	}
+}
+
 func TestProxyStream_ReasoningJSONFallback(t *testing.T) {
 	handler := NewStreamHandler()
 	w := newMockResponseWriter()

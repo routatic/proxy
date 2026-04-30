@@ -71,6 +71,8 @@ func (h *StreamHandler) ProxyStream(
 	var lineBuf bytes.Buffer
 	contentStarted := false
 	reasoningStarted := false
+	stopSent := false
+	toolUseCount := 0
 
 	// Read in larger chunks for efficiency, then parse lines
 	readBuf := make([]byte, 4096)
@@ -94,7 +96,7 @@ func (h *StreamHandler) ProxyStream(
 					lineBuf.Reset()
 
 					// Process complete line
-					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, originalModel); err != nil {
+					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, originalModel); err != nil {
 						return err
 					}
 				} else {
@@ -107,7 +109,7 @@ func (h *StreamHandler) ProxyStream(
 			// Process any remaining data in buffer
 			if lineBuf.Len() > 0 {
 				line := lineBuf.String()
-				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, originalModel); err != nil {
+				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, originalModel); err != nil {
 					return err
 				}
 			}
@@ -139,6 +141,8 @@ func (h *StreamHandler) processSSELine(
 	contentIndex *int,
 	contentStarted *bool,
 	reasoningStarted *bool,
+	stopSent *bool,
+	toolUseCount *int,
 	originalModel string,
 ) error {
 	line = strings.TrimSpace(line)
@@ -248,6 +252,7 @@ func (h *StreamHandler) processSSELine(
 		if err := writeSSEEvent(w, msgDelta); err != nil {
 			return ErrClientDisconnected
 		}
+		*stopSent = true
 		flusher.Flush()
 		return nil
 	}
@@ -261,8 +266,22 @@ func (h *StreamHandler) processSSELine(
 
 	if len(chunk.Choices) == 0 {
 		if chunk.Usage != nil {
-			if err := h.sendUsageDelta(w, flusher, chunk.Usage); err != nil {
-				return err
+			if *stopSent {
+				// Stop reason already sent — emit usage-only message_delta (no duplicate stop_reason).
+				event := types.MessageEvent{
+					Type:  "message_delta",
+					Delta: &types.Delta{},
+					Usage: usageInfoToAnthropic(chunk.Usage),
+				}
+				if err := writeSSEEvent(w, event); err != nil {
+					return ErrClientDisconnected
+				}
+				flusher.Flush()
+			} else {
+				if err := h.sendUsageDelta(w, flusher, chunk.Usage); err != nil {
+					return err
+				}
+				*stopSent = true
 			}
 		}
 		return nil
@@ -356,6 +375,7 @@ func (h *StreamHandler) processSSELine(
 	if len(choice.Delta.ToolCalls) > 0 {
 		for _, tc := range choice.Delta.ToolCalls {
 			*contentIndex++
+			*toolUseCount++
 
 			input := json.RawMessage(`{}`)
 			toolID := tc.ID
@@ -407,6 +427,22 @@ func (h *StreamHandler) processSSELine(
 			}
 		}
 
+		// Close any open tool_use blocks. Each tool call incremented contentIndex,
+		// so we need to close all of them (not just the last one).
+		if *toolUseCount > 0 {
+			for i := 0; i < *toolUseCount; i++ {
+				idx := *contentIndex - *toolUseCount + i
+				stopEvent := types.MessageEvent{
+					Type:  "content_block_stop",
+					Index: &idx,
+				}
+				if err := writeSSEEvent(w, stopEvent); err != nil {
+					return ErrClientDisconnected
+				}
+			}
+			*toolUseCount = 0
+		}
+
 		msgDelta := types.MessageEvent{
 			Type: "message_delta",
 			Delta: &types.Delta{
@@ -417,6 +453,7 @@ func (h *StreamHandler) processSSELine(
 		if err := writeSSEEvent(w, msgDelta); err != nil {
 			return ErrClientDisconnected
 		}
+		*stopSent = true
 		flusher.Flush()
 	}
 
