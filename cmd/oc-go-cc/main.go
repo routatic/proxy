@@ -82,7 +82,21 @@ func serveCmd() *cobra.Command {
 				cfg.Port = port
 			}
 
-			// Daemonize setup (child process after re-exec)
+			pidPath := getPIDPath()
+
+			// Check if already running before writing this process' PID.
+			if !daemonize {
+				if pid, err := daemon.GetPID(pidPath); err == nil {
+					// Check if process is still running.
+					if daemon.IsProcessRunning(pid) {
+						return fmt.Errorf("server is already running (PID %d)", pid)
+					}
+					// Stale PID file, clean up.
+					_ = os.Remove(pidPath)
+				}
+			}
+
+			// Daemonize setup (child process after re-exec).
 			if daemonize {
 				paths, err := daemon.DefaultPaths()
 				if err != nil {
@@ -94,22 +108,11 @@ func serveCmd() *cobra.Command {
 				if err := daemon.DaemonizeSetup(paths); err != nil {
 					return err
 				}
-			}
-
-			// Check if already running.
-			pidPath := getPIDPath()
-			if pid, err := daemon.GetPID(pidPath); err == nil {
-				// Check if process is still running.
-				if daemon.IsProcessRunning(pid) {
-					return fmt.Errorf("server is already running (PID %d)", pid)
+			} else {
+				// Write PID file for foreground mode.
+				if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
+					return fmt.Errorf("failed to write PID file: %w", err)
 				}
-				// Stale PID file, clean up.
-				_ = os.Remove(pidPath)
-			}
-
-			// Write PID file.
-			if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
-				return fmt.Errorf("failed to write PID file: %w", err)
 			}
 			defer func() { _ = os.Remove(pidPath) }()
 

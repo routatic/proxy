@@ -157,6 +157,55 @@ func TestTransformRequestPreservesThinkingAsReasoningContent(t *testing.T) {
 	}
 }
 
+func TestTransformRequestIncludesStreamUsageOptions(t *testing.T) {
+	transformer := NewRequestTransformer()
+	stream := true
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Stream:    &stream,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.StreamOptions == nil {
+		t.Fatal("StreamOptions = nil, want include_usage enabled")
+	}
+	if !openaiReq.StreamOptions.IncludeUsage {
+		t.Fatal("StreamOptions.IncludeUsage = false, want true")
+	}
+}
+
+func TestTransformRequestOmitsStreamUsageOptionsWhenStreamingDisabled(t *testing.T) {
+	transformer := NewRequestTransformer()
+	stream := false
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Stream:    &stream,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.StreamOptions != nil {
+		t.Fatalf("StreamOptions = %v, want nil when streaming is disabled", openaiReq.StreamOptions)
+	}
+}
+
 func TestTransformRequestIncludesEmptyReasoningContentForToolCalls(t *testing.T) {
 	transformer := NewRequestTransformer()
 

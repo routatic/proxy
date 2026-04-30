@@ -7,6 +7,7 @@ import (
 	"oc-go-cc/internal/metrics"
 	"oc-go-cc/internal/router"
 	"oc-go-cc/internal/token"
+	"oc-go-cc/pkg/types"
 )
 
 // HealthHandler handles health checks and token counting endpoints.
@@ -67,13 +68,7 @@ func (h *HealthHandler) HandleCountTokens(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var body struct {
-		Model    string `json:"model"`
-		Messages []struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"messages"`
-	}
+	var body types.MessageRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
@@ -81,15 +76,9 @@ func (h *HealthHandler) HandleCountTokens(w http.ResponseWriter, r *http.Request
 	}
 
 	// Count tokens.
-	var messages []token.MessageContent
-	for _, msg := range body.Messages {
-		messages = append(messages, token.MessageContent{
-			Role:    msg.Role,
-			Content: msg.Content,
-		})
-	}
-
-	count, err := h.tokenCounter.CountMessages("", messages)
+	systemText := systemAndToolsTokenText(body.SystemText(), body.Tools)
+	messages := tokenMessagesFromAnthropic(body.Messages)
+	count, err := h.tokenCounter.CountMessages(systemText, messages)
 	if err != nil {
 		http.Error(w, "failed to count tokens", http.StatusInternalServerError)
 		return
@@ -98,6 +87,7 @@ func (h *HealthHandler) HandleCountTokens(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]int{
-		"token_count": count,
+		"input_tokens": count,
+		"token_count":  count,
 	})
 }

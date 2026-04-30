@@ -19,6 +19,12 @@ type ChatCompletionRequest struct {
 	Tools           []ToolDef       `json:"tools,omitempty"`
 	ToolChoice      interface{}     `json:"tool_choice,omitempty"`
 	Stop            interface{}     `json:"stop,omitempty"`
+	StreamOptions   *StreamOptions  `json:"stream_options,omitempty"`
+}
+
+// StreamOptions controls streaming response metadata from OpenAI-compatible APIs.
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 // ChatMessage represents a single message in the conversation.

@@ -220,12 +220,13 @@ type Delta struct {
 
 // MessageEvent represents a Server-Sent Event from the streaming API.
 type MessageEvent struct {
-	Type    string           `json:"type"`
-	Message *MessageResponse `json:"message,omitempty"`
-	Index   *int             `json:"index,omitempty"`
-	Delta   *Delta           `json:"delta,omitempty"`
-	Usage   *Usage           `json:"usage,omitempty"`
-	Error   *APIError        `json:"error,omitempty"`
+	Type         string           `json:"type"`
+	Message      *MessageResponse `json:"message,omitempty"`
+	Index        *int             `json:"index,omitempty"`
+	ContentBlock *ContentBlock    `json:"content_block,omitempty"`
+	Delta        *Delta           `json:"delta,omitempty"`
+	Usage        *Usage           `json:"usage,omitempty"`
+	Error        *APIError        `json:"error,omitempty"`
 }
 
 // APIError represents an error from the Anthropic API.

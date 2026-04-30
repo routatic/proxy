@@ -399,6 +399,12 @@ The proxy exposes these endpoints that Claude Code expects:
 
 ## Troubleshooting
 
+### Windows Scoop Background Mode
+
+On Windows, `oc-go-cc serve -b` uses the native Windows process APIs and keeps
+the Scoop shim path intact. This means background mode does not require `nohup`
+or a Unix-like shell, and Scoop-provided environment variables continue to work.
+
 ### "invalid request body" Error
 
 This means the proxy couldn't parse the request from Claude Code. Enable debug logging to see the raw request:

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 )
 
@@ -15,7 +15,6 @@ type BackgroundOpts struct {
 }
 
 // ForkIntoBackground starts the current binary as a detached background process.
-// Uses nohup to detach from terminal and redirect output.
 func ForkIntoBackground(opts BackgroundOpts) error {
 	paths, err := DefaultPaths()
 	if err != nil {
@@ -24,11 +23,21 @@ func ForkIntoBackground(opts BackgroundOpts) error {
 	if err := paths.EnsureConfigDir(); err != nil {
 		return fmt.Errorf("cannot create config directory: %w", err)
 	}
+	if pid, err := GetPID(paths.PIDFile); err == nil {
+		if IsProcessRunning(pid) {
+			return fmt.Errorf("server is already running (PID %d)", pid)
+		}
+		_ = os.Remove(paths.PIDFile)
+	}
 
-	// Build args for nohup: nohup oc-go-cc serve --_daemonize [--config X] [--port N]
+	// Build args for the child process: oc-go-cc serve --_daemonize [--config X] [--port N]
 	args := []string{"serve", "--_daemonize"}
 	if opts.ConfigPath != "" {
-		args = append(args, "--config", opts.ConfigPath)
+		configPath, err := filepath.Abs(opts.ConfigPath)
+		if err != nil {
+			return fmt.Errorf("cannot resolve config path: %w", err)
+		}
+		args = append(args, "--config", configPath)
 	}
 	if opts.Port != 0 {
 		args = append(args, "--port", strconv.Itoa(opts.Port))
@@ -41,24 +50,18 @@ func ForkIntoBackground(opts BackgroundOpts) error {
 	}
 	defer func() { _ = logFile.Close() }()
 
-	// Use nohup to detach from terminal - works cross-platform
-	cmd := exec.Command("nohup", append([]string{paths.BinaryPath}, args...)...)
+	cmd := newBackgroundCommand(paths.BinaryPath, args)
 	cmd.Env = os.Environ()
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Dir = "/" // Run from root to avoid any working directory issues
+	cmd.Dir = paths.ConfigDir // Run from a stable directory to avoid caller cwd issues
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start background process: %w", err)
 	}
 
-	// Write PID file
-	pid := cmd.Process.Pid
-	if err := WritePID(paths.PIDFile, pid); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not write PID file: %v\n", err)
-	}
-
-	fmt.Printf("Started %s in background (PID %d)\n", AppName, pid)
+	fmt.Printf("Started %s in background\n", AppName)
+	fmt.Printf("  Launcher PID: %d\n", cmd.Process.Pid)
 	fmt.Printf("  Log file: %s\n", paths.LogFile)
 	fmt.Printf("  PID file: %s\n", paths.PIDFile)
 	fmt.Printf("  Stop with: %s stop\n", AppName)
