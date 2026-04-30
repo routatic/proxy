@@ -75,7 +75,7 @@ sudo mv oc-go-cc /usr/local/bin/
 oc-go-cc init
 ```
 
-Creates a default config at `~/.config/oc-go-cc/config.json`.
+Creates a default config at `~/.config/oc-go-cc/config.json`. If the config already exists, it shows the path so you can edit it directly.
 
 ### 2. Set Your API Key
 
