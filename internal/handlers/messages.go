@@ -179,18 +179,13 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		tokenCount = 0
 	}
 
-	// Route to appropriate model.
-	// For streaming, use faster models to minimize TTFT (time-to-first-token)
+	// Route to appropriate model using scenario detection for both streaming and non-streaming.
 	var routeResult router.RouteResult
-	if isStreaming {
-		routeResult = h.modelRouter.RouteForStreaming(routerMessages, tokenCount)
-	} else {
-		var err error
-		routeResult, err = h.modelRouter.Route(routerMessages, tokenCount)
-		if err != nil {
-			h.sendError(w, http.StatusInternalServerError, "routing failed", err)
-			return
-		}
+	var routeErr error
+	routeResult, routeErr = h.modelRouter.Route(routerMessages, tokenCount)
+	if routeErr != nil {
+		h.sendError(w, http.StatusInternalServerError, "routing failed", routeErr)
+		return
 	}
 
 	h.logger.Info("routing request",
