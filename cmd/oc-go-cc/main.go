@@ -360,6 +360,7 @@ func getDefaultConfig() string {
   "api_key": "${OC_GO_CC_API_KEY}",
   "host": "127.0.0.1",
   "port": 3456,
+  "enable_streaming_scenario_routing": false,
   "models": {
     "background": {
       "provider": "opencode-go",

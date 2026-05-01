@@ -5,13 +5,14 @@ import "encoding/json"
 
 // Config holds the complete application configuration.
 type Config struct {
-	APIKey     string                   `json:"api_key"`
-	Host       string                   `json:"host"`
-	Port       int                      `json:"port"`
-	Models     map[string]ModelConfig   `json:"models"`
-	Fallbacks  map[string][]ModelConfig `json:"fallbacks"`
-	OpenCodeGo OpenCodeGoConfig         `json:"opencode_go"`
-	Logging    LoggingConfig            `json:"logging"`
+	APIKey                         string                   `json:"api_key"`
+	Host                           string                   `json:"host"`
+	Port                           int                      `json:"port"`
+	EnableStreamingScenarioRouting bool                     `json:"enable_streaming_scenario_routing"`
+	Models                         map[string]ModelConfig   `json:"models"`
+	Fallbacks                      map[string][]ModelConfig `json:"fallbacks"`
+	OpenCodeGo                     OpenCodeGoConfig         `json:"opencode_go"`
+	Logging                        LoggingConfig            `json:"logging"`
 }
 
 // ModelConfig defines routing rules for a specific model.
