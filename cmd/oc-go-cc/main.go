@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -133,7 +134,11 @@ func serveCmd() *cobra.Command {
 			}
 
 			// Start config watcher for hot reload.
-			go config.WatchConfig(context.Background(), atomicCfg)
+			go func() {
+				if err := config.WatchConfig(context.Background(), atomicCfg); err != nil {
+					slog.Error("config watcher failed", "error", err)
+				}
+			}()
 
 			fmt.Printf("Starting %s v%s\n", appName, version)
 			fmt.Printf("Listening on %s:%d\n", cfg.Host, cfg.Port)

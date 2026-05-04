@@ -38,9 +38,7 @@ func (a *AtomicConfig) Reload() error {
 		return err
 	}
 
-	a.ptr.Store(cfg)
-
-	// Warn about changes that require a server restart
+	// Warn about changes that require a server restart before swapping.
 	if old != nil {
 		if old.Host != cfg.Host || old.Port != cfg.Port {
 			slog.Warn("host/port changed but requires server restart to take effect",
@@ -53,6 +51,8 @@ func (a *AtomicConfig) Reload() error {
 				"new_timeout", cfg.OpenCodeGo.TimeoutMs)
 		}
 	}
+
+	a.ptr.Store(cfg)
 
 	// Copy callbacks to avoid holding lock during invocation
 	a.mu.Lock()
