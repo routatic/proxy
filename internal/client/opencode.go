@@ -16,20 +16,14 @@ import (
 
 // OpenCodeClient handles communication with OpenCode Go API.
 type OpenCodeClient struct {
-	openAIConfig    EndpointConfig
-	anthropicConfig EndpointConfig
-	httpClient      *http.Client
-}
-
-// EndpointConfig holds configuration for a specific API endpoint.
-type EndpointConfig struct {
-	BaseURL string
-	APIKey  string
+	atomic     *config.AtomicConfig
+	httpClient *http.Client
 }
 
 // NewOpenCodeClient creates a new OpenCode Go client.
-func NewOpenCodeClient(cfg config.OpenCodeGoConfig, apiKey string) *OpenCodeClient {
-	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
+func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
+	cfg := atomic.Get()
+	timeout := time.Duration(cfg.OpenCodeGo.TimeoutMs) * time.Millisecond
 	if timeout == 0 {
 		timeout = 5 * time.Minute
 	}
@@ -44,14 +38,7 @@ func NewOpenCodeClient(cfg config.OpenCodeGoConfig, apiKey string) *OpenCodeClie
 	}
 
 	return &OpenCodeClient{
-		openAIConfig: EndpointConfig{
-			BaseURL: cfg.BaseURL,
-			APIKey:  apiKey,
-		},
-		anthropicConfig: EndpointConfig{
-			BaseURL: cfg.AnthropicBaseURL,
-			APIKey:  apiKey,
-		},
+		atomic: atomic,
 		httpClient: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
@@ -70,11 +57,24 @@ func IsAnthropicModel(modelID string) bool {
 }
 
 // getEndpoint returns the appropriate endpoint config for a model.
-func (c *OpenCodeClient) getEndpoint(modelID string) EndpointConfig {
+func (c *OpenCodeClient) getEndpoint(modelID string) endpointConfig {
+	cfg := c.atomic.Get()
 	if IsAnthropicModel(modelID) {
-		return c.anthropicConfig
+		return endpointConfig{
+			BaseURL: cfg.OpenCodeGo.AnthropicBaseURL,
+			APIKey:  cfg.APIKey,
+		}
 	}
-	return c.openAIConfig
+	return endpointConfig{
+		BaseURL: cfg.OpenCodeGo.BaseURL,
+		APIKey:  cfg.APIKey,
+	}
+}
+
+// endpointConfig holds configuration for a specific API endpoint.
+type endpointConfig struct {
+	BaseURL string
+	APIKey  string
 }
 
 // ChatCompletion sends a chat completion request to the OpenCode Go API.
@@ -175,18 +175,20 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 	body []byte,
 	stream bool,
 ) (*http.Response, error) {
-	endpoint := c.anthropicConfig
+	cfg := c.atomic.Get()
+	baseURL := cfg.OpenCodeGo.AnthropicBaseURL
+	apiKey := cfg.APIKey
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set headers
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	// Incase OpenCode Go expects x-api-key instead
-	httpReq.Header.Set("x-api-key", endpoint.APIKey)
+	httpReq.Header.Set("x-api-key", apiKey)
 
 	// Add streaming header if requested
 	if stream {

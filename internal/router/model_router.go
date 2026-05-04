@@ -10,12 +10,12 @@ import (
 
 // ModelRouter handles model selection based on scenarios.
 type ModelRouter struct {
-	config *config.Config
+	atomic *config.AtomicConfig
 }
 
 // NewModelRouter creates a new model router.
-func NewModelRouter(cfg *config.Config) *ModelRouter {
-	return &ModelRouter{config: cfg}
+func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
+	return &ModelRouter{atomic: atomic}
 }
 
 // RouteResult contains the selected model and fallback chain.
@@ -27,23 +27,24 @@ type RouteResult struct {
 
 // Route determines which model to use for a request.
 func (r *ModelRouter) Route(messages []MessageContent, tokenCount int) (RouteResult, error) {
-	result := DetectScenario(messages, tokenCount, r.config)
+	cfg := r.atomic.Get()
+	result := DetectScenario(messages, tokenCount, cfg)
 
 	// Get primary model for scenario
-	primary, ok := r.config.Models[string(result.Scenario)]
+	primary, ok := cfg.Models[string(result.Scenario)]
 	if !ok {
 		// Fall back to default if scenario model not configured
-		primary, ok = r.config.Models["default"]
+		primary, ok = cfg.Models["default"]
 		if !ok {
 			return RouteResult{}, fmt.Errorf("no default model configured")
 		}
 	}
 
 	// Get fallbacks for scenario
-	fallbacks := r.config.Fallbacks[string(result.Scenario)]
+	fallbacks := cfg.Fallbacks[string(result.Scenario)]
 	if len(fallbacks) == 0 {
 		// Fall back to default fallbacks
-		fallbacks = r.config.Fallbacks["default"]
+		fallbacks = cfg.Fallbacks["default"]
 	}
 
 	return RouteResult{
@@ -63,24 +64,25 @@ func (rr *RouteResult) GetModelChain() []config.ModelConfig {
 // RouteForStreaming determines which model to use for streaming requests.
 // Prioritizes fast TTFT (time-to-first-token) over capability.
 func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount int) RouteResult {
-	result := RouteForStreaming(messages, tokenCount, r.config)
+	cfg := r.atomic.Get()
+	result := RouteForStreaming(messages, tokenCount, cfg)
 
 	// Get primary model for scenario
-	primary, ok := r.config.Models[string(result.Scenario)]
+	primary, ok := cfg.Models[string(result.Scenario)]
 	if !ok {
 		// Fall back to fast scenario if not configured
-		primary, ok = r.config.Models["fast"]
+		primary, ok = cfg.Models["fast"]
 		if !ok {
 			// Fall back to default
-			primary = r.config.Models["default"]
+			primary = cfg.Models["default"]
 		}
 	}
 
 	// Get fallbacks for scenario
-	fallbacks := r.config.Fallbacks[string(result.Scenario)]
+	fallbacks := cfg.Fallbacks[string(result.Scenario)]
 	if len(fallbacks) == 0 {
 		// Fall back to fast fallbacks
-		fallbacks = r.config.Fallbacks["fast"]
+		fallbacks = cfg.Fallbacks["fast"]
 	}
 
 	return RouteResult{
