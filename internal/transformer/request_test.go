@@ -455,7 +455,6 @@ func TestTransformRequestSkipsReasoningEffortWhenThinkingDisabled(t *testing.T) 
 	}
 }
 
-
 func TestTransformRequestOmitsPlaceholderForDeepSeek(t *testing.T) {
 	transformer := NewRequestTransformer()
 

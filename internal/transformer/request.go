@@ -97,7 +97,7 @@ func (t *RequestTransformer) TransformRequest(
 		}
 		// DeepSeek returns 400 if reasoning_effort is sent alongside
 		// thinking: disabled — only set it when thinking is active.
-		if !(isThinkingDisabled(openaiReq.Thinking) && isDeepSeekModel(model.ModelID)) {
+		if !isThinkingDisabled(openaiReq.Thinking) || !isDeepSeekModel(model.ModelID) {
 			if model.ReasoningEffort != "" {
 				openaiReq.ReasoningEffort = &model.ReasoningEffort
 			} else {
