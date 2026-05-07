@@ -7,6 +7,13 @@ brew tap samueltuyizere/tap
 brew install oc-go-cc
 ```
 
+## Scoop (Windows)
+
+```powershell
+scoop bucket add oc-go-cc https://github.com/samueltuyizere/scoop-bucket
+scoop install oc-go-cc
+```
+
 ## Build from Source
 
 ```bash
@@ -33,10 +40,14 @@ Download the latest release for your platform from the [Releases page](https://g
 | Windows (ARM64)       | `oc-go-cc_windows-arm64.exe` |
 
 ```bash
-# Example: macOS Apple Silicon
+# macOS Apple Silicon
 curl -L -o oc-go-cc https://github.com/samueltuyizere/oc-go-cc/releases/latest/download/oc-go-cc_darwin-arm64
 chmod +x oc-go-cc
 sudo mv oc-go-cc /usr/local/bin/
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/samueltuyizere/oc-go-cc/releases/latest/download/oc-go-cc_windows-amd64.exe" -OutFile "oc-go-cc.exe"
+Move-Item -Path "oc-go-cc.exe" -Destination "$env:LOCALAPPDATA\Microsoft\WindowsApps\oc-go-cc.exe"
 ```
 
 ## Requirements

@@ -27,7 +27,11 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 ### 1. Install
 
 ```bash
+# macOS / Linux
 brew tap samueltuyizere/tap && brew install oc-go-cc
+
+# Windows
+scoop bucket add oc-go-cc https://github.com/samueltuyizere/scoop-bucket && scoop install oc-go-cc
 ```
 
 Or see [INSTALLATION.md](INSTALLATION.md) for more options.
@@ -84,7 +88,7 @@ oc-go-cc --version          Show version
 
 | Document | Description |
 | -------- | ----------- |
-| [INSTALLATION.md](INSTALLATION.md) | Homebrew, build from source, release binaries |
+| [INSTALLATION.md](INSTALLATION.md) | Homebrew, Scoop, build from source, release binaries |
 | [CONFIGURATION.md](CONFIGURATION.md) | Config file reference, env vars, model routing, fallback chains |
 | [MODELS.md](MODELS.md) | Model capabilities, costs, and routing recommendations |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, architecture, how it works |
