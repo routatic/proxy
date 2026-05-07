@@ -63,10 +63,10 @@ jobs:
             if [ "$PATCH" -gt 9 ]; then
               PATCH=0
               MINOR=$((MINOR + 1))
-            fi
-            if [ "$MINOR" -gt 9 ]; then
-              MINOR=0
-              MAJOR=$((MAJOR + 1))
+              if [ "$MINOR" -gt 9 ]; then
+                MINOR=0
+                MAJOR=$((MAJOR + 1))
+              fi
             fi
             TAG="v${MAJOR}.${MINOR}.${PATCH}"
           fi
