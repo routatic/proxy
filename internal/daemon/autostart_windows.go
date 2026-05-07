@@ -5,7 +5,6 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -54,7 +53,7 @@ func EnableAutostart(configPath string, port int) error {
 
 // DisableAutostart removes the registry Run key.
 func DisableAutostart() error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, registryRunKey, registry.SET_VALUE)
+	key, err := registry.OpenKey(registry.CURRENT_USER, registryRunKey, registry.SET_VALUE|registry.QUERY_VALUE)
 	if err != nil {
 		return fmt.Errorf("cannot open registry key: %w", err)
 	}
@@ -97,13 +96,7 @@ func AutostartStatus() error {
 		return nil
 	}
 
-	// Verify the directory exists (Startup folder alternative not used here)
-	startupDir := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
-	if _, err := os.Stat(startupDir); err == nil {
-		fmt.Println("Autostart: enabled (registry Run key set)")
-	} else {
-		fmt.Println("Autostart: enabled (registry Run key set)")
-	}
+	fmt.Println("Autostart: enabled (registry Run key set)")
 	fmt.Printf("  Registry: HKCU\\%s\\%s\n", registryRunKey, registryValue)
 	fmt.Printf("  Value: %s\n", val)
 	return nil
