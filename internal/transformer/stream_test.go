@@ -480,6 +480,219 @@ func TestProxyStream_ReasoningBeforeContentFastPathRegression(t *testing.T) {
 	}
 }
 
+// TestProxyStream_SingleToolCall verifies a single tool call streamed
+// incrementally produces exactly one content_block_start, argument deltas,
+// and a content_block_stop.
+func TestProxyStream_SingleToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_abc","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"loc"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ation\":\"NYC\"}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Expected: message_start, tool_start(idx=1), 2x input_json_delta (3rd arg arrives
+	// with finish_reason in same chunk, fast path returns before processing delta),
+	// tool_stop(idx=1), message_delta, message_stop = 7
+	if len(events) != 7 {
+		t.Fatalf("expected 7 events, got %d: %+v", len(events), events)
+	}
+
+	// Verify tool_use block start
+	if events[1].Type != "content_block_start" {
+		t.Errorf("event[1].Type = %q, want content_block_start", events[1].Type)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[1].ContentBlock = %+v, want tool_use", events[1].ContentBlock)
+	}
+	if events[1].ContentBlock.ID != "toolu_abc" {
+		t.Errorf("event[1].ContentBlock.ID = %q, want toolu_abc", events[1].ContentBlock.ID)
+	}
+	if events[1].ContentBlock.Name != "get_weather" {
+		t.Errorf("event[1].ContentBlock.Name = %q, want get_weather", events[1].ContentBlock.Name)
+	}
+
+	// Verify argument deltas
+	if events[2].Delta == nil || events[2].Delta.Type != "input_json_delta" {
+		t.Errorf("event[2] = %+v, want input_json_delta", events[2])
+	}
+	if events[2].Delta.PartialJSON != `{"loc` {
+		t.Errorf("event[2].Delta.PartialJSON = %q, want %q", events[2].Delta.PartialJSON, `{"loc`)
+	}
+	if events[3].Delta == nil || events[3].Delta.Type != "input_json_delta" {
+		t.Errorf("event[3] = %+v, want input_json_delta", events[3])
+	}
+
+	// Verify tool block stop
+	if events[4].Type != "content_block_stop" {
+		t.Errorf("event[4].Type = %q, want content_block_stop", events[4].Type)
+	}
+
+	// Verify stop reason
+	if events[5].Type != "message_delta" {
+		t.Errorf("event[5].Type = %q, want message_delta", events[5].Type)
+	}
+	if events[5].Delta == nil || events[5].Delta.StopReason != "end_turn" {
+		t.Errorf("event[5].Delta.StopReason = %q, want end_turn", events[5].Delta.StopReason)
+	}
+	if events[6].Type != "message_stop" {
+		t.Errorf("event[6].Type = %q, want message_stop", events[6].Type)
+	}
+}
+
+// TestProxyStream_MultipleParallelToolCalls verifies that two concurrent tool
+// calls produce two content_block_start events, each with their own argument
+// deltas, and that content_block_stop events are emitted in ascending index
+// order (not random map iteration order).
+func TestProxyStream_MultipleParallelToolCalls(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	// Two tool calls: index 0 and index 1, interleaved as OpenAI sends them
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_1","type":"function","function":{"name":"search","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"toolu_2","type":"function","function":{"name":"lookup","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"id"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"uery\":\"go\"}"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"\":\"42\"}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Count content_block_start events (should be exactly 2)
+	var startEvents []types.MessageEvent
+	for _, ev := range events {
+		if ev.Type == "content_block_start" {
+			startEvents = append(startEvents, ev)
+		}
+	}
+	if len(startEvents) != 2 {
+		t.Fatalf("expected 2 content_block_start events, got %d", len(startEvents))
+	}
+
+	// Both should be tool_use blocks
+	for i, se := range startEvents {
+		if se.ContentBlock == nil || se.ContentBlock.Type != "tool_use" {
+			t.Errorf("start event[%d].ContentBlock = %+v, want tool_use", i, se.ContentBlock)
+		}
+	}
+	if startEvents[0].ContentBlock.Name != "search" {
+		t.Errorf("first tool name = %q, want search", startEvents[0].ContentBlock.Name)
+	}
+	if startEvents[1].ContentBlock.Name != "lookup" {
+		t.Errorf("second tool name = %q, want lookup", startEvents[1].ContentBlock.Name)
+	}
+
+	// Count content_block_stop events (should be exactly 2)
+	var stopIndices []int
+	for _, ev := range events {
+		if ev.Type == "content_block_stop" && ev.Index != nil {
+			stopIndices = append(stopIndices, *ev.Index)
+		}
+	}
+	if len(stopIndices) != 2 {
+		t.Fatalf("expected 2 content_block_stop events, got %d", len(stopIndices))
+	}
+	// Verify ascending order
+	if stopIndices[0] >= stopIndices[1] {
+		t.Errorf("stop indices not ascending: %v", stopIndices)
+	}
+}
+
+// TestProxyStream_ToolCallGhostChunk verifies that a ghost chunk (tool call
+// index with empty name) is ignored and does not produce a content_block_start.
+func TestProxyStream_ToolCallGhostChunk(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_a","type":"function","function":{"name":"real_func","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"x\":1}"}}]}}]}`,
+		// Ghost chunk: index 0 recycled but no name
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Should have exactly 1 content_block_start for the real tool call
+	var startEvents []types.MessageEvent
+	for _, ev := range events {
+		if ev.Type == "content_block_start" {
+			startEvents = append(startEvents, ev)
+		}
+	}
+	if len(startEvents) != 1 {
+		t.Fatalf("expected 1 content_block_start, got %d: %+v", len(startEvents), startEvents)
+	}
+}
+
+// TestProxyStream_MixedTextAndToolCall verifies a response that starts with
+// text content and then transitions to a tool call.
+func TestProxyStream_MixedTextAndToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"content":"Let me check that for you."}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_x","type":"function","function":{"name":"get_data","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"id\":1}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Verify text block at index 0
+	if events[1].Type != "content_block_start" || events[1].ContentBlock == nil || events[1].ContentBlock.Type != "text" {
+		t.Errorf("event[1] = %+v, want content_block_start(text)", events[1])
+	}
+	if *events[1].Index != 0 {
+		t.Errorf("text start index = %d, want 0", *events[1].Index)
+	}
+
+	// Verify tool_use block at index 1
+	if events[3].Type != "content_block_start" || events[3].ContentBlock == nil || events[3].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[3] = %+v, want content_block_start(tool_use)", events[3])
+	}
+	if *events[3].Index != 1 {
+		t.Errorf("tool start index = %d, want 1", *events[3].Index)
+	}
+	if events[3].ContentBlock.Name != "get_data" {
+		t.Errorf("tool name = %q, want get_data", events[3].ContentBlock.Name)
+	}
+}
+
 // helpers
 
 func mustJSON(t *testing.T, v any) string {

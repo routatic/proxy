@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -123,15 +124,28 @@ func (h *StreamHandler) ProxyStream(
 
 	// Send stop events for any tool blocks not yet closed (e.g. upstream
 	// disconnected without sending a finish_reason chunk).
-	for oi, blockIdx := range startedToolCalls {
-		stopEvent := types.MessageEvent{
-			Type:  "content_block_stop",
-			Index: &blockIdx,
+	if len(startedToolCalls) > 0 {
+		type toolBlockEntry struct {
+			oi       int
+			blockIdx int
 		}
-		if err := writeSSEEvent(w, stopEvent); err != nil {
-			return ErrClientDisconnected
+		entries := make([]toolBlockEntry, 0, len(startedToolCalls))
+		for oi, blockIdx := range startedToolCalls {
+			entries = append(entries, toolBlockEntry{oi, blockIdx})
 		}
-		delete(startedToolCalls, oi)
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].blockIdx < entries[j].blockIdx
+		})
+		for _, e := range entries {
+			idx := e.blockIdx
+			stopEvent := types.MessageEvent{
+				Type:  "content_block_stop",
+				Index: &idx,
+			}
+			if err := writeSSEEvent(w, stopEvent); err != nil {
+				return ErrClientDisconnected
+			}
+		}
 	}
 
 	// Send message_stop event to signal stream completion.
@@ -254,6 +268,35 @@ func (h *StreamHandler) processSSELine(
 			}
 			if err := writeSSEEvent(w, stopEvent); err != nil {
 				return ErrClientDisconnected
+			}
+		}
+
+		// Close any open tool_use blocks in ascending index order
+		if len(startedToolCalls) > 0 {
+			type toolBlockEntry struct {
+				oi       int
+				blockIdx int
+			}
+			entries := make([]toolBlockEntry, 0, len(startedToolCalls))
+			for oi, blockIdx := range startedToolCalls {
+				entries = append(entries, toolBlockEntry{oi, blockIdx})
+			}
+			sort.Slice(entries, func(i, j int) bool {
+				return entries[i].blockIdx < entries[j].blockIdx
+			})
+			for _, e := range entries {
+				idx := e.blockIdx
+				stopEvent := types.MessageEvent{
+					Type:  "content_block_stop",
+					Index: &idx,
+				}
+				if err := writeSSEEvent(w, stopEvent); err != nil {
+					return ErrClientDisconnected
+				}
+			}
+			// Clear so EOF cleanup won't emit duplicate stops
+			for oi := range startedToolCalls {
+				delete(startedToolCalls, oi)
 			}
 		}
 
@@ -460,18 +503,29 @@ func (h *StreamHandler) processSSELine(
 			}
 		}
 
-		// Close any open tool_use blocks. We track started tool calls by their
-		// OpenAI index; close each one, then delete it (no -1 sentinel needed).
-		for oi, blockIdx := range startedToolCalls {
-			idx := blockIdx
-			stopEvent := types.MessageEvent{
-				Type:  "content_block_stop",
-				Index: &idx,
+		// Close any open tool_use blocks in ascending index order.
+		if len(startedToolCalls) > 0 {
+			type toolBlockEntry struct {
+				oi       int
+				blockIdx int
 			}
-			if err := writeSSEEvent(w, stopEvent); err != nil {
-				return ErrClientDisconnected
+			entries := make([]toolBlockEntry, 0, len(startedToolCalls))
+			for oi, blockIdx := range startedToolCalls {
+				entries = append(entries, toolBlockEntry{oi, blockIdx})
 			}
-			delete(startedToolCalls, oi)
+			sort.Slice(entries, func(i, j int) bool {
+				return entries[i].blockIdx < entries[j].blockIdx
+			})
+			for _, e := range entries {
+				idx := e.blockIdx
+				stopEvent := types.MessageEvent{
+					Type:  "content_block_stop",
+					Index: &idx,
+				}
+				if err := writeSSEEvent(w, stopEvent); err != nil {
+					return ErrClientDisconnected
+				}
+			}
 		}
 		*toolUseCount = 0
 
