@@ -29,7 +29,9 @@ func WatchConfig(ctx context.Context, atomic *AtomicConfig) error {
 	if err != nil {
 		return err
 	}
-	defer watcher.Close()
+	defer func() {
+		_ = watcher.Close()
+	}()
 
 	if err := watcher.Add(dir); err != nil {
 		return err

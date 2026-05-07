@@ -21,9 +21,9 @@ import (
 
 // Server represents the proxy server.
 type Server struct {
-	atomic  *config.AtomicConfig
-	httpSrv *http.Server
-	logger  *slog.Logger
+	atomic   *config.AtomicConfig
+	httpSrv  *http.Server
+	logger   *slog.Logger
 	levelVar *slog.LevelVar
 }
 
