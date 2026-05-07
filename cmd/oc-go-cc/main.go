@@ -134,8 +134,10 @@ func serveCmd() *cobra.Command {
 			}
 
 			// Start config watcher for hot reload.
+			watchCtx, watchCancel := context.WithCancel(context.Background())
+			defer watchCancel()
 			go func() {
-				if err := config.WatchConfig(context.Background(), atomicCfg); err != nil {
+				if err := config.WatchConfig(watchCtx, atomicCfg); err != nil && err != context.Canceled {
 					slog.Error("config watcher failed", "error", err)
 				}
 			}()

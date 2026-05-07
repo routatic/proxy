@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -174,4 +175,59 @@ func TestAtomicConfig_OnReload_MultipleCallbacks(t *testing.T) {
 	if callCount != 2 {
 		t.Errorf("callback call count = %d, want 2", callCount)
 	}
+}
+
+func TestAtomicConfig_ConcurrentGetAndReload(t *testing.T) {
+	oldAPIKey := os.Getenv("OC_GO_CC_API_KEY")
+	_ = os.Unsetenv("OC_GO_CC_API_KEY")
+	defer func() { _ = os.Setenv("OC_GO_CC_API_KEY", oldAPIKey) }()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	initialJSON := `{"api_key": "initial-key"}`
+	if err := os.WriteFile(path, []byte(initialJSON), 0644); err != nil {
+		t.Fatalf("failed to write initial config: %v", err)
+	}
+
+	cfg, err := LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("LoadFromPath failed: %v", err)
+	}
+
+	at := NewAtomicConfig(cfg, path)
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
+	// Spawn readers.
+	for range 10 {
+		wg.Go(func() {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					_ = at.Get()
+				}
+			}
+		})
+	}
+
+	// Writer: reload repeatedly.
+	wg.Go(func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				_ = at.Reload()
+			}
+		}
+	})
+
+	// Let it race for a bit.
+	time.Sleep(500 * time.Millisecond)
+	close(done)
+	wg.Wait()
 }

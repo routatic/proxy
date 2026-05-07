@@ -52,14 +52,13 @@ func (a *AtomicConfig) Reload() error {
 		}
 	}
 
-	a.ptr.Store(cfg)
-
 	// Copy callbacks to avoid holding lock during invocation
 	a.mu.Lock()
 	callbacks := make([]func(*Config), len(a.onReload))
 	copy(callbacks, a.onReload)
 	a.mu.Unlock()
 
+	// Invoke callbacks BEFORE swapping — they may mutate cfg (e.g., port override).
 	for _, fn := range callbacks {
 		func() {
 			defer func() {
@@ -70,6 +69,9 @@ func (a *AtomicConfig) Reload() error {
 			fn(cfg)
 		}()
 	}
+
+	// Now cfg is fully prepared — safe for concurrent readers.
+	a.ptr.Store(cfg)
 
 	return nil
 }

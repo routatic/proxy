@@ -23,7 +23,6 @@ import (
 
 // MessagesHandler handles /v1/messages requests.
 type MessagesHandler struct {
-	atomic              *config.AtomicConfig
 	client              *client.OpenCodeClient
 	modelRouter         *router.ModelRouter
 	fallbackHandler     *router.FallbackHandler
@@ -67,7 +66,6 @@ func (w *responseWriter) Flush() {
 
 // NewMessagesHandler creates a new messages handler.
 func NewMessagesHandler(
-	atomic *config.AtomicConfig,
 	openCodeClient *client.OpenCodeClient,
 	modelRouter *router.ModelRouter,
 	fallbackHandler *router.FallbackHandler,
@@ -75,7 +73,6 @@ func NewMessagesHandler(
 	metrics *metrics.Metrics,
 ) *MessagesHandler {
 	return &MessagesHandler{
-		atomic:              atomic,
 		client:              openCodeClient,
 		modelRouter:         modelRouter,
 		fallbackHandler:     fallbackHandler,

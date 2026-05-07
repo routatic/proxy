@@ -22,14 +22,20 @@ func TestWatchConfig_DetectsFileChange(t *testing.T) {
 		t.Fatalf("LoadFromPath failed: %v", err)
 	}
 
-	atomic := NewAtomicConfig(cfg, path)
+	at := NewAtomicConfig(cfg, path)
+
+	// Watch for reload via callback instead of polling.
+	reloaded := make(chan struct{}, 1)
+	at.OnReload(func(_ *Config) {
+		select {
+		case reloaded <- struct{}{}:
+		default:
+		}
+	})
 
 	// Start watcher in background
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	go func() {
-		if err := WatchConfig(ctx, atomic); err != nil && err != context.Canceled {
+		if err := WatchConfig(t.Context(), at); err != nil && err != context.Canceled {
 			t.Logf("WatchConfig returned: %v", err)
 		}
 	}()
@@ -43,14 +49,13 @@ func TestWatchConfig_DetectsFileChange(t *testing.T) {
 		t.Fatalf("failed to write updated config: %v", err)
 	}
 
-	// Wait for reload with timeout
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if atomic.Get().APIKey == "watcher-updated" {
-			return // success
+	// Wait for reload notification with timeout
+	select {
+	case <-reloaded:
+		if at.Get().APIKey != "watcher-updated" {
+			t.Errorf("after reload, APIKey = %q, want %q", at.Get().APIKey, "watcher-updated")
 		}
-		time.Sleep(50 * time.Millisecond)
+	case <-time.After(5 * time.Second):
+		t.Fatal("config was not reloaded after file change")
 	}
-
-	t.Errorf("config was not reloaded after file change, got APIKey = %q", atomic.Get().APIKey)
 }
