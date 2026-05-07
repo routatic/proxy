@@ -20,6 +20,7 @@ func WatchConfig(ctx context.Context, atomic *AtomicConfig) error {
 	path := atomic.Path()
 	absPath, err := filepath.Abs(path)
 	if err != nil {
+		slog.Error("failed to get absolute path", "error", err)
 		return err
 	}
 	dir := filepath.Dir(absPath)
@@ -27,6 +28,7 @@ func WatchConfig(ctx context.Context, atomic *AtomicConfig) error {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
+		slog.Error("failed to create watcher", "error", err)
 		return err
 	}
 	defer func() {
