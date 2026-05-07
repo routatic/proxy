@@ -526,6 +526,10 @@ func (h *StreamHandler) processSSELine(
 					return ErrClientDisconnected
 				}
 			}
+			// Clear so EOF cleanup won't emit duplicate stops
+			for oi := range startedToolCalls {
+				delete(startedToolCalls, oi)
+			}
 		}
 		*toolUseCount = 0
 

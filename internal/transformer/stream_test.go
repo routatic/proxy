@@ -480,6 +480,53 @@ func TestProxyStream_ReasoningBeforeContentFastPathRegression(t *testing.T) {
 	}
 }
 
+// TestProxyStream_ToolCallFinishReasonWithUsage verifies that when finish_reason
+// arrives (fast path) followed by a usage-only chunk, tool blocks are closed
+// exactly once — no duplicate content_block_stop from EOF cleanup.
+func TestProxyStream_ToolCallFinishReasonWithUsage(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_a","type":"function","function":{"name":"fn_a","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"toolu_b","type":"function","function":{"name":"fn_b","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"x\":1}"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"y\":2}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+		`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Count content_block_stop events — should be exactly 2 (one per tool)
+	var stopCount int
+	for _, ev := range events {
+		if ev.Type == "content_block_stop" {
+			stopCount++
+		}
+	}
+	if stopCount != 2 {
+		t.Fatalf("expected 2 content_block_stop events, got %d: %+v", stopCount, events)
+	}
+
+	// Verify usage is present
+	var hasUsage bool
+	for _, ev := range events {
+		if ev.Usage != nil {
+			hasUsage = true
+		}
+	}
+	if !hasUsage {
+		t.Error("expected usage in stream, found none")
+	}
+}
+
 // TestProxyStream_SingleToolCall verifies a single tool call streamed
 // incrementally produces exactly one content_block_start, argument deltas,
 // and a content_block_stop.
