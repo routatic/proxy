@@ -403,15 +403,15 @@ jobs:
               "architecture": {
                   "64bit": {
                       "url": "${BASE_URL}/oc-go-cc_windows-amd64.exe",
-                      "hash": "${WINDOWS_AMD64}",
-                      "bin": "oc-go-cc_windows-amd64.exe"
+                      "hash": "${WINDOWS_AMD64}"
                   },
                   "arm64": {
                       "url": "${BASE_URL}/oc-go-cc_windows-arm64.exe",
-                      "hash": "${WINDOWS_ARM64}",
-                      "bin": "oc-go-cc_windows-arm64.exe"
+                      "hash": "${WINDOWS_ARM64}"
                   }
               },
+              "bin": "oc-go-cc.exe",
+              "post_install": "Rename-Item -Path \"\$dir\\\\oc-go-cc_windows-*.exe\" -Destination \"oc-go-cc.exe\"",
               "checkver": {
                   "github": "https://github.com/${REPO}"
               },
