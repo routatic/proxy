@@ -1,3 +1,5 @@
+//go:build darwin
+
 package daemon
 
 import (
@@ -56,8 +58,8 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-// PlistData holds the values interpolated into the launchd plist template.
-type PlistData struct {
+// plistData holds the values interpolated into the launchd plist template.
+type plistData struct {
 	Label      string
 	BinaryPath string
 	ConfigPath string
@@ -82,13 +84,12 @@ func EnableAutostart(configPath string, port int) error {
 		return fmt.Errorf("cannot create LaunchAgents directory: %w", err)
 	}
 
-	// Build plist data
 	envPath := os.Getenv("PATH")
 	if envPath == "" {
 		envPath = "/usr/local/bin:/usr/bin:/bin"
 	}
 
-	data := PlistData{
+	data := plistData{
 		Label:      LaunchAgent,
 		BinaryPath: paths.BinaryPath,
 		ConfigPath: configPath,
@@ -97,7 +98,6 @@ func EnableAutostart(configPath string, port int) error {
 		EnvPath:    envPath,
 	}
 
-	// Render template
 	tmpl, err := template.New("plist").Parse(plistTemplate)
 	if err != nil {
 		return fmt.Errorf("cannot parse plist template: %w", err)
@@ -116,7 +116,6 @@ func EnableAutostart(configPath string, port int) error {
 	fmt.Printf("Autostart enabled. %s will start on login.\n", AppName)
 	fmt.Printf("  Plist: %s\n", paths.PlistPath)
 
-	// Load the plist with launchctl
 	if err := loadPlist(paths.PlistPath); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not load plist with launchctl: %v\n", err)
 		fmt.Fprintf(os.Stderr, "The plist is installed and will load on next login.\n")
@@ -134,18 +133,15 @@ func DisableAutostart() error {
 		return err
 	}
 
-	// Check if plist exists
 	if _, err := os.Stat(paths.PlistPath); os.IsNotExist(err) {
 		fmt.Println("Autostart is not enabled (no plist found)")
 		return nil
 	}
 
-	// Unload the plist first
 	if err := unloadPlist(paths.PlistPath); err != nil {
 		fmt.Fprintf(os.Stderr, "note: could not unload plist: %v\n", err)
 	}
 
-	// Remove the plist file
 	if err := os.Remove(paths.PlistPath); err != nil {
 		return fmt.Errorf("cannot remove plist: %w", err)
 	}
@@ -171,7 +167,6 @@ func AutostartStatus() error {
 		return nil
 	}
 
-	// Check if the service is currently loaded
 	loaded := isPlistLoaded()
 
 	if loaded {
@@ -184,11 +179,9 @@ func AutostartStatus() error {
 }
 
 func loadPlist(plistPath string) error {
-	// launchctl bootout first (in case it's already loaded), then bootstrap
 	uid := strconv.Itoa(os.Getuid())
 	target := "gui/" + uid + "/" + LaunchAgent
 
-	// Ignore errors from bootout -- it might not be loaded
 	_ = exec.Command("launchctl", "bootout", target).Run()
 	return exec.Command("launchctl", "bootstrap", target, plistPath).Run()
 }
@@ -200,7 +193,6 @@ func unloadPlist(plistPath string) error {
 }
 
 func isPlistLoaded() bool {
-	// launchctl list returns 0 if the service is loaded
 	err := exec.Command("launchctl", "list", LaunchAgent).Run()
 	return err == nil
 }

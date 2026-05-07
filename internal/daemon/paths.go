@@ -38,13 +38,16 @@ func DefaultPaths() (*Paths, error) {
 	execPath = resolveExecutablePath(execPath)
 
 	configDir := filepath.Join(home, ConfigDir)
-	return &Paths{
+	paths := &Paths{
 		ConfigDir:  configDir,
 		PIDFile:    filepath.Join(configDir, AppName+".pid"),
 		LogFile:    filepath.Join(configDir, AppName+".log"),
-		PlistPath:  filepath.Join(home, "Library", "LaunchAgents", LaunchAgent+".plist"),
 		BinaryPath: execPath,
-	}, nil
+	}
+	if runtime.GOOS == "darwin" {
+		paths.PlistPath = filepath.Join(home, "Library", "LaunchAgents", LaunchAgent+".plist")
+	}
+	return paths, nil
 }
 
 // EnsureConfigDir creates ~/.config/oc-go-cc/ if it does not exist.
