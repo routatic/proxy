@@ -467,6 +467,43 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 	}
 }
 
+func TestTransformRequestSkipsReasoningEffortWhenThinkingDisabled(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// When thinking is explicitly disabled in model config, reasoning_effort
+	// must NOT be set — DeepSeek returns 400 if both are present.
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"think carefully"`)},
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{"type":"thinking","thinking":"Let me think..."},
+					{"type":"text","text":"The answer is 42"}
+				]`),
+			},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID:         "deepseek-v4-pro",
+		ReasoningEffort: "max",
+		Thinking:        json.RawMessage(`{"type":"disabled"}`),
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort != nil {
+		t.Fatalf("ReasoningEffort = %v, want nil (stripped because thinking is disabled)", *openaiReq.ReasoningEffort)
+	}
+	if got, want := string(openaiReq.Thinking), `{"type":"disabled"}`; got != want {
+		t.Fatalf("Thinking = %s, want %s", got, want)
+	}
+}
+
 func TestTransformRequestOmitsPlaceholderForDeepSeek(t *testing.T) {
 	transformer := NewRequestTransformer()
 
