@@ -55,11 +55,19 @@ jobs:
           if [ -n "$EXACT_TAG" ]; then
             TAG="$EXACT_TAG"
           else
-            # Auto-increment patch version from the latest tag
+            # Auto-increment with rollover (0-9 per segment)
             LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
             BASE=${LATEST_TAG#v}
             IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
             PATCH=$((PATCH + 1))
+            if [ "$PATCH" -gt 9 ]; then
+              PATCH=0
+              MINOR=$((MINOR + 1))
+            fi
+            if [ "$MINOR" -gt 9 ]; then
+              MINOR=0
+              MAJOR=$((MAJOR + 1))
+            fi
             TAG="v${MAJOR}.${MINOR}.${PATCH}"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
