@@ -54,6 +54,12 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int) (RouteRes
 	}, nil
 }
 
+// IsStreamingScenarioRoutingEnabled returns whether streaming requests should use
+// scenario-based routing instead of always routing to the fast model.
+func (r *ModelRouter) IsStreamingScenarioRoutingEnabled() bool {
+	return r.atomic.Get().EnableStreamingScenarioRouting
+}
+
 // GetModelChain returns the full chain of models to try (primary + fallbacks).
 func (rr *RouteResult) GetModelChain() []config.ModelConfig {
 	chain := []config.ModelConfig{rr.Primary}

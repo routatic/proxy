@@ -177,9 +177,9 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Route to appropriate model.
-	// For streaming, use faster models to minimize TTFT (time-to-first-token)
 	var routeResult router.RouteResult
-	if isStreaming {
+	if isStreaming && !h.modelRouter.IsStreamingScenarioRoutingEnabled() {
+		// Streaming: use faster models to minimize TTFT (time-to-first-token)
 		routeResult = h.modelRouter.RouteForStreaming(routerMessages, tokenCount)
 	} else {
 		var err error
