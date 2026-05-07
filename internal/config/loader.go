@@ -28,11 +28,14 @@ var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z0-9_]+)\}`)
 //  1. OC_GO_CC_CONFIG env var (explicit override)
 //  2. ~/.config/oc-go-cc/config.json (default)
 func Load() (*Config, error) {
-	configPath := resolveConfigPath()
+	return LoadFromPath(ResolveConfigPath())
+}
 
-	cfg, err := loadJSON(configPath)
+// LoadFromPath reads configuration from the given JSON file path.
+func LoadFromPath(path string) (*Config, error) {
+	cfg, err := loadJSON(path)
 	if err != nil {
-		return nil, fmt.Errorf("loading config from %s: %w", configPath, err)
+		return nil, fmt.Errorf("loading config from %s: %w", path, err)
 	}
 
 	applyEnvOverrides(cfg)
@@ -45,8 +48,8 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// resolveConfigPath determines which config file to load.
-func resolveConfigPath() string {
+// ResolveConfigPath determines which config file to load.
+func ResolveConfigPath() string {
 	if path := os.Getenv("OC_GO_CC_CONFIG"); path != "" {
 		return path
 	}

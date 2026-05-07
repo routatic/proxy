@@ -2,7 +2,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -115,11 +117,30 @@ func serveCmd() *cobra.Command {
 			}
 			defer func() { _ = os.Remove(pidPath) }()
 
+			// Create atomic config for hot reload support.
+			atomicCfg := config.NewAtomicConfig(cfg, config.ResolveConfigPath())
+
+			// Re-apply CLI port override on every reload so it persists.
+			if port != 0 {
+				atomicCfg.OnReload(func(newCfg *config.Config) {
+					newCfg.Port = port
+				})
+			}
+
 			// Create and start server.
-			srv, err := server.NewServer(cfg)
+			srv, err := server.NewServer(atomicCfg)
 			if err != nil {
 				return fmt.Errorf("failed to create server: %w", err)
 			}
+
+			// Start config watcher for hot reload.
+			watchCtx, watchCancel := context.WithCancel(context.Background())
+			defer watchCancel()
+			go func() {
+				if err := config.WatchConfig(watchCtx, atomicCfg); err != nil && err != context.Canceled {
+					slog.Error("config watcher failed", "error", err)
+				}
+			}()
 
 			fmt.Printf("Starting %s v%s\n", appName, version)
 			fmt.Printf("Listening on %s:%d\n", cfg.Host, cfg.Port)
