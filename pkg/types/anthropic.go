@@ -116,7 +116,7 @@ type ContentBlock struct {
 	Output    json.RawMessage `json:"output,omitempty"`    // Deprecated: use Content
 	Content   json.RawMessage `json:"content,omitempty"`   // For tool_result inner content
 	IsError   *bool           `json:"is_error,omitempty"`  // For tool_result
-	Thinking  string          `json:"thinking"`  // For thinking blocks
+	Thinking  string          `json:"thinking"`            // For thinking blocks
 	Signature string          `json:"signature,omitempty"` // For thinking blocks
 	Source    *ImageSource    `json:"source,omitempty"`    // For image blocks
 }
