@@ -71,6 +71,8 @@ func (h *StreamHandler) ProxyStream(
 	var lineBuf bytes.Buffer
 	contentStarted := false
 	reasoningStarted := false
+	stopSent := false
+	toolUseCount := 0
 
 	// Read in larger chunks for efficiency, then parse lines
 	readBuf := make([]byte, 4096)
@@ -94,7 +96,7 @@ func (h *StreamHandler) ProxyStream(
 					lineBuf.Reset()
 
 					// Process complete line
-					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, originalModel); err != nil {
+					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, originalModel); err != nil {
 						return err
 					}
 				} else {
@@ -107,7 +109,7 @@ func (h *StreamHandler) ProxyStream(
 			// Process any remaining data in buffer
 			if lineBuf.Len() > 0 {
 				line := lineBuf.String()
-				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, originalModel); err != nil {
+				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, originalModel); err != nil {
 					return err
 				}
 			}
@@ -139,6 +141,8 @@ func (h *StreamHandler) processSSELine(
 	contentIndex *int,
 	contentStarted *bool,
 	reasoningStarted *bool,
+	stopSent *bool,
+	toolUseCount *int,
 	originalModel string,
 ) error {
 	line = strings.TrimSpace(line)
@@ -193,11 +197,9 @@ func (h *StreamHandler) processSSELine(
 						*contentStarted = true
 						// Send content_block_start
 						startEvent := types.MessageEvent{
-							Type:  "content_block_start",
-							Index: contentIndex,
-							Delta: &types.Delta{
-								Type: "text",
-							},
+							Type:         "content_block_start",
+							Index:        contentIndex,
+							ContentBlock: &types.ContentBlock{Type: "text", Text: ""},
 						}
 						if err := writeSSEEvent(w, startEvent); err != nil {
 							return ErrClientDisconnected
@@ -224,8 +226,11 @@ func (h *StreamHandler) processSSELine(
 		}
 	}
 
-	// Check for finish_reason - need to send stop events
-	if strings.Contains(data, `"finish_reason":`) && !strings.Contains(data, `"finish_reason":null`) {
+	// Check for finish_reason - need to send stop events. If the chunk also has
+	// usage, fall through to full JSON parsing so usage is preserved.
+	if strings.Contains(data, `"finish_reason":`) &&
+		!strings.Contains(data, `"finish_reason":null`) &&
+		!strings.Contains(data, `"usage":`) {
 		// Close any open content block (reasoning or text)
 		if *contentStarted || *reasoningStarted {
 			stopEvent := types.MessageEvent{
@@ -247,6 +252,7 @@ func (h *StreamHandler) processSSELine(
 		if err := writeSSEEvent(w, msgDelta); err != nil {
 			return ErrClientDisconnected
 		}
+		*stopSent = true
 		flusher.Flush()
 		return nil
 	}
@@ -259,6 +265,25 @@ func (h *StreamHandler) processSSELine(
 	}
 
 	if len(chunk.Choices) == 0 {
+		if chunk.Usage != nil {
+			if *stopSent {
+				// Stop reason already sent — emit usage-only message_delta (no duplicate stop_reason).
+				event := types.MessageEvent{
+					Type:  "message_delta",
+					Delta: &types.Delta{},
+					Usage: usageInfoToAnthropic(chunk.Usage),
+				}
+				if err := writeSSEEvent(w, event); err != nil {
+					return ErrClientDisconnected
+				}
+				flusher.Flush()
+			} else {
+				if err := h.sendUsageDelta(w, flusher, chunk.Usage); err != nil {
+					return err
+				}
+				*stopSent = true
+			}
+		}
 		return nil
 	}
 
@@ -281,11 +306,9 @@ func (h *StreamHandler) processSSELine(
 			}
 			*reasoningStarted = true
 			startEvent := types.MessageEvent{
-				Type:  "content_block_start",
-				Index: contentIndex,
-				Delta: &types.Delta{
-					Type: "thinking",
-				},
+				Type:         "content_block_start",
+				Index:        contentIndex,
+				ContentBlock: &types.ContentBlock{Type: "thinking", Thinking: ""},
 			}
 			if err := writeSSEEvent(w, startEvent); err != nil {
 				return ErrClientDisconnected
@@ -324,11 +347,9 @@ func (h *StreamHandler) processSSELine(
 			}
 			*contentStarted = true
 			startEvent := types.MessageEvent{
-				Type:  "content_block_start",
-				Index: contentIndex,
-				Delta: &types.Delta{
-					Type: "text",
-				},
+				Type:         "content_block_start",
+				Index:        contentIndex,
+				ContentBlock: &types.ContentBlock{Type: "text", Text: ""},
 			}
 			if err := writeSSEEvent(w, startEvent); err != nil {
 				return ErrClientDisconnected
@@ -354,12 +375,21 @@ func (h *StreamHandler) processSSELine(
 	if len(choice.Delta.ToolCalls) > 0 {
 		for _, tc := range choice.Delta.ToolCalls {
 			*contentIndex++
+			*toolUseCount++
 
+			input := json.RawMessage(`{}`)
+			toolID := tc.ID
+			if toolID == "" {
+				toolID = fmt.Sprintf("toolu_%s", generateID())
+			}
 			startEvent := types.MessageEvent{
 				Type:  "content_block_start",
 				Index: contentIndex,
-				Delta: &types.Delta{
-					Type: "tool_use",
+				ContentBlock: &types.ContentBlock{
+					Type:  "tool_use",
+					ID:    toolID,
+					Name:  tc.Function.Name,
+					Input: input,
 				},
 			}
 			if err := writeSSEEvent(w, startEvent); err != nil {
@@ -397,14 +427,20 @@ func (h *StreamHandler) processSSELine(
 			}
 		}
 
-		var usage *types.Usage
-		if chunk.Usage != nil {
-			usage = &types.Usage{
-				InputTokens:              chunk.Usage.PromptTokens,
-				OutputTokens:             chunk.Usage.CompletionTokens,
-				CacheCreationInputTokens: chunk.Usage.PromptCacheMissTokens,
-				CacheReadInputTokens:     chunk.Usage.PromptCacheHitTokens,
+		// Close any open tool_use blocks. Each tool call incremented contentIndex,
+		// so we need to close all of them (not just the last one).
+		if *toolUseCount > 0 {
+			for i := 0; i < *toolUseCount; i++ {
+				idx := *contentIndex - *toolUseCount + i
+				stopEvent := types.MessageEvent{
+					Type:  "content_block_stop",
+					Index: &idx,
+				}
+				if err := writeSSEEvent(w, stopEvent); err != nil {
+					return ErrClientDisconnected
+				}
 			}
+			*toolUseCount = 0
 		}
 
 		msgDelta := types.MessageEvent{
@@ -412,15 +448,43 @@ func (h *StreamHandler) processSSELine(
 			Delta: &types.Delta{
 				StopReason: h.responseTransformer.mapFinishReason(choice.FinishReason),
 			},
-			Usage: usage,
+			Usage: usageInfoToAnthropic(chunk.Usage),
 		}
 		if err := writeSSEEvent(w, msgDelta); err != nil {
 			return ErrClientDisconnected
 		}
+		*stopSent = true
 		flusher.Flush()
 	}
 
 	return nil
+}
+
+func (h *StreamHandler) sendUsageDelta(w http.ResponseWriter, flusher http.Flusher, usage *types.UsageInfo) error {
+	event := types.MessageEvent{
+		Type: "message_delta",
+		Delta: &types.Delta{
+			StopReason: "end_turn",
+		},
+		Usage: usageInfoToAnthropic(usage),
+	}
+	if err := writeSSEEvent(w, event); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+	return nil
+}
+
+func usageInfoToAnthropic(usage *types.UsageInfo) *types.Usage {
+	if usage == nil {
+		return nil
+	}
+	return &types.Usage{
+		InputTokens:              usage.PromptTokens,
+		OutputTokens:             usage.CompletionTokens,
+		CacheCreationInputTokens: usage.PromptCacheMissTokens,
+		CacheReadInputTokens:     usage.PromptCacheHitTokens,
+	}
 }
 
 // writeSSEEvent writes a single SSE event to the HTTP response writer.

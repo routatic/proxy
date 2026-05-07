@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/spf13/cobra"
 	"oc-go-cc/internal/config"
@@ -82,7 +81,21 @@ func serveCmd() *cobra.Command {
 				cfg.Port = port
 			}
 
-			// Daemonize setup (child process after re-exec)
+			pidPath := getPIDPath()
+
+			// Check if already running before writing this process' PID.
+			if !daemonize {
+				if pid, err := daemon.GetPID(pidPath); err == nil {
+					// Check if process is still running.
+					if daemon.IsProcessRunning(pid) {
+						return fmt.Errorf("server is already running (PID %d)", pid)
+					}
+					// Stale PID file, clean up.
+					_ = os.Remove(pidPath)
+				}
+			}
+
+			// Daemonize setup (child process after re-exec).
 			if daemonize {
 				paths, err := daemon.DefaultPaths()
 				if err != nil {
@@ -94,22 +107,11 @@ func serveCmd() *cobra.Command {
 				if err := daemon.DaemonizeSetup(paths); err != nil {
 					return err
 				}
-			}
-
-			// Check if already running.
-			pidPath := getPIDPath()
-			if pid, err := daemon.GetPID(pidPath); err == nil {
-				// Check if process is still running.
-				if daemon.IsProcessRunning(pid) {
-					return fmt.Errorf("server is already running (PID %d)", pid)
+			} else {
+				// Write PID file for foreground mode.
+				if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
+					return fmt.Errorf("failed to write PID file: %w", err)
 				}
-				// Stale PID file, clean up.
-				_ = os.Remove(pidPath)
-			}
-
-			// Write PID file.
-			if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
-				return fmt.Errorf("failed to write PID file: %w", err)
 			}
 			defer func() { _ = os.Remove(pidPath) }()
 
@@ -200,15 +202,9 @@ func initCmd() *cobra.Command {
 
 			// Check if config already exists
 			if _, err := os.Stat(configPath); err == nil {
-				// Backup existing config with timestamp
-				timestamp := time.Now().Format("20060102-150405")
-				backupPath := configPath + ".backup." + timestamp
-
-				if err := os.Rename(configPath, backupPath); err != nil {
-					return fmt.Errorf("failed to backup existing config: %w", err)
-				}
-
-				fmt.Printf("Backed up existing config to %s\n", backupPath)
+				fmt.Printf("Config already exists at %s\n", configPath)
+				fmt.Println("Edit the file to update your configuration.")
+				return nil
 			}
 
 			if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -365,12 +361,6 @@ func getDefaultConfig() string {
   "host": "127.0.0.1",
   "port": 3456,
   "models": {
-    "budget": {
-      "provider": "opencode-go",
-      "model_id": "qwen3.6-plus",
-      "temperature": 0.7,
-      "max_tokens": 4096
-    },
     "background": {
       "provider": "opencode-go",
       "model_id": "qwen3.5-plus",
@@ -410,17 +400,11 @@ func getDefaultConfig() string {
     }
   },
   "fallbacks": {
-    "budget": [
-      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
-      { "provider": "opencode-go", "model_id": "mimo-v2-pro" }
-    ],
     "background": [
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
       { "provider": "opencode-go", "model_id": "minimax-m2.5" }
     ],
     "default": [
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
       { "provider": "opencode-go", "model_id": "mimo-v2-pro" },
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
     ],
@@ -430,7 +414,6 @@ func getDefaultConfig() string {
     ],
     "think": [
       { "provider": "opencode-go", "model_id": "kimi-k2.6" },
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
       { "provider": "opencode-go", "model_id": "mimo-v2-pro" }
     ],
     "complex": [

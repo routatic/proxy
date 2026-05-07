@@ -25,10 +25,10 @@ Comprehensive guide to OpenCode Go models with capabilities, costs, and routing 
 
 ⚠️ **Critical:** Not all models use the same API endpoint! oc-go-cc handles this automatically, but you should know:
 
-| Models                                                                                                            | Endpoint                                         | Format                   |
-| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------ |
+| Models                                                                                                             | Endpoint                                         | Format                   |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------ |
 | GLM-5, GLM-5.1, Kimi K2.6, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, Qwen3.5 Plus, Qwen3.6 Plus, DeepSeek V4 Pro/Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI-compatible        |
-| **MiniMax M2.5, MiniMax M2.7**                                                                                    | `https://opencode.ai/zen/go/v1/messages`         | **Anthropic-compatible** |
+| **MiniMax M2.5, MiniMax M2.7**                                                                                     | `https://opencode.ai/zen/go/v1/messages`         | **Anthropic-compatible** |
 
 **Why this matters:** MiniMax models expect Anthropic format natively. oc-go-cc detects MiniMax models and routes them to the correct endpoint automatically without transformation. This means MiniMax models work seamlessly with Claude Code.
 
@@ -46,7 +46,7 @@ For Claude Code and OpenCode-style agent workflows, DeepSeek V4 supports max thi
 }
 ```
 
-Use `deepseek-v4-pro` for default, complex, thinking, and long-context routing. Use `deepseek-v4-flash` for fast, background, budget, or subagent-style workloads.
+Use `deepseek-v4-pro` for default, complex, thinking, and long-context routing. Use `deepseek-v4-flash` for fast, background, or subagent-style workloads.
 
 ## Cost-Conscious Routing Strategy
 
@@ -63,11 +63,6 @@ Use `deepseek-v4-pro` for default, complex, thinking, and long-context routing. 
 ```json
 {
   "models": {
-    "budget": {
-      // Default for most tasks
-      "model_id": "qwen3.6-plus",
-      "max_tokens": 4096
-    },
     "background": {
       // Simple operations
       "model_id": "qwen3.5-plus",
@@ -92,6 +87,11 @@ Use `deepseek-v4-pro` for default, complex, thinking, and long-context routing. 
       // Complex architecture only
       "model_id": "glm-5.1",
       "max_tokens": 4096
+    },
+    "fast": {
+      // Streaming requests (prioritize TTFT)
+      "model_id": "qwen3.6-plus",
+      "max_tokens": 4096
     }
   }
 }
@@ -103,14 +103,14 @@ Use `deepseek-v4-pro` for default, complex, thinking, and long-context routing. 
 Is context > 80K tokens?
 ├── YES → Use MiniMax M2.5 (1M context, 6,300 req/$12)
 │
-Is it a simple task (read file, grep, list dir)?
-├── YES → Use Qwen3.5 Plus (10,200 req/$12)
+Is it a complex task (architecture, refactoring, tool operations)?
+├── YES → Use GLM-5.1 (880 req/$12)
 │
 Is it a reasoning/planning task?
 ├── YES → Use GLM-5 (1,150 req/$12)
 │
-Is it complex architecture or critical code?
-├── YES → Use GLM-5.1 (880 req/$12)
+Is it a simple background task (read file, grep, list dir, no tools)?
+├── YES → Use Qwen3.5 Plus (10,200 req/$12)
 │
 Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,300 req/$12)
 ```
@@ -187,7 +187,6 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
 - **Best For:**
   - Fast routing
   - Background tasks
-  - Budget routing
   - Subagent-style work
   - Fallback for DeepSeek V4 Pro
 - **Recommended Config:**
@@ -323,7 +322,6 @@ Critical review → GLM-5.1 (rarely)
 ```json
 {
   "fallbacks": {
-    "budget": [{ "model_id": "kimi-k2.6" }, { "model_id": "mimo-v2-pro" }],
     "background": [
       { "model_id": "qwen3.6-plus" },
       { "model_id": "minimax-m2.5" }
@@ -331,7 +329,8 @@ Critical review → GLM-5.1 (rarely)
     "long_context": [{ "model_id": "minimax-m2.5" }],
     "default": [{ "model_id": "mimo-v2-pro" }, { "model_id": "qwen3.6-plus" }],
     "think": [{ "model_id": "kimi-k2.6" }],
-    "complex": [{ "model_id": "glm-5" }]
+    "complex": [{ "model_id": "glm-5" }],
+    "fast": [{ "model_id": "qwen3.5-plus" }, { "model_id": "minimax-m2.5" }]
   }
 }
 ```

@@ -31,7 +31,7 @@ Run a single test: `go test ./internal/router/ -v`
 
 **Scenario detection priority** (`internal/router/scenarios.go`):
 
-1. Long Context (>60K tokens) → MiniMax (1M context)
+1. Long Context (>80K tokens, configurable) → MiniMax (1M context)
 2. Complex (architectural patterns, tool operations) → GLM-5.1
 3. Think (reasoning keywords in system prompt) → GLM-5
 4. Background (simple read-only ops, no tools) → Qwen3.5 Plus

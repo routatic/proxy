@@ -75,7 +75,7 @@ sudo mv oc-go-cc /usr/local/bin/
 oc-go-cc init
 ```
 
-Creates a default config at `~/.config/oc-go-cc/config.json`.
+Creates a default config at `~/.config/oc-go-cc/config.json`. If the config already exists, it shows the path so you can edit it directly.
 
 ### 2. Set Your API Key
 
@@ -240,12 +240,24 @@ Override with `OC_GO_CC_CONFIG` environment variable.
       "temperature": 0.7,
       "max_tokens": 8192
     },
+    "complex": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.1",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
     "long_context": {
       "provider": "opencode-go",
       "model_id": "minimax-m2.7",
       "temperature": 0.7,
       "max_tokens": 16384,
-      "context_threshold": 60000
+      "context_threshold": 80000
+    },
+    "fast": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.6-plus",
+      "temperature": 0.7,
+      "max_tokens": 4096
     },
     "deepseek_v4_max": {
       "provider": "opencode-go",
@@ -265,7 +277,9 @@ Override with `OC_GO_CC_CONFIG` environment variable.
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
     ],
     "think": [{ "provider": "opencode-go", "model_id": "glm-5" }],
-    "long_context": [{ "provider": "opencode-go", "model_id": "minimax-m2.5" }]
+    "complex": [{ "provider": "opencode-go", "model_id": "glm-5" }],
+    "long_context": [{ "provider": "opencode-go", "model_id": "minimax-m2.5" }],
+    "fast": [{ "provider": "opencode-go", "model_id": "qwen3.5-plus" }]
   },
 
   "opencode_go": {
@@ -299,7 +313,7 @@ The proxy automatically detects the type of request and routes to the appropriat
 
 | Scenario         | Trigger                                             | Model        | Why                                             |
 | ---------------- | --------------------------------------------------- | ------------ | ----------------------------------------------- |
-| **Long Context** | >60K tokens                                         | MiniMax M2.7 | 1M context window vs 128-256K for others        |
+| **Long Context** | >80K tokens (configurable)                          | MiniMax M2.7 | 1M context window vs 128-256K for others        |
 | **Complex**      | "architect", "refactor", "complex" in system prompt | GLM-5.1      | Best reasoning & architectural understanding    |
 | **Think**        | "think", "plan", "reason" in system prompt          | GLM-5        | Good reasoning, cheaper than GLM-5.1            |
 | **Background**   | "read file", "grep", "list directory"               | Qwen3.5 Plus | Cheapest (~10K req/5hr), perfect for simple ops |
@@ -336,20 +350,20 @@ See [MODELS.md](MODELS.md) for **detailed model capabilities, costs, and routing
 
 Quick reference:
 
-| Model ID       | Quality | Context | Cost (req/5hr) | Best For                              |
-| -------------- | ------- | ------- | -------------- | ------------------------------------- |
-| `glm-5.1`      | ★★★★★   | 200K    | ~880           | Complex architecture, difficult tasks |
-| `glm-5`        | ★★★★☆   | 200K    | ~1,150         | High-quality coding, refactoring      |
-| `kimi-k2.6`    | ★★★★★   | 256K    | ~1,850         | **Default** - best balance            |
-| `kimi-k2.5`    | ★★★★☆   | 256K    | ~1,850         | Fallback - solid quality              |
-| `mimo-v2-pro`  | ★★★★☆   | 128K    | ~1,290         | Code completion, generation           |
-| `mimo-v2-omni` | ★★★☆☆   | 256K    | ~2,150         | Fast prototyping                      |
-| `qwen3.6-plus` | ★★★☆☆   | 128K    | ~3,300         | Cost-effective general coding         |
-| `minimax-m2.7` | ★★★☆☆   | **1M**  | ~3,400         | **Long context specialist**           |
-| `minimax-m2.5` | ★★☆☆☆   | **1M**  | ~6,300         | Long context on a budget              |
-| `deepseek-v4-pro` | ★★★★★ | **1M** | varies | Agentic coding, max thinking, long context |
-| `deepseek-v4-flash` | ★★★★☆ | **1M** | varies | Fast agent tasks, background/subagent work |
-| `qwen3.5-plus` | ★★☆☆☆   | 128K    | ~10,200        | **Cheapest** - background tasks       |
+| Model ID            | Quality | Context | Cost (req/5hr) | Best For                                   |
+| ------------------- | ------- | ------- | -------------- | ------------------------------------------ |
+| `glm-5.1`           | ★★★★★   | 200K    | ~880           | Complex architecture, difficult tasks      |
+| `glm-5`             | ★★★★☆   | 200K    | ~1,150         | High-quality coding, refactoring           |
+| `kimi-k2.6`         | ★★★★★   | 256K    | ~1,850         | **Default** - best balance                 |
+| `kimi-k2.5`         | ★★★★☆   | 256K    | ~1,850         | Fallback - solid quality                   |
+| `mimo-v2-pro`       | ★★★★☆   | 128K    | ~1,290         | Code completion, generation                |
+| `mimo-v2-omni`      | ★★★☆☆   | 256K    | ~2,150         | Fast prototyping                           |
+| `qwen3.6-plus`      | ★★★☆☆   | 128K    | ~3,300         | Cost-effective general coding              |
+| `minimax-m2.7`      | ★★★☆☆   | **1M**  | ~3,400         | **Long context specialist**                |
+| `minimax-m2.5`      | ★★☆☆☆   | **1M**  | ~6,300         | Long context on a budget                   |
+| `deepseek-v4-pro`   | ★★★★★   | **1M**  | varies         | Agentic coding, max thinking, long context |
+| `deepseek-v4-flash` | ★★★★☆   | **1M**  | varies         | Fast agent tasks, background/subagent work |
+| `qwen3.5-plus`      | ★★☆☆☆   | 128K    | ~10,200        | **Cheapest** - background tasks            |
 
 > **💡 Tip:** The cost column shows approximate requests per 5-hour block ($12). Qwen3.5 Plus gives you ~10x more requests than GLM-5.1!
 
@@ -384,6 +398,12 @@ The proxy exposes these endpoints that Claude Code expects:
 | `GET`  | `/health`                   | Health check                          |
 
 ## Troubleshooting
+
+### Windows Scoop Background Mode
+
+On Windows, `oc-go-cc serve -b` uses the native Windows process APIs and keeps
+the Scoop shim path intact. This means background mode does not require `nohup`
+or a Unix-like shell, and Scoop-provided environment variables continue to work.
 
 ### "invalid request body" Error
 
