@@ -411,7 +411,7 @@ jobs:
                   }
               },
               "bin": "oc-go-cc.exe",
-              "post_install": "Rename-Item -Path \"\$dir\\\\oc-go-cc_windows-*.exe\" -Destination \"oc-go-cc.exe\"",
+              "post_install": "Get-ChildItem \$dir\\\\oc-go-cc_windows-*.exe | Rename-Item -NewName oc-go-cc.exe",
               "checkver": {
                   "github": "https://github.com/${REPO}"
               },
