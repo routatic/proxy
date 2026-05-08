@@ -11,6 +11,16 @@ import (
 // ResponseTransformer converts OpenAI responses to Anthropic format.
 type ResponseTransformer struct{}
 
+// nonNegative clamps an integer to zero. Used when subtracting cache-token
+// counts from prompt totals: defends against upstream payloads where the
+// reported parts don't consistently sum to the whole.
+func nonNegative(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
 // NewResponseTransformer creates a new response transformer.
 func NewResponseTransformer() *ResponseTransformer {
 	return &ResponseTransformer{}
@@ -46,7 +56,15 @@ func (t *ResponseTransformer) TransformResponse(
 		StopReason:   stopReason,
 		StopSequence: "",
 		Usage: types.Usage{
-			InputTokens:              openaiResp.Usage.PromptTokens,
+			// Per Anthropic Messages API spec, `input_tokens` is the count of
+			// regular input tokens — i.e. tokens that were neither read from
+			// the cache nor written to the cache this turn. OpenAI's
+			// `prompt_tokens` is the *total* prompt size including both. When
+			// the upstream reports prompt-cache fields we have to subtract
+			// them out, otherwise Claude Code's local context counter sees an
+			// inflated input_tokens on every turn and trips auto-compact ~5x
+			// too early on long-prefix sessions.
+			InputTokens:              nonNegative(openaiResp.Usage.PromptTokens - openaiResp.Usage.PromptCacheHitTokens - openaiResp.Usage.PromptCacheMissTokens),
 			OutputTokens:             openaiResp.Usage.CompletionTokens,
 			CacheCreationInputTokens: openaiResp.Usage.PromptCacheMissTokens,
 			CacheReadInputTokens:     openaiResp.Usage.PromptCacheHitTokens,

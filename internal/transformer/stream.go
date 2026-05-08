@@ -570,7 +570,13 @@ func usageInfoToAnthropic(usage *types.UsageInfo) *types.Usage {
 		return nil
 	}
 	return &types.Usage{
-		InputTokens:              usage.PromptTokens,
+		// Per Anthropic Messages API spec, `input_tokens` is the count of
+		// regular input tokens — i.e. tokens that were neither read from the
+		// cache nor written to the cache this turn. OpenAI's `prompt_tokens`
+		// is the *total* prompt size. We must subtract the cache parts here
+		// for the same reason TransformResponse does — see the longer comment
+		// in response.go.
+		InputTokens:              nonNegative(usage.PromptTokens - usage.PromptCacheHitTokens - usage.PromptCacheMissTokens),
 		OutputTokens:             usage.CompletionTokens,
 		CacheCreationInputTokens: usage.PromptCacheMissTokens,
 		CacheReadInputTokens:     usage.PromptCacheHitTokens,

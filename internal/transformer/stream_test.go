@@ -235,7 +235,10 @@ func TestProxyStream_UsageOnlyChunk(t *testing.T) {
 	if usage == nil {
 		t.Fatalf("no usage event found in stream: %+v", events)
 	}
-	if got, want := usage.InputTokens, 123; got != want {
+	// Per Anthropic spec, input_tokens excludes cache reads AND cache
+	// creations. Upstream prompt_tokens=123 split as 100 hit + 23 miss
+	// means everything was accounted for by the cache → input_tokens = 0.
+	if got, want := usage.InputTokens, 0; got != want {
 		t.Fatalf("InputTokens = %d, want %d", got, want)
 	}
 	if got, want := usage.OutputTokens, 45; got != want {
