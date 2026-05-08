@@ -318,10 +318,10 @@ func TestTransformResponseCacheExceedsPromptTokens(t *testing.T) {
 			},
 		},
 		Usage: types.UsageInfo{
-			PromptTokens:         50,
-			CompletionTokens:     5,
-			TotalTokens:          55,
-			PromptCacheHitTokens: 40,
+			PromptTokens:          50,
+			CompletionTokens:      5,
+			TotalTokens:           55,
+			PromptCacheHitTokens:  40,
 			PromptCacheMissTokens: 20,
 			// 50 - 40 - 20 = -10, clamped to 0
 		},
