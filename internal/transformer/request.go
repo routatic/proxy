@@ -34,6 +34,11 @@ func isDeepSeekModel(modelID string) bool {
 	return strings.HasPrefix(modelID, "deepseek-")
 }
 
+
+// supportsCacheControl returns true for models known to accept the cache_control field.
+func supportsCacheControl(modelID string) bool {
+	return isDeepSeekModel(modelID)
+}
 // needsPlaceholderReasoning returns true for providers whose validators require
 // a non-empty reasoning_content field on assistant tool-call messages.
 func needsPlaceholderReasoning(modelID string) bool {
@@ -41,6 +46,13 @@ func needsPlaceholderReasoning(modelID string) bool {
 	return strings.HasPrefix(modelID, "kimi-")
 }
 
+
+// stripCacheControl removes cache_control from all messages in the list.
+func stripCacheControl(messages []types.ChatMessage) {
+	for i := range messages {
+		messages[i].CacheControl = nil
+	}
+}
 // TransformRequest converts an Anthropic MessageRequest to OpenAI ChatCompletionRequest.
 func (t *RequestTransformer) TransformRequest(
 	anthropicReq *types.MessageRequest,
@@ -52,6 +64,11 @@ func (t *RequestTransformer) TransformRequest(
 		return nil, fmt.Errorf("failed to transform messages: %w", err)
 	}
 
+
+	// Strip cache_control for models that don't support it
+	if !supportsCacheControl(model.ModelID) {
+		stripCacheControl(messages)
+	}
 	// Build OpenAI request
 	openaiReq := &types.ChatCompletionRequest{
 		Model:    model.ModelID,
@@ -98,9 +115,9 @@ func (t *RequestTransformer) TransformRequest(
 		} else {
 			openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
 		}
-		// DeepSeek returns 400 if reasoning_effort is sent alongside
-		// thinking: disabled — only set it when thinking is active.
-		if !isThinkingDisabled(openaiReq.Thinking) || !isDeepSeekModel(model.ModelID) {
+		// Only DeepSeek supports reasoning_effort. Set it when thinking is
+		// enabled on a DeepSeek model; skip for all other providers.
+		if !isThinkingDisabled(openaiReq.Thinking) && isDeepSeekModel(model.ModelID) {
 			if model.ReasoningEffort != "" {
 				openaiReq.ReasoningEffort = &model.ReasoningEffort
 			} else {

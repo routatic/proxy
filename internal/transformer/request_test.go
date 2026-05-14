@@ -364,7 +364,7 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 		},
 	}
 
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
 	}
@@ -385,6 +385,31 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	}
 	if got, want := systemMsg.CacheControl.Type, "ephemeral"; got != want {
 		t.Fatalf("Messages[0].CacheControl.Type = %q, want %q", got, want)
+	}
+}
+
+func TestTransformRequestStripsCacheControlForNonDeepSeek(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"You are helpful","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if systemMsg.CacheControl != nil {
+		t.Fatalf("Messages[0].CacheControl = %v, want nil for non-DeepSeek model", systemMsg.CacheControl)
 	}
 }
 
@@ -441,7 +466,8 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 		},
 	}
 
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	// DeepSeek models preserve cache_control
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
 	}
