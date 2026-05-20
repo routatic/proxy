@@ -590,6 +590,212 @@ func TestTransformRequestDeepSeekPlaceholderWithThinkingHistory(t *testing.T) {
 	}
 }
 
+// Regression test for an upstream 400 observed in production:
+//
+//	"The reasoning_content in the thinking mode must be passed back to the API."
+//
+// Claude Code can produce assistant turns that are text-only (no tool_use,
+// no thinking block) inside a conversation where an earlier turn DID carry
+// thinking. Examples: a follow-up that the model answers in plain text, or
+// a post-/compact summary message. DeepSeek in thinking mode requires
+// reasoning_content on EVERY assistant message, not just tool_use ones, so
+// the proxy must add the placeholder for text-only turns too.
+func TestTransformRequestDeepSeekPlaceholderForTextOnlyAssistant(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"think about this"`)},
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{"type":"thinking","thinking":"Let me think..."},
+					{"type":"text","text":"My initial answer"}
+				]`),
+			},
+			{Role: "user", Content: json.RawMessage(`"a follow-up question"`)},
+			{
+				// Text-only continuation. No thinking block (Claude Code
+				// commonly drops thinking on simple follow-ups), no tool_use.
+				Role:    "assistant",
+				Content: json.RawMessage(`[{"type":"text","text":"A short reply"}]`),
+			},
+			{Role: "user", Content: json.RawMessage(`"and another"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID:         "deepseek-v4-flash",
+		ReasoningEffort: "high",
+		Thinking:        json.RawMessage(`{"type":"enabled"}`),
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Find the second assistant message (text-only follow-up).
+	var textOnlyAssistant *types.ChatMessage
+	seen := 0
+	for i := range openaiReq.Messages {
+		if openaiReq.Messages[i].Role != "assistant" {
+			continue
+		}
+		seen++
+		if seen == 2 {
+			textOnlyAssistant = &openaiReq.Messages[i]
+			break
+		}
+	}
+	if textOnlyAssistant == nil {
+		t.Fatal("expected two assistant messages in transformed request, found fewer")
+	}
+	if len(textOnlyAssistant.ToolCalls) != 0 {
+		t.Fatalf("text-only assistant message unexpectedly had tool_calls: %+v", textOnlyAssistant.ToolCalls)
+	}
+
+	// The bug this test guards against: ReasoningContent was nil on this
+	// message, causing DeepSeek to 400 the entire request. After the fix,
+	// it's the single-space placeholder.
+	if textOnlyAssistant.ReasoningContent == nil {
+		t.Fatal("ReasoningContent = nil, want non-nil placeholder for DeepSeek text-only assistant in thinking-mode conversation")
+	}
+	if got, want := *textOnlyAssistant.ReasoningContent, " "; got != want {
+		t.Fatalf("ReasoningContent = %q, want %q", got, want)
+	}
+}
+
+// Regression test for the production failure that motivated this PR.
+//
+// User configured oc-go-cc with a bare DeepSeek model config — no
+// `thinking` field, no `reasoning_effort`. They ran Claude Code with
+// `effortLevel: xhigh` set globally. Workflow:
+//
+//	turn 1: user asks question  →  proxy forwards to deepseek-v4-flash
+//	turn 1 response: succeeds, upstream ran in DeepSeek's *default*
+//	                 thinking mode (DeepSeek-v4 always defaults to
+//	                 thinking mode unless explicitly disabled)
+//	turn 2: user follows up  →  proxy receives request, sees no thinking
+//	                             blocks in history (Claude Code didn't
+//	                             round-trip the reasoning back), forwards
+//	                             with `openaiReq.Thinking = nil` because
+//	                             neither model config nor history asked for
+//	                             thinking-mode handling
+//	turn 2: upstream is STILL in thinking mode (default), demands
+//	        reasoning_content on the prior assistant message which the
+//	        proxy didn't add → 400.
+//
+// Fix: when the model is DeepSeek and there's no extant thinking history,
+// explicitly send `thinking: disabled` so upstream switches off thinking
+// mode and stops demanding reasoning_content.
+func TestTransformRequestForceDisablesThinkingForDeepSeekWithoutHistory(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"do something"`)},
+		},
+	}
+
+	// Bare DeepSeek config: no Thinking field, no ReasoningEffort.
+	// Mirrors a typical user setup for the `fast` slot.
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Must explicitly disable thinking — leaving it nil lets DeepSeek's
+	// default thinking-mode behavior take over and 400 on subsequent turns.
+	if len(openaiReq.Thinking) == 0 {
+		t.Fatal("openaiReq.Thinking is empty — must be set to {\"type\":\"disabled\"} for DeepSeek without thinking history")
+	}
+	if got, want := string(openaiReq.Thinking), `{"type":"disabled"}`; got != want {
+		t.Fatalf("openaiReq.Thinking = %s, want %s", got, want)
+	}
+}
+
+// Regression test: Claude Code emits tool_use blocks with the chain-of-
+// thought attached directly via a `thinking` field, instead of as a
+// separate thinking-typed block. Real shape observed:
+//
+//	{"type":"tool_use","id":"toolu_X","name":"...","input":{...},
+//	 "thinking":"reasoning that led to the tool call"}
+//
+// HasThinkingBlocks must recognize this as thinking history, and
+// transformAssistantMessage must extract the inline thinking string into
+// reasoning_content. Without this:
+//   - HasThinkingBlocks returns false → thinking mode not detected →
+//     placeholder branch never fires → DeepSeek (which is in thinking mode
+//     after the first reasoning response from the upstream-default mode)
+//     returns 400 on the next request.
+func TestTransformRequestExtractsThinkingFromToolUseBlock(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"search for X"`)},
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{
+						"type":"tool_use",
+						"id":"toolu_thinking_inline",
+						"name":"search",
+						"input":{"q":"X"},
+						"thinking":"I need to search the docs first"
+					}
+				]`),
+			},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// (1) HasThinkingBlocks must detect the inline thinking on tool_use.
+	if !HasThinkingBlocks(req.Messages) {
+		t.Fatal("HasThinkingBlocks = false, want true (tool_use block has inline thinking)")
+	}
+
+	// (2) The transformed assistant message must carry the thinking content
+	//     as reasoning_content so DeepSeek's validator is satisfied.
+	var assistantMsg *types.ChatMessage
+	for i := range openaiReq.Messages {
+		if openaiReq.Messages[i].Role == "assistant" {
+			assistantMsg = &openaiReq.Messages[i]
+			break
+		}
+	}
+	if assistantMsg == nil {
+		t.Fatal("no assistant message in transformed request")
+	}
+	if assistantMsg.ReasoningContent == nil {
+		t.Fatal("ReasoningContent = nil, want non-nil (thinking on tool_use must round-trip)")
+	}
+	if got, want := *assistantMsg.ReasoningContent, "I need to search the docs first"; got != want {
+		t.Fatalf("ReasoningContent = %q, want %q", got, want)
+	}
+	// (3) tool_calls must still be present — extracting thinking shouldn't
+	//     drop the tool invocation.
+	if len(assistantMsg.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls = %d, want 1", len(assistantMsg.ToolCalls))
+	}
+	if got, want := assistantMsg.ToolCalls[0].Function.Name, "search"; got != want {
+		t.Fatalf("ToolCalls[0].Name = %q, want %q", got, want)
+	}
+}
+
 func mustJSONBytes(t *testing.T, v any) json.RawMessage {
 	t.Helper()
 	b, err := json.Marshal(v)

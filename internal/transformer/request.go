@@ -108,10 +108,18 @@ func (t *RequestTransformer) TransformRequest(
 				openaiReq.ReasoningEffort = &defaultEffort
 			}
 		}
-	} else if len(model.Thinking) > 0 || model.ReasoningEffort != "" {
-		// Model config wants thinking mode but history has no thinking blocks.
-		// Explicitly disable to prevent DeepSeek from requiring reasoning_content
-		// on assistant messages that can't provide it.
+	} else if isDeepSeekModel(model.ModelID) || len(model.Thinking) > 0 || model.ReasoningEffort != "" {
+		// DeepSeek-v4 models default to thinking mode upstream — once
+		// engaged, every assistant message in the conversation history is
+		// required to carry reasoning_content, and we can't synthesize that
+		// reliably (Claude Code emits assistant turns whose original
+		// thinking content was elided to "" or stripped on /compact). The
+		// safe default for DeepSeek with no extant thinking history is to
+		// explicitly disable upstream thinking mode.
+		//
+		// Same disable also applies when the model config requested thinking
+		// but we don't have any thinking blocks yet — sending thinking:enabled
+		// alongside assistant messages without reasoning_content 400s.
 		openaiReq.Thinking = json.RawMessage(`{"type":"disabled"}`)
 	}
 
@@ -123,8 +131,16 @@ func (t *RequestTransformer) TransformRequest(
 	return openaiReq, nil
 }
 
-// HasThinkingBlocks returns true if any assistant message contains a
-// thinking content block.
+// HasThinkingBlocks returns true if any assistant message contains
+// thinking content — either as a dedicated `thinking`-typed block, or
+// attached as a non-empty `thinking` field on a `tool_use` block.
+//
+// Claude Code emits both shapes: dedicated thinking blocks for text-only
+// reasoning, and tool_use blocks with an inline `thinking` field when the
+// assistant turn ends in a tool call. Both forms must mark the
+// conversation as having thinking history so the proxy enables thinking
+// mode on subsequent upstream calls (DeepSeek defaults to thinking mode
+// and demands `reasoning_content` once it's been engaged).
 func HasThinkingBlocks(messages []types.Message) bool {
 	for _, msg := range messages {
 		if msg.Role != "assistant" {
@@ -132,6 +148,9 @@ func HasThinkingBlocks(messages []types.Message) bool {
 		}
 		for _, block := range msg.ContentBlocks() {
 			if block.Type == "thinking" {
+				return true
+			}
+			if block.Type == "tool_use" && block.Thinking != "" {
 				return true
 			}
 		}
@@ -258,7 +277,15 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 				thinkingParts = append(thinkingParts, block.Thinking)
 			}
 		case "tool_use":
-			// Map to OpenAI function call format
+			// Claude Code can attach reasoning directly to the tool_use block
+			// (instead of emitting a separate thinking-typed block) when the
+			// assistant turn ends in a tool call. Extract that here so it
+			// round-trips back to upstream as reasoning_content — otherwise
+			// DeepSeek (which always operates in thinking mode after the
+			// first reasoning response) returns 400 on the next request.
+			if block.Thinking != "" {
+				thinkingParts = append(thinkingParts, block.Thinking)
+			}
 			arguments := "{}"
 			if len(block.Input) > 0 {
 				arguments = string(block.Input)
@@ -288,12 +315,17 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 	if reasoningContent != "" {
 		// Real thinking content from the upstream history — preserve it.
 		reasoningContentPtr = &reasoningContent
-	} else if hasThinkingInHistory && len(toolCalls) > 0 && isDeepSeekModel(modelID) {
-		// DeepSeek in thinking mode requires reasoning_content on ALL assistant
-		// messages, including tool-call turns where Claude Code didn't preserve
-		// the thinking block. Use a placeholder that won't trigger validation:
-		// DeepSeek checks for the field's presence, not its content, when the
-		// original thinking was stripped by the client.
+	} else if hasThinkingInHistory && isDeepSeekModel(modelID) {
+		// DeepSeek in thinking mode requires reasoning_content on EVERY
+		// assistant message — text-only continuation turns and tool_use
+		// turns alike — whenever the conversation was opened in thinking
+		// mode. Without this, upstream returns:
+		//   400 invalid_request_error: "The `reasoning_content` in the
+		//   thinking mode must be passed back to the API."
+		// Use a single-space placeholder for assistant turns whose original
+		// thinking blocks were stripped by Claude Code (compact summaries,
+		// dropped reasoning blocks, etc.) — DeepSeek checks for the field's
+		// presence and non-empty content, not its semantic value.
 		placeholder := " "
 		reasoningContentPtr = &placeholder
 	} else if len(toolCalls) > 0 && needsPlaceholderReasoning(modelID) {
