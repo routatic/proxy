@@ -672,19 +672,19 @@ func TestTransformRequestDeepSeekPlaceholderForTextOnlyAssistant(t *testing.T) {
 // `thinking` field, no `reasoning_effort`. They ran Claude Code with
 // `effortLevel: xhigh` set globally. Workflow:
 //
-//   turn 1: user asks question  →  proxy forwards to deepseek-v4-flash
-//   turn 1 response: succeeds, upstream ran in DeepSeek's *default*
-//                    thinking mode (DeepSeek-v4 always defaults to
-//                    thinking mode unless explicitly disabled)
-//   turn 2: user follows up  →  proxy receives request, sees no thinking
-//                                blocks in history (Claude Code didn't
-//                                round-trip the reasoning back), forwards
-//                                with `openaiReq.Thinking = nil` because
-//                                neither model config nor history asked for
-//                                thinking-mode handling
-//   turn 2: upstream is STILL in thinking mode (default), demands
-//           reasoning_content on the prior assistant message which the
-//           proxy didn't add → 400.
+//	turn 1: user asks question  →  proxy forwards to deepseek-v4-flash
+//	turn 1 response: succeeds, upstream ran in DeepSeek's *default*
+//	                 thinking mode (DeepSeek-v4 always defaults to
+//	                 thinking mode unless explicitly disabled)
+//	turn 2: user follows up  →  proxy receives request, sees no thinking
+//	                             blocks in history (Claude Code didn't
+//	                             round-trip the reasoning back), forwards
+//	                             with `openaiReq.Thinking = nil` because
+//	                             neither model config nor history asked for
+//	                             thinking-mode handling
+//	turn 2: upstream is STILL in thinking mode (default), demands
+//	        reasoning_content on the prior assistant message which the
+//	        proxy didn't add → 400.
 //
 // Fix: when the model is DeepSeek and there's no extant thinking history,
 // explicitly send `thinking: disabled` so upstream switches off thinking
