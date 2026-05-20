@@ -25,27 +25,44 @@ type RouteResult struct {
 	Scenario  Scenario
 }
 
+// resolveRequestedModel checks if the user-specified model should override
+// scenario-based routing. Returns the route result and true if it matched,
+// or zero value and false if scenario routing should proceed normally.
+func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel string) (RouteResult, bool) {
+	if !cfg.RespectRequestedModel || requestedModel == "" {
+		return RouteResult{}, false
+	}
+
+	// Look up the requested model in config to inherit its settings
+	primary, ok := cfg.Models[requestedModel]
+	if !ok {
+		// Unknown model — create a bare config and inherit defaults
+		primary = config.ModelConfig{
+			Provider: "opencode-go",
+			ModelID:  requestedModel,
+		}
+		if def, ok := cfg.Models["default"]; ok {
+			primary.Temperature = def.Temperature
+			primary.MaxTokens = def.MaxTokens
+		}
+	}
+
+	fallbacks := cfg.Fallbacks["default"]
+
+	return RouteResult{
+		Primary:   primary,
+		Fallbacks: fallbacks,
+		Scenario:  ScenarioDefault,
+	}, true
+}
+
 // Route determines which model to use for a request.
 // If respect_requested_model is enabled and requestedModel is provided, it overrides scenario-based routing.
 func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requestedModel string) (RouteResult, error) {
 	cfg := r.atomic.Get()
 
-	// If configured to respect user's model choice and user specified a model, use it directly
-	if cfg.RespectRequestedModel && requestedModel != "" {
-		// Create model config from the requested model
-		primary := config.ModelConfig{
-			Provider: "opencode-go",
-			ModelID:  requestedModel,
-		}
-
-		// Get default fallbacks
-		fallbacks := cfg.Fallbacks["default"]
-
-		return RouteResult{
-			Primary:   primary,
-			Fallbacks: fallbacks,
-			Scenario:  ScenarioDefault,
-		}, nil
+	if result, ok := r.resolveRequestedModel(cfg, requestedModel); ok {
+		return result, nil
 	}
 
 	// Otherwise, use scenario-based routing
@@ -94,19 +111,8 @@ func (rr *RouteResult) GetModelChain() []config.ModelConfig {
 func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount int, requestedModel string) RouteResult {
 	cfg := r.atomic.Get()
 
-	// If configured to respect user's model choice and user specified a model, use it directly
-	if cfg.RespectRequestedModel && requestedModel != "" {
-		primary := config.ModelConfig{
-			Provider: "opencode-go",
-			ModelID:  requestedModel,
-		}
-		fallbacks := cfg.Fallbacks["default"]
-
-		return RouteResult{
-			Primary:   primary,
-			Fallbacks: fallbacks,
-			Scenario:  ScenarioDefault,
-		}
+	if result, ok := r.resolveRequestedModel(cfg, requestedModel); ok {
+		return result
 	}
 
 	// Otherwise, use scenario-based routing for streaming

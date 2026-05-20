@@ -177,7 +177,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Route to appropriate model.
-	// If the request specifies a model (from cc-switch), use it directly.
+	// If the request specifies a model override, use it directly.
 	// Otherwise, use scenario-based routing.
 	requestedModel := anthropicReq.Model
 
