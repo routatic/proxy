@@ -20,6 +20,7 @@ type MessageRequest struct {
 	Temperature *float64        `json:"temperature,omitempty"`
 	TopP        *float64        `json:"top_p,omitempty"`
 	Metadata    *Metadata       `json:"metadata,omitempty"`
+	Thinking    json.RawMessage `json:"thinking,omitempty"`
 }
 
 // SystemText extracts the system prompt text from the raw system field.
@@ -161,6 +162,75 @@ func (b *ContentBlock) TextContent() string {
 	return ""
 }
 
+// MarshalJSON customizes JSON serialization of ContentBlock to conform strictly
+// to the schema required by the Anthropic Messages API for each specific block type.
+func (b ContentBlock) MarshalJSON() ([]byte, error) {
+	switch b.Type {
+	case "text":
+		type TextBlock struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		return json.Marshal(TextBlock{
+			Type: b.Type,
+			Text: b.Text,
+		})
+	case "tool_use":
+		type ToolUseBlock struct {
+			Type  string          `json:"type"`
+			ID    string          `json:"id"`
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
+		}
+		input := b.Input
+		if len(input) == 0 {
+			input = json.RawMessage(`{}`)
+		}
+		return json.Marshal(ToolUseBlock{
+			Type:  b.Type,
+			ID:    b.ID,
+			Name:  b.Name,
+			Input: input,
+		})
+	case "tool_result":
+		type ToolResultBlock struct {
+			Type      string          `json:"type"`
+			ToolUseID string          `json:"tool_use_id"`
+			Content   json.RawMessage `json:"content,omitempty"`
+			IsError   *bool           `json:"is_error,omitempty"`
+		}
+		return json.Marshal(ToolResultBlock{
+			Type:      b.Type,
+			ToolUseID: b.ToolUseID,
+			Content:   b.Content,
+			IsError:   b.IsError,
+		})
+	case "thinking":
+		type ThinkingBlock struct {
+			Type      string `json:"type"`
+			Thinking  string `json:"thinking"`
+			Signature string `json:"signature,omitempty"`
+		}
+		return json.Marshal(ThinkingBlock{
+			Type:      b.Type,
+			Thinking:  b.Thinking,
+			Signature: b.Signature,
+		})
+	case "image":
+		type ImageBlock struct {
+			Type   string       `json:"type"`
+			Source *ImageSource `json:"source"`
+		}
+		return json.Marshal(ImageBlock{
+			Type:   b.Type,
+			Source: b.Source,
+		})
+	default:
+		type Alias ContentBlock
+		return json.Marshal(Alias(b))
+	}
+}
+
 // ImageSource represents an image source for content blocks.
 type ImageSource struct {
 	Type      string `json:"type"`
@@ -211,7 +281,7 @@ type ContentBlockDelta struct {
 
 // Delta represents a partial update in a streaming response.
 type Delta struct {
-	Type        string `json:"type"`
+	Type        string `json:"type,omitempty"`
 	Text        string `json:"text,omitempty"`
 	Thinking    string `json:"thinking,omitempty"`
 	PartialJSON string `json:"partial_json,omitempty"`
