@@ -129,7 +129,7 @@ func (t *ResponseTransformer) mapFinishReason(reason string) string {
 		return "end_turn"
 	case "length":
 		return "max_tokens"
-	case "tool_calls":
+	case "tool_calls", "tool_use":
 		return "tool_use"
 	case "content_filter":
 		return "end_turn"

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"oc-go-cc/internal/client"
@@ -241,6 +242,7 @@ func (h *MessagesHandler) handleStreaming(
 	// Start heartbeat to keep connection alive while waiting for upstream.
 	// Claude Code times out after ~6 seconds of no data, so we send pings every 3 seconds
 	// (frequent enough to prevent timeout, not so frequent as to cause overhead).
+	var finished int32
 	heartbeatDone := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(3 * time.Second)
@@ -249,6 +251,9 @@ func (h *MessagesHandler) handleStreaming(
 		for {
 			select {
 			case <-ticker.C:
+				if atomic.LoadInt32(&finished) == 1 {
+					return
+				}
 				// Send SSE comment (ignored by client but keeps connection alive)
 				_, _ = fmt.Fprintf(rw, ":keepalive\n\n")
 				if f, ok := w.(http.Flusher); ok {
@@ -262,7 +267,10 @@ func (h *MessagesHandler) handleStreaming(
 		}
 	}()
 	// Stop heartbeat when streaming completes
-	defer close(heartbeatDone)
+	defer func() {
+		atomic.StoreInt32(&finished, 1)
+		close(heartbeatDone)
+	}()
 
 	streamStart := time.Now()
 

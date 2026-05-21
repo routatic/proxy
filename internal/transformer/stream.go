@@ -122,6 +122,19 @@ func (h *StreamHandler) ProxyStream(
 		}
 	}
 
+	// Close any open content block (text or reasoning)
+	if contentStarted || reasoningStarted {
+		stopEvent := types.MessageEvent{
+			Type:  "content_block_stop",
+			Index: &contentIndex,
+		}
+		if err := writeSSEEvent(w, stopEvent); err != nil {
+			return ErrClientDisconnected
+		}
+		contentStarted = false
+		reasoningStarted = false
+	}
+
 	// Send stop events for any tool blocks not yet closed (e.g. upstream
 	// disconnected without sending a finish_reason chunk).
 	if len(startedToolCalls) > 0 {
@@ -146,6 +159,27 @@ func (h *StreamHandler) ProxyStream(
 				return ErrClientDisconnected
 			}
 		}
+	}
+
+	// Send message_delta if not already sent.
+	// If tool calls were in progress when the stream ended,
+	// the stop reason should be "tool_use" rather than "end_turn".
+	if !stopSent {
+		stopReason := "end_turn"
+		if len(startedToolCalls) > 0 {
+			stopReason = "tool_use"
+		}
+		msgDelta := types.MessageEvent{
+			Type: "message_delta",
+			Delta: &types.Delta{
+				StopReason: stopReason,
+			},
+			Usage: usageInfoToAnthropic(nil),
+		}
+		if err := writeSSEEvent(w, msgDelta); err != nil {
+			return ErrClientDisconnected
+		}
+		stopSent = true
 	}
 
 	// Send message_stop event to signal stream completion.
@@ -202,7 +236,10 @@ func (h *StreamHandler) processSSELine(
 	// correctly. Otherwise reasoning_content gets silently dropped, and on the
 	// next turn DeepSeek rejects the request with:
 	//   "The reasoning_content in the thinking mode must be passed back to the API."
-	if !strings.Contains(data, `"reasoning_content"`) {
+	if !strings.Contains(data, `"reasoning_content"`) &&
+		!strings.Contains(data, `"finish_reason"`) &&
+		!strings.Contains(data, `"tool_calls"`) &&
+		!strings.Contains(data, `"usage"`) {
 		if idx := strings.Index(data, `"delta":{"content":"`); idx != -1 {
 			// Extract content directly
 			start := idx + len(`"delta":{"content":"`)
@@ -253,66 +290,6 @@ func (h *StreamHandler) processSSELine(
 				return nil
 			}
 		}
-	}
-
-	// Check for finish_reason - need to send stop events. If the chunk also has
-	// usage, fall through to full JSON parsing so usage is preserved.
-	if strings.Contains(data, `"finish_reason":`) &&
-		!strings.Contains(data, `"finish_reason":null`) &&
-		!strings.Contains(data, `"usage":`) {
-		// Close any open content block (reasoning or text)
-		if *contentStarted || *reasoningStarted {
-			stopEvent := types.MessageEvent{
-				Type:  "content_block_stop",
-				Index: contentIndex,
-			}
-			if err := writeSSEEvent(w, stopEvent); err != nil {
-				return ErrClientDisconnected
-			}
-		}
-
-		// Close any open tool_use blocks in ascending index order
-		if len(startedToolCalls) > 0 {
-			type toolBlockEntry struct {
-				oi       int
-				blockIdx int
-			}
-			entries := make([]toolBlockEntry, 0, len(startedToolCalls))
-			for oi, blockIdx := range startedToolCalls {
-				entries = append(entries, toolBlockEntry{oi, blockIdx})
-			}
-			sort.Slice(entries, func(i, j int) bool {
-				return entries[i].blockIdx < entries[j].blockIdx
-			})
-			for _, e := range entries {
-				idx := e.blockIdx
-				stopEvent := types.MessageEvent{
-					Type:  "content_block_stop",
-					Index: &idx,
-				}
-				if err := writeSSEEvent(w, stopEvent); err != nil {
-					return ErrClientDisconnected
-				}
-			}
-			// Clear so EOF cleanup won't emit duplicate stops
-			for oi := range startedToolCalls {
-				delete(startedToolCalls, oi)
-			}
-		}
-
-		// Send message_delta with stop_reason
-		msgDelta := types.MessageEvent{
-			Type: "message_delta",
-			Delta: &types.Delta{
-				StopReason: "end_turn", // Simplified - OpenAI usually sends "stop"
-			},
-		}
-		if err := writeSSEEvent(w, msgDelta); err != nil {
-			return ErrClientDisconnected
-		}
-		*stopSent = true
-		flusher.Flush()
-		return nil
 	}
 
 	// For tool calls and other complex cases, fall back to full JSON parsing
@@ -446,6 +423,17 @@ func (h *StreamHandler) processSSELine(
 					// already fully processed.
 					continue
 				}
+				if *contentStarted || *reasoningStarted {
+					stopEvent := types.MessageEvent{
+						Type:  "content_block_stop",
+						Index: contentIndex,
+					}
+					if err := writeSSEEvent(w, stopEvent); err != nil {
+						return ErrClientDisconnected
+					}
+					*contentStarted = false
+					*reasoningStarted = false
+				}
 				// First time seeing this logical tool call — start a new block.
 				*contentIndex++
 				*toolUseCount++
@@ -501,6 +489,8 @@ func (h *StreamHandler) processSSELine(
 			if err := writeSSEEvent(w, stopEvent); err != nil {
 				return ErrClientDisconnected
 			}
+			*contentStarted = false
+			*reasoningStarted = false
 		}
 
 		// Close any open tool_use blocks in ascending index order.
@@ -567,7 +557,10 @@ func (h *StreamHandler) sendUsageDelta(w http.ResponseWriter, flusher http.Flush
 
 func usageInfoToAnthropic(usage *types.UsageInfo) *types.Usage {
 	if usage == nil {
-		return nil
+		return &types.Usage{
+			InputTokens:  0,
+			OutputTokens: 0,
+		}
 	}
 	return &types.Usage{
 		// Per Anthropic Messages API spec, `input_tokens` is the count of
