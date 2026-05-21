@@ -20,6 +20,7 @@ type MessageRequest struct {
 	Temperature *float64        `json:"temperature,omitempty"`
 	TopP        *float64        `json:"top_p,omitempty"`
 	Metadata    *Metadata       `json:"metadata,omitempty"`
+	Thinking    json.RawMessage `json:"thinking,omitempty"`
 }
 
 // SystemText extracts the system prompt text from the raw system field.
