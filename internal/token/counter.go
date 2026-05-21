@@ -33,7 +33,8 @@ func defaultCacheDir() string {
 
 // NewCounter creates a new token counter with cl100k_base encoding.
 func NewCounter() (*Counter, error) {
-	// Ensure tiktoken uses a writable cache directory before loading.
+	// Set process-wide env var before tiktoken loads any encoding files.
+	// This is safe because NewCounter is called once at startup.
 	_ = os.Setenv("TIKTOKEN_CACHE_DIR", defaultCacheDir())
 
 	enc, err := tiktoken.GetEncoding("cl100k_base")
