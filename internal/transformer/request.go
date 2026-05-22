@@ -194,10 +194,25 @@ func resolveThinkingAndEffort(
 	explicitEffort := model.ReasoningEffort != ""
 	isDeepSeek := isDeepSeekModel(model.ModelID)
 	isOpenAIReasoning := isOpenAIReasoningModel(model.ModelID)
-	requestThinking := !isThinkingDisabled(anthropicReq.Thinking) && len(anthropicReq.Thinking) > 0
+	requestThinkingDisabled := isThinkingDisabled(anthropicReq.Thinking)
+	requestThinking := !requestThinkingDisabled && len(anthropicReq.Thinking) > 0
 
 	allowThinkingParam := isDeepSeek || explicitThinking
 	allowEffortParam := isOpenAIReasoning || isDeepSeek || explicitEffort
+
+	if requestThinkingDisabled {
+		if allowThinkingParam {
+			openaiReq.Thinking = anthropicReq.Thinking
+		}
+		return
+	}
+
+	if isDeepSeek && hasAssistant && !hasThinking {
+		if allowThinkingParam {
+			openaiReq.Thinking = json.RawMessage(`{"type":"disabled"}`)
+		}
+		return
+	}
 
 	switch {
 	case requestThinking:
@@ -242,31 +257,15 @@ func resolveThinkingAndEffort(
 
 	case explicitEffort:
 		// User set reasoning_effort but not thinking. Intent is clear.
-		// Safety guard: disable only when history has assistant messages
-		// that lack thinking blocks AND the model is DeepSeek.
-		if hasAssistant && isDeepSeek {
-			if allowThinkingParam {
-				openaiReq.Thinking = json.RawMessage(`{"type":"disabled"}`)
-			}
-		} else {
-			if allowThinkingParam {
-				openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
-			}
-			if allowEffortParam {
-				setReasoningEffort(openaiReq, model.ReasoningEffort)
-			}
+		if allowThinkingParam {
+			openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
+		}
+		if allowEffortParam {
+			setReasoningEffort(openaiReq, model.ReasoningEffort)
 		}
 
 	default:
-		// Safety guard: when the model is DeepSeek, history has assistant messages,
-		// but LACKS thinking blocks, force-disable upstream thinking mode to prevent
-		// DeepSeek's default thinking mode from triggering and throwing 400 validation
-		// errors on subsequent turns.
-		if isDeepSeek && hasAssistant {
-			if allowThinkingParam {
-				openaiReq.Thinking = json.RawMessage(`{"type":"disabled"}`)
-			}
-		}
+		// No config, no history: leave both unset.
 	}
 }
 
