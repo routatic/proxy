@@ -856,7 +856,7 @@ func TestTransformRequestForceDisablesThinkingForDeepSeekWithoutHistory(t *testi
 		MaxTokens: 256,
 		Messages: []types.Message{
 			{Role: "user", Content: json.RawMessage(`"hello"`)},
-			{Role: "assistant", Content: json.RawMessage(`"hi"`), },
+			{Role: "assistant", Content: json.RawMessage(`"hi"`)},
 			{Role: "user", Content: json.RawMessage(`"do something"`)},
 		},
 	}
