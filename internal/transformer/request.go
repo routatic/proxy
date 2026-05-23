@@ -47,6 +47,7 @@ func needsPlaceholderReasoning(modelID string) bool {
 }
 
 // stripCacheControl removes cache_control from all messages in the list.
+// The caller must not hold references to the slice elements.
 func stripCacheControl(messages []types.ChatMessage) {
 	for i := range messages {
 		messages[i].CacheControl = nil
@@ -151,12 +152,14 @@ func HasThinkingBlocks(messages []types.Message) bool {
 // resolveThinkingAndEffort applies thinking/reasoning_effort to the OpenAI
 // request. Decision priority:
 //
-//  1. History continuity — a prior turn used thinking → keep it enabled.
-//  2. Explicit config — model.Thinking set → use it verbatim.
-//  3. Config intent — model.ReasoningEffort set without model.Thinking
+//  1. Client request — anthropicReq.Thinking set and not disabled
+//     → forward thinking config; map budget_tokens to reasoning_effort.
+//  2. History continuity — a prior turn used thinking → keep it enabled.
+//  3. Explicit config — model.Thinking set → use it verbatim.
+//  4. Config intent — model.ReasoningEffort set without model.Thinking
 //     → enable on first turn (no assistant messages), disable only when
 //     safety guard fires (DeepSeek + history assistant msgs lack thinking).
-//  4. No config, no history → leave both unset.
+//  5. No config, no history → leave both unset (safety guard for DeepSeek).
 //
 // budgetTokensToEffort maps Anthropic budget_tokens to OpenAI reasoning_effort.
 func budgetTokensToEffort(budget int) string {
