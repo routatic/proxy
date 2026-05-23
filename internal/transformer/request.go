@@ -261,7 +261,17 @@ func resolveThinkingAndEffort(
 	case explicitEffort:
 		// User set reasoning_effort but not thinking. Intent is clear.
 		if allowThinkingParam {
+	case explicitEffort:
+		// User set reasoning_effort but not thinking. Intent is clear.
+		if allowThinkingParam {
 			openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
+		}
+		if allowEffortParam {
+			// Guard: DeepSeek rejects reasoning_effort alongside thinking: disabled.
+			if !isThinkingDisabled(openaiReq.Thinking) || !isDeepSeek {
+				setReasoningEffort(openaiReq, model.ReasoningEffort)
+			}
+		}
 		}
 		if allowEffortParam {
 			setReasoningEffort(openaiReq, model.ReasoningEffort)
