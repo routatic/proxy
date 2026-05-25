@@ -3,6 +3,8 @@ package token
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/pkoukk/tiktoken-go"
 )
@@ -12,8 +14,29 @@ type Counter struct {
 	tiktoken *tiktoken.Tiktoken
 }
 
+// defaultCacheDir returns a user-writable cache directory for tiktoken files.
+// Uses TIKTOKEN_CACHE_DIR or DATA_GYM_CACHE_DIR if already set; otherwise
+// defaults to ~/.cache/oc-go-cc/tiktoken to avoid /tmp permission issues.
+func defaultCacheDir() string {
+	if d := os.Getenv("TIKTOKEN_CACHE_DIR"); d != "" {
+		return d
+	}
+	if d := os.Getenv("DATA_GYM_CACHE_DIR"); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "data-gym-cache")
+	}
+	return filepath.Join(home, ".cache", "oc-go-cc", "tiktoken")
+}
+
 // NewCounter creates a new token counter with cl100k_base encoding.
 func NewCounter() (*Counter, error) {
+	// Set process-wide env var before tiktoken loads any encoding files.
+	// This is safe because NewCounter is called once at startup.
+	_ = os.Setenv("TIKTOKEN_CACHE_DIR", defaultCacheDir())
+
 	enc, err := tiktoken.GetEncoding("cl100k_base")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get encoding: %w", err)
