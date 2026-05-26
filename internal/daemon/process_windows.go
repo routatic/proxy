@@ -5,7 +5,11 @@ package daemon
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 const windowsSynchronize = 0x00100000
@@ -20,6 +24,24 @@ func IsProcessRunning(pid int) bool {
 
 	event, err := syscall.WaitForSingleObject(handle, 0)
 	return err == nil && event == syscall.WAIT_TIMEOUT
+}
+
+func IsAppProcess(pid int, appName string) bool {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = windows.CloseHandle(handle) }()
+
+	buf := make([]uint16, windows.MAX_PATH)
+	size := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(handle, 0, &buf[0], &size); err != nil {
+		return false
+	}
+
+	base := strings.TrimSuffix(strings.ToLower(filepath.Base(windows.UTF16ToString(buf[:size]))), ".exe")
+	app := strings.TrimSuffix(strings.ToLower(appName), ".exe")
+	return base == app || strings.HasPrefix(base, app+"-")
 }
 
 // StopProcess terminates a process on Windows.

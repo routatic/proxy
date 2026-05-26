@@ -3,12 +3,15 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"oc-go-cc/internal/client"
@@ -16,6 +19,7 @@ import (
 	"oc-go-cc/internal/metrics"
 	"oc-go-cc/internal/middleware"
 	"oc-go-cc/internal/router"
+	"oc-go-cc/internal/status"
 	"oc-go-cc/internal/token"
 	"oc-go-cc/internal/transformer"
 	"oc-go-cc/pkg/types"
@@ -35,6 +39,8 @@ type MessagesHandler struct {
 	requestDedup        *middleware.RequestDeduplicator
 	requestIDGen        *middleware.RequestIDGenerator
 	metrics             *metrics.Metrics
+	statusStore         *status.Store
+	statusSeq           atomic.Uint64
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -71,6 +77,7 @@ func NewMessagesHandler(
 	fallbackHandler *router.FallbackHandler,
 	tokenCounter *token.Counter,
 	metrics *metrics.Metrics,
+	statusStore *status.Store,
 ) *MessagesHandler {
 	return &MessagesHandler{
 		client:              openCodeClient,
@@ -85,6 +92,7 @@ func NewMessagesHandler(
 		requestDedup:        middleware.NewRequestDeduplicator(500 * time.Millisecond),
 		requestIDGen:        middleware.NewRequestIDGenerator(),
 		metrics:             metrics,
+		statusStore:         statusStore,
 	}
 }
 
@@ -153,21 +161,24 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	// Build message content for routing and token counting.
 	var routerMessages []router.MessageContent
 	var tokenMessages []token.MessageContent
-	systemText := anthropicReq.SystemText()
+	systemText, err := systemAndToolsTokenText(anthropicReq.SystemText(), anthropicReq.Tools)
+	if err != nil {
+		h.sendError(w, http.StatusBadRequest, "failed to process tools", err)
+		return
+	}
 
 	for _, msg := range anthropicReq.Messages {
 		blocks := msg.ContentBlocks()
 		content := extractTextFromBlocks(blocks)
 		mc := router.MessageContent{
-			Role:    msg.Role,
-			Content: content,
+			Role:        msg.Role,
+			Content:     content,
+			HasImage:    blocksHaveImage(blocks),
+			ImageHashes: imageHashesFromBlocks(blocks),
 		}
 		routerMessages = append(routerMessages, mc)
-		tokenMessages = append(tokenMessages, token.MessageContent{
-			Role:    msg.Role,
-			Content: content,
-		})
 	}
+	tokenMessages = tokenMessagesFromAnthropic(anthropicReq.Messages)
 
 	// Count tokens.
 	tokenCount, err := h.tokenCounter.CountMessages(systemText, tokenMessages)
@@ -198,14 +209,28 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		"scenario", routeResult.Scenario,
 		"model", routeResult.Primary.ModelID,
 		"tokens", tokenCount,
+		"latest_user_has_image", router.AnalyzeRequestFacts(routerMessages).LatestUserHasImage,
+		"any_historical_image", router.AnalyzeRequestFacts(routerMessages).AnyHistoricalImage,
+		"latest_text_visual_intent", router.AnalyzeRequestFacts(routerMessages).LatestTextVisualIntent,
+		"needs_vision", router.AnalyzeRequestFacts(routerMessages).NeedsVision,
+		"supports_vision", routeResult.Primary.SupportsVision,
 	)
 
 	// Build fallback chain.
+	facts := router.AnalyzeRequestFacts(routerMessages)
 	modelChain := routeResult.GetModelChain()
+	capacity, err := router.FilterByCapacity(modelChain, tokenCount, anthropicReq.MaxTokens, facts.NeedsVision, len(anthropicReq.Tools) > 0)
+	if err != nil {
+		h.updateStatus(requestID, isStreaming, routeResult, capacity)
+		h.sendError(w, http.StatusBadRequest, "no eligible model for request context", err)
+		return
+	}
+	modelChain = capacity.Models
+	h.updateStatus(requestID, isStreaming, routeResult, capacity)
 
 	if isStreaming {
 		// Streaming: use ProxyStream for real-time SSE transformation
-		h.handleStreaming(w, r, &anthropicReq, modelChain, rawBody)
+		h.handleStreaming(w, r, &anthropicReq, modelChain, rawBody, routeResult.Scenario)
 	} else {
 		// Non-streaming: execute with fallback and return full response
 		h.handleNonStreaming(w, r, &anthropicReq, modelChain, rawBody)
@@ -219,6 +244,7 @@ func (h *MessagesHandler) handleStreaming(
 	anthropicReq *types.MessageRequest,
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
+	scenario router.Scenario,
 ) {
 	// Each fallback attempt needs its own context with timeout.
 	// Don't share r.Context() across fallbacks - when Claude Code retries,
@@ -285,7 +311,7 @@ func (h *MessagesHandler) handleStreaming(
 		if client.IsAnthropicModel(model.ModelID) {
 			// For MiniMax models, send raw Anthropic request to Anthropic endpoint
 			// But we need to replace the model name in the raw body
-			modelBody := replaceModelInRawBody(rawBody, model.ModelID)
+			modelBody := sanitizeAnthropicRawBody(rawBody, model)
 			if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID); err != nil {
 				cancel()
 				// Check if this was a client disconnect
@@ -309,6 +335,44 @@ func (h *MessagesHandler) handleStreaming(
 			cancel()
 			h.logger.Warn("request transform failed", "model", model.ModelID, "error", err)
 			continue
+		}
+
+		if isVisionScenario(scenario) {
+			streamFalse := false
+			openaiReq.Stream = &streamFalse
+			openaiReq.StreamOptions = nil
+			chatResp, err := h.client.ChatCompletionNonStreaming(ctx, model.ModelID, openaiReq)
+			if err != nil {
+				cancel()
+				h.logger.Warn("vision non-streaming request failed", "model", model.ModelID, "error", err)
+				continue
+			}
+			anthropicResp, err := h.responseTransformer.TransformResponse(chatResp, model.ModelID)
+			if err != nil {
+				cancel()
+				h.logger.Warn("vision response transform failed", "model", model.ModelID, "error", err)
+				continue
+			}
+			visible := visibleTextLength(anthropicResp)
+			if visible == 0 && !hasToolUseContent(anthropicResp) {
+				cancel()
+				h.logger.Warn("vision response had no visible output", "model", model.ModelID, "empty_visible_stream", true, "visible_text_deltas", 0)
+				continue
+			}
+			if err := h.streamHandler.EmitMessageResponse(rw, anthropicResp); err != nil {
+				cancel()
+				if err == transformer.ErrClientDisconnected {
+					h.logger.Info("client disconnected during synthesized vision stream")
+					return
+				}
+				h.logger.Warn("vision stream synthesis failed", "model", model.ModelID, "error", err)
+				continue
+			}
+			cancel()
+			latency := time.Since(streamStart)
+			h.metrics.RecordSuccess(model.ModelID, latency)
+			h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency, "visible_text_deltas", visible)
+			return
 		}
 
 		// Get streaming body from upstream
@@ -385,6 +449,51 @@ func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMess
 		"body_preview", bodyStr[:min(len(bodyStr), 200)])
 	// If we couldn't parse, return original (will likely fail upstream but that's ok)
 	return rawBody
+}
+
+func sanitizeAnthropicRawBody(rawBody json.RawMessage, model config.ModelConfig) json.RawMessage {
+	var req types.MessageRequest
+	if err := json.Unmarshal(rawBody, &req); err != nil {
+		return replaceModelInRawBody(rawBody, model.ModelID)
+	}
+	req.Model = model.ModelID
+	if model.MaxTokens > 0 {
+		req.MaxTokens = model.MaxTokens
+	}
+	if model.SupportsVision {
+		body, err := json.Marshal(req)
+		if err != nil {
+			return replaceModelInRawBody(rawBody, model.ModelID)
+		}
+		return body
+	}
+	for i := range req.Messages {
+		blocks := req.Messages[i].ContentBlocks()
+		if len(blocks) == 0 {
+			continue
+		}
+		sanitized := make([]types.ContentBlock, 0, len(blocks))
+		changed := false
+		for _, block := range blocks {
+			if block.Type == "image" {
+				changed = true
+				sanitized = append(sanitized, types.ContentBlock{Type: "text", Text: "[Image omitted for text-only model]"})
+				continue
+			}
+			sanitized = append(sanitized, block)
+		}
+		if changed {
+			content, err := json.Marshal(sanitized)
+			if err == nil {
+				req.Messages[i].Content = content
+			}
+		}
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return replaceModelInRawBody(rawBody, model.ModelID)
+	}
+	return body
 }
 
 // handleAnthropicStreaming sends a raw Anthropic request to the Anthropic endpoint.
@@ -493,6 +602,7 @@ func (h *MessagesHandler) executeAnthropicRequest(
 	rawBody json.RawMessage,
 	model config.ModelConfig,
 ) ([]byte, error) {
+	rawBody = sanitizeAnthropicRawBody(rawBody, model)
 	// Send raw Anthropic request to Anthropic endpoint
 	resp, err := h.client.SendAnthropicRequest(ctx, rawBody, false)
 	if err != nil {
@@ -556,6 +666,92 @@ func extractTextFromBlocks(blocks []types.ContentBlock) string {
 		}
 	}
 	return content
+}
+
+func isVisionScenario(s router.Scenario) bool {
+	return s == router.ScenarioVision || s == router.ScenarioVisionComplex || s == router.ScenarioVisionLongContext
+}
+
+func visibleTextLength(resp *types.MessageResponse) int {
+	if resp == nil {
+		return 0
+	}
+	total := 0
+	for _, block := range resp.Content {
+		if block.Type == "text" {
+			total += len(block.Text)
+		}
+	}
+	return total
+}
+
+func hasToolUseContent(resp *types.MessageResponse) bool {
+	if resp == nil {
+		return false
+	}
+	for _, block := range resp.Content {
+		if block.Type == "tool_use" {
+			return true
+		}
+	}
+	return false
+}
+
+func blocksHaveImage(blocks []types.ContentBlock) bool {
+	for _, block := range blocks {
+		if block.Type == "image" && block.Source != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func imageHashesFromBlocks(blocks []types.ContentBlock) []string {
+	var hashes []string
+	for _, block := range blocks {
+		if block.Type != "image" || block.Source == nil {
+			continue
+		}
+		source := block.Source.Type + "\x00" + block.Source.MediaType + "\x00" + block.Source.Data + "\x00" + block.Source.URL
+		sum := sha256.Sum256([]byte(source))
+		hashes = append(hashes, hex.EncodeToString(sum[:]))
+	}
+	return hashes
+}
+
+func (h *MessagesHandler) updateStatus(requestID string, streaming bool, routeResult router.RouteResult, capacity router.CapacityDecision) {
+	if h.statusStore == nil {
+		return
+	}
+	seq := h.statusSeq.Add(1)
+	modelID := routeResult.Primary.ModelID
+	contextWindow := capacity.ContextWindow
+	if len(capacity.Models) > 0 {
+		modelID = capacity.Models[0].ModelID
+		contextWindow = capacity.Models[0].ContextWindow
+	}
+	pct := 0
+	if contextWindow > 0 {
+		pct = int((float64(capacity.InputTokens) / float64(contextWindow)) * 100)
+	}
+	h.statusStore.Update(seq, status.Snapshot{
+		Request: status.RequestSnapshot{
+			RequestID: requestID,
+			Streaming: streaming,
+		},
+		Routing: status.RoutingSnapshot{
+			Scenario: string(routeResult.Scenario),
+			ModelID:  modelID,
+		},
+		Context: status.ContextSnapshot{
+			InputTokens: capacity.InputTokens,
+			MaxTokens:   contextWindow,
+			Percent:     pct,
+		},
+		Models: status.ModelsSnapshot{
+			SkippedFallbacks: capacity.Skipped,
+		},
+	})
 }
 
 // sendError sends an error response in Anthropic format.

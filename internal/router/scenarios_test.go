@@ -113,6 +113,118 @@ func TestDetectScenario_LongContextTakesPriority(t *testing.T) {
 	}
 }
 
+func TestDetectScenario_VisionSimpleRequest(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Describe this screen", HasImage: true},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioVision {
+		t.Errorf("Expected ScenarioVision, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_VisionComplexRequest(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Analyze this screenshot and find the bug", HasImage: true},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioVisionComplex {
+		t.Errorf("Expected ScenarioVisionComplex, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_VisionUsesLatestImageRequestComplexity(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Analyze this previous architecture"},
+		{Role: "assistant", Content: "Done"},
+		{Role: "user", Content: "Cosa vedi?", HasImage: true},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioVision {
+		t.Errorf("Expected ScenarioVision, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_ReturnsToTextRoutingAfterImageTurn(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Analyze this screenshot and find the bug", HasImage: true},
+		{Role: "assistant", Content: "Done"},
+		{Role: "user", Content: "Refactor this code"},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioComplex {
+		t.Errorf("Expected ScenarioComplex, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_ReturnsToTextRoutingWhenLatestTurnHasHistoricalImageOnly(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
+		{Role: "assistant", Content: "Vedo una schermata."},
+		{Role: "user", Content: "ci sei?", HasImage: true, ImageHashes: []string{"img1"}},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioDefault {
+		t.Errorf("Expected ScenarioDefault, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_UsesHistoricalImageWhenLatestTextHasVisualIntent(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
+		{Role: "assistant", Content: "Vedo una schermata."},
+		{Role: "user", Content: "cosa vedi nello screenshot?", HasImage: true, ImageHashes: []string{"img1"}},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioVision {
+		t.Errorf("Expected ScenarioVision, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_DebugWithoutVisualIntentStaysTextComplex(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
+		{Role: "assistant", Content: "Vedo una schermata."},
+		{Role: "user", Content: "debug questo codice", HasImage: false},
+	}
+	result := DetectScenario(messages, 100, mockConfig())
+	if result.Scenario != ScenarioComplex {
+		t.Errorf("Expected ScenarioComplex, got %s", result.Scenario)
+	}
+}
+
+func TestRouteForStreaming_ReturnsToFastAfterImageTurn(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true},
+		{Role: "assistant", Content: "Done"},
+		{Role: "user", Content: "Hello"},
+	}
+	result := RouteForStreaming(messages, 100, mockConfig())
+	if result.Scenario != ScenarioFast {
+		t.Errorf("Expected ScenarioFast, got %s", result.Scenario)
+	}
+}
+
+func TestDetectScenario_VisionLongContextTakesPriorityOverVisionComplex(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Analyze this screenshot and refactor the code", HasImage: true},
+	}
+	result := DetectScenario(messages, 70000, mockConfig())
+	if result.Scenario != ScenarioVisionLongContext {
+		t.Errorf("Expected ScenarioVisionLongContext, got %s", result.Scenario)
+	}
+}
+
+func TestRouteForStreaming_VisionComplexKeepsVisionComplexScenario(t *testing.T) {
+	messages := []MessageContent{
+		{Role: "user", Content: "Find the bug in this screenshot", HasImage: true},
+	}
+	result := RouteForStreaming(messages, 100, mockConfig())
+	if result.Scenario != ScenarioVisionComplex {
+		t.Errorf("Expected ScenarioVisionComplex, got %s", result.Scenario)
+	}
+}
+
 func TestRouteForStreaming_RespectsConfiguredThreshold(t *testing.T) {
 	messages := []MessageContent{
 		{Role: "user", Content: "Hello"},

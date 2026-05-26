@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"oc-go-cc/internal/buildinfo"
 	"oc-go-cc/internal/config"
 	"oc-go-cc/internal/daemon"
 	"oc-go-cc/internal/server"
@@ -19,9 +20,6 @@ const (
 	pidFileName = "oc-go-cc.pid"
 )
 
-// Version is set at build time via -ldflags "-X main.version=...".
-var version = "dev"
-
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   appName,
@@ -31,7 +29,7 @@ subscription with Claude Code. It intercepts Claude Code's Anthropic API request
 transforms them to OpenAI format, and forwards them to OpenCode Go.
 
 Configuration is stored at ~/.config/oc-go-cc/config.json`,
-		Version: version,
+		Version: buildinfo.Version,
 	}
 
 	// Add subcommands.
@@ -89,7 +87,7 @@ func serveCmd() *cobra.Command {
 			if !daemonize {
 				if pid, err := daemon.GetPID(pidPath); err == nil {
 					// Check if process is still running.
-					if daemon.IsProcessRunning(pid) {
+					if daemon.IsProcessRunning(pid) && daemon.IsAppProcess(pid, appName) {
 						return fmt.Errorf("server is already running (PID %d)", pid)
 					}
 					// Stale PID file, clean up.
@@ -144,7 +142,18 @@ func serveCmd() *cobra.Command {
 				}()
 			}
 
-			fmt.Printf("Starting %s v%s\n", appName, version)
+			slog.Info("starting proxy",
+				"binary", buildinfo.BinaryPath(),
+				"version", buildinfo.Version,
+				"build_time", buildinfo.BuildTime,
+				"pid", buildinfo.PID(),
+				"listen", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+			)
+
+			fmt.Printf("Starting %s v%s\n", appName, buildinfo.Version)
+			fmt.Printf("Binary: %s\n", buildinfo.BinaryPath())
+			fmt.Printf("Build time: %s\n", buildinfo.BuildTime)
+			fmt.Printf("PID: %d\n", buildinfo.PID())
 			fmt.Printf("Listening on %s:%d\n", cfg.Host, cfg.Port)
 			fmt.Printf("Forwarding to: %s\n", cfg.OpenCodeGo.BaseURL)
 			fmt.Println()
@@ -178,6 +187,15 @@ func stopCmd() *cobra.Command {
 				return fmt.Errorf("server is not running (no PID file)")
 			}
 
+			if !daemon.IsProcessRunning(pid) {
+				_ = os.Remove(pidPath)
+				return fmt.Errorf("server is not running (stale PID file)")
+			}
+			if !daemon.IsAppProcess(pid, appName) {
+				_ = os.Remove(pidPath)
+				return fmt.Errorf("server is not running (PID %d belongs to another process)", pid)
+			}
+
 			if err := daemon.StopProcess(pid); err != nil {
 				return fmt.Errorf("failed to stop server: %w", err)
 			}
@@ -204,6 +222,11 @@ func statusCmd() *cobra.Command {
 
 			if !daemon.IsProcessRunning(pid) {
 				fmt.Println("Server is not running (stale PID file)")
+				_ = os.Remove(pidPath)
+				return nil
+			}
+			if !daemon.IsAppProcess(pid, appName) {
+				fmt.Printf("Server is not running (PID %d belongs to another process)\n", pid)
 				_ = os.Remove(pidPath)
 				return nil
 			}

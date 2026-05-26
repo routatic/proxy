@@ -52,8 +52,9 @@ func (c *Counter) CountTokens(text string) (int, error) {
 
 // MessageContent represents a single message in a conversation.
 type MessageContent struct {
-	Role    string
-	Content string
+	Role        string
+	Content     string
+	ExtraTokens int
 }
 
 // CountMessages counts tokens in a message array.
@@ -76,6 +77,7 @@ func (c *Counter) CountMessages(system string, messages []MessageContent) (int, 
 			return 0, err
 		}
 		total += msgTokens + 5 // Per-message overhead
+		total += msg.ExtraTokens
 	}
 
 	return total, nil

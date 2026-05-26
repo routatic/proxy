@@ -30,12 +30,22 @@ type StreamOptions struct {
 // ChatMessage represents a single message in the conversation.
 type ChatMessage struct {
 	Role             string        `json:"role"`
-	Content          string        `json:"content"`
+	Content          interface{}   `json:"content"`
 	ReasoningContent *string       `json:"reasoning_content,omitempty"`
 	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
 	Name             string        `json:"name,omitempty"`
 	ToolCallID       string        `json:"tool_call_id,omitempty"`
 	CacheControl     *CacheControl `json:"cache_control,omitempty"`
+}
+
+type ContentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+type ImageURL struct {
+	URL string `json:"url"`
 }
 
 // ToolCall represents a function call made by the model.

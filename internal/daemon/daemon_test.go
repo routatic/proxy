@@ -69,6 +69,12 @@ func TestIsProcessRunning_CurrentProcess(t *testing.T) {
 	}
 }
 
+func TestIsAppProcess_CurrentTestProcessIsNotOCGoCC(t *testing.T) {
+	if IsAppProcess(os.Getpid(), AppName) {
+		t.Errorf("current test process should not be reported as %s", AppName)
+	}
+}
+
 func TestIsProcessRunning_NonexistentPID(t *testing.T) {
 	// PID 1 is typically init — but on some systems it may not exist.
 	// Use an almost-certainly-invalid PID instead.

@@ -12,9 +12,11 @@ import (
 func tokenMessagesFromAnthropic(messages []types.Message) []token.MessageContent {
 	tokenMessages := make([]token.MessageContent, 0, len(messages))
 	for _, msg := range messages {
+		blocks := msg.ContentBlocks()
 		tokenMessages = append(tokenMessages, token.MessageContent{
-			Role:    msg.Role,
-			Content: extractTokenTextFromBlocks(msg.ContentBlocks()),
+			Role:        msg.Role,
+			Content:     extractTokenTextFromBlocks(blocks),
+			ExtraTokens: imageTokenEstimate(blocks),
 		})
 	}
 	return tokenMessages
@@ -71,4 +73,14 @@ func extractTokenTextFromBlocks(blocks []types.ContentBlock) string {
 		}
 	}
 	return content.String()
+}
+
+func imageTokenEstimate(blocks []types.ContentBlock) int {
+	total := 0
+	for _, block := range blocks {
+		if block.Type == "image" {
+			total += 1500
+		}
+	}
+	return total
 }

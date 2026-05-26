@@ -3,102 +3,178 @@
   "host": "127.0.0.1",
   "port": 3456,
   "hot_reload": false,
-  "enable_streaming_scenario_routing": false,
+  "enable_streaming_scenario_routing": true,
   "respect_requested_model": false,
-
   "models": {
-    "background": {
-      "provider": "opencode-go",
-      "model_id": "qwen3.5-plus",
-      "temperature": 0.5,
-      "max_tokens": 2048
-    },
     "default": {
       "provider": "opencode-go",
-      "model_id": "kimi-k2.6",
-      "temperature": 0.7,
-      "max_tokens": 4096
-    },
-    "long_context": {
-      "provider": "opencode-go",
-      "model_id": "minimax-m2.5",
-      "temperature": 0.7,
-      "max_tokens": 16384,
-      "context_threshold": 80000
-    },
-    "deepseek-v4-pro": {
-      "provider": "opencode-go",
       "model_id": "deepseek-v4-pro",
-      "temperature": 0.7,
+      "supports_vision": false,
+      "temperature": 0.1,
       "max_tokens": 8192,
+      "max_output_tokens": 8192,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
       "reasoning_effort": "max",
-      "thinking": {
-        "type": "enabled"
-      }
-    },
-    "deepseek-v4-flash": {
-      "provider": "opencode-go",
-      "model_id": "deepseek-v4-flash",
-      "temperature": 0.7,
-      "max_tokens": 4096,
-      "reasoning_effort": "max",
-      "thinking": {
-        "type": "enabled"
-      }
-    },
-    "think": {
-      "provider": "opencode-go",
-      "model_id": "glm-5",
-      "temperature": 0.7,
-      "max_tokens": 8192
-    },
-    "complex": {
-      "provider": "opencode-go",
-      "model_id": "glm-5.1",
-      "temperature": 0.7,
-      "max_tokens": 4096
+      "thinking": { "type": "enabled" }
     },
     "fast": {
       "provider": "opencode-go",
+      "model_id": "deepseek-v4-flash",
+      "supports_vision": false,
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "max_output_tokens": 4096,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
+    },
+    "background": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-flash",
+      "supports_vision": false,
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "max_output_tokens": 4096,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
+    },
+    "think": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-pro",
+      "supports_vision": false,
+      "temperature": 0.1,
+      "max_tokens": 8192,
+      "max_output_tokens": 8192,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
+    },
+    "complex": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-pro",
+      "supports_vision": false,
+      "temperature": 0.1,
+      "max_tokens": 8192,
+      "max_output_tokens": 8192,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
+    },
+    "long_context": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-pro",
+      "supports_vision": false,
+      "temperature": 0.1,
+      "max_tokens": 16384,
+      "max_output_tokens": 8192,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "context_threshold": 80000,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
+    },
+    "vision": {
+      "provider": "opencode-go",
       "model_id": "qwen3.6-plus",
-      "temperature": 0.7,
-      "max_tokens": 4096
+      "supports_vision": true,
+      "temperature": 0.1,
+      "max_tokens": 8192,
+      "max_output_tokens": 8192,
+      "context_window": 1000000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "thinking": { "type": "enabled" }
+    },
+    "vision_complex": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.6",
+      "supports_vision": true,
+      "temperature": 0.1,
+      "max_tokens": 8192,
+      "max_output_tokens": 8192,
+      "context_window": 256000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "thinking": { "type": "enabled" }
+    },
+    "vision_long_context": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.6",
+      "supports_vision": true,
+      "temperature": 0.1,
+      "max_tokens": 16384,
+      "max_output_tokens": 8192,
+      "context_window": 256000,
+      "context_margin": 8192,
+      "supports_tools": true,
+      "context_threshold": 80000,
+      "thinking": { "type": "enabled" }
     }
   },
-
   "fallbacks": {
-    "background": [
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
-      { "provider": "opencode-go", "model_id": "minimax-m2.5" }
-    ],
     "default": [
-      { "provider": "opencode-go", "model_id": "mimo-v2-pro" },
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
-    ],
-    "long_context": [
-      { "provider": "opencode-go", "model_id": "minimax-m2.7" },
-      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
-    ],
-    "think": [
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
       { "provider": "opencode-go", "model_id": "kimi-k2.6" },
-      { "provider": "opencode-go", "model_id": "mimo-v2-pro" }
-    ],
-    "complex": [
-      { "provider": "opencode-go", "model_id": "glm-5" },
-      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" }
     ],
     "fast": [
       { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
-      { "provider": "opencode-go", "model_id": "minimax-m2.5" }
+      { "provider": "opencode-go", "model_id": "minimax-m2.5" },
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
+    ],
+    "background": [
+      { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
+      { "provider": "opencode-go", "model_id": "minimax-m2.5" },
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
+    ],
+    "think": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
+      { "provider": "opencode-go", "model_id": "glm-5.1" }
+    ],
+    "complex": [
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
+    ],
+    "long_context": [
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
+      { "provider": "opencode-go", "model_id": "minimax-m2.7" }
+    ],
+    "vision": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.6", "supports_vision": true },
+      { "provider": "opencode-go", "model_id": "qwen3.5-plus", "supports_vision": true },
+      { "provider": "opencode-go", "model_id": "kimi-k2.5", "supports_vision": true }
+    ],
+    "vision_complex": [
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus", "supports_vision": true },
+      { "provider": "opencode-go", "model_id": "qwen3.5-plus", "supports_vision": true },
+      { "provider": "opencode-go", "model_id": "kimi-k2.5", "supports_vision": true }
+    ],
+    "vision_long_context": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.6", "supports_vision": true },
+      { "provider": "opencode-go", "model_id": "qwen3.5-plus", "supports_vision": true },
+      { "provider": "opencode-go", "model_id": "kimi-k2.5", "supports_vision": true }
     ]
   },
-
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
     "timeout_ms": 300000
   },
-
   "logging": {
     "level": "info",
     "requests": true

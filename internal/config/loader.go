@@ -147,5 +147,22 @@ func validate(cfg *Config) error {
 	if cfg.APIKey == "" {
 		return fmt.Errorf("api_key is required (set via config file or OC_GO_CC_API_KEY env var)")
 	}
+	if len(cfg.Models) > 0 {
+		for _, scenario := range []string{"vision", "vision_complex", "vision_long_context"} {
+			model, ok := cfg.Models[scenario]
+			if !ok {
+				return fmt.Errorf("%s model is required when models are configured", scenario)
+			}
+			if !model.SupportsVision {
+				return fmt.Errorf("%s model %s must support vision", scenario, model.ModelID)
+			}
+			for _, fallback := range cfg.Fallbacks[scenario] {
+				fallback = ResolveModelConfig(fallback)
+				if !fallback.SupportsVision {
+					return fmt.Errorf("%s fallback model %s must support vision", scenario, fallback.ModelID)
+				}
+			}
+		}
+	}
 	return nil
 }

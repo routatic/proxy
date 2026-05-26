@@ -5,6 +5,8 @@ package daemon
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -17,6 +19,16 @@ func IsProcessRunning(pid int) bool {
 	// Send signal 0 to check if process exists without actually signaling it.
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+func IsAppProcess(pid int, appName string) bool {
+	exe, err := os.Readlink(filepath.Join("/proc", fmt.Sprintf("%d", pid), "exe"))
+	if err != nil {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(exe))
+	app := strings.ToLower(appName)
+	return base == app || strings.HasPrefix(base, app+"-")
 }
 
 // StopProcess sends SIGTERM to a process and waits for it to exit.

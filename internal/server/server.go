@@ -16,6 +16,7 @@ import (
 	"oc-go-cc/internal/handlers"
 	"oc-go-cc/internal/metrics"
 	"oc-go-cc/internal/router"
+	"oc-go-cc/internal/status"
 	"oc-go-cc/internal/token"
 )
 
@@ -50,6 +51,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	openCodeClient := client.NewOpenCodeClient(atomic)
 	modelRouter := router.NewModelRouter(atomic)
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
+	statusStore := status.NewStore(10 * time.Second)
 
 	// Create handlers.
 	messagesHandler := handlers.NewMessagesHandler(
@@ -58,8 +60,9 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 		fallbackHandler,
 		tokenCounter,
 		metrics,
+		statusStore,
 	)
-	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics)
+	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics, statusStore)
 
 	// Setup router.
 	mux := http.NewServeMux()
@@ -68,6 +71,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	mux.HandleFunc("/v1/messages", messagesHandler.HandleMessages)
 	mux.HandleFunc("/v1/messages/count_tokens", healthHandler.HandleCountTokens)
 	mux.HandleFunc("/health", healthHandler.HandleHealth)
+	mux.HandleFunc("/statusline", healthHandler.HandleStatusline)
 
 	// Create HTTP server.
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

@@ -3,6 +3,7 @@ package token
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -52,6 +53,9 @@ func TestDefaultCacheDir(t *testing.T) {
 }
 
 func TestDefaultCacheDir_HomeDirFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows UserHomeDir does not depend only on HOME")
+	}
 	// When UserHomeDir fails (HOME unset), fall back to temp dir.
 	t.Setenv("TIKTOKEN_CACHE_DIR", "")
 	t.Setenv("DATA_GYM_CACHE_DIR", "")

@@ -26,6 +26,40 @@ func NewResponseTransformer() *ResponseTransformer {
 	return &ResponseTransformer{}
 }
 
+func contentAsString(content interface{}) string {
+	switch v := content.(type) {
+	case string:
+		return v
+	case []types.ContentPart:
+		var text string
+		for _, part := range v {
+			if part.Type == "text" {
+				text += part.Text
+			}
+		}
+		return text
+	case []interface{}:
+		var text string
+		for _, part := range v {
+			if m, ok := part.(map[string]interface{}); ok {
+				if partText, ok := m["text"].(string); ok {
+					text += partText
+				}
+			}
+		}
+		return text
+	case map[string]interface{}:
+		if text, ok := v["text"].(string); ok {
+			return text
+		}
+		return ""
+	case nil:
+		return ""
+	default:
+		return ""
+	}
+}
+
 // TransformResponse converts an OpenAI ChatCompletionResponse to Anthropic MessageResponse.
 func (t *ResponseTransformer) TransformResponse(
 	openaiResp *types.ChatCompletionResponse,
@@ -104,10 +138,11 @@ func (t *ResponseTransformer) transformContent(msg types.ChatMessage) ([]types.C
 	}
 
 	// Handle text content.
-	if msg.Content != "" {
+	textContent := contentAsString(msg.Content)
+	if textContent != "" {
 		blocks = append(blocks, types.ContentBlock{
 			Type: "text",
-			Text: msg.Content,
+			Text: textContent,
 		})
 	}
 

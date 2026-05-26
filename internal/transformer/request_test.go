@@ -3,6 +3,7 @@ package transformer
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"oc-go-cc/internal/config"
@@ -350,7 +351,7 @@ func TestTransformRequestStripsReasoningEffortWhenNoThinkingHistory(t *testing.T
 	}
 }
 
-func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
+func TestTransformRequestOmitsAnthropicSystemCacheControlForOpenAIModels(t *testing.T) {
 	transformer := NewRequestTransformer()
 
 	req := &types.MessageRequest{
@@ -380,11 +381,8 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	if got, want := systemMsg.Content, "You are helpful"; got != want {
 		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
 	}
-	if systemMsg.CacheControl == nil {
-		t.Fatal("Messages[0].CacheControl = nil, want non-nil")
-	}
-	if got, want := systemMsg.CacheControl.Type, "ephemeral"; got != want {
-		t.Fatalf("Messages[0].CacheControl.Type = %q, want %q", got, want)
+	if systemMsg.CacheControl != nil {
+		t.Fatalf("Messages[0].CacheControl = %v, want nil", systemMsg.CacheControl)
 	}
 }
 
@@ -793,6 +791,100 @@ func TestTransformRequestExtractsThinkingFromToolUseBlock(t *testing.T) {
 	}
 	if got, want := assistantMsg.ToolCalls[0].Function.Name, "search"; got != want {
 		t.Fatalf("ToolCalls[0].Name = %q, want %q", got, want)
+	}
+}
+
+func TestTransformRequestPreservesUserImageBlocksAsOpenAIContentParts(t *testing.T) {
+	req := &types.MessageRequest{
+		Model:     "claude-3-5-sonnet",
+		MaxTokens: 1024,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"Describe this screen"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	transformer := NewRequestTransformer()
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		Provider:       "opencode-go",
+		ModelID:        "qwen3.6-plus",
+		SupportsVision: true,
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest: %v", err)
+	}
+
+	if len(openaiReq.Messages) != 1 {
+		t.Fatalf("Messages = %d, want 1", len(openaiReq.Messages))
+	}
+
+	contentJSON, err := json.Marshal(openaiReq.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("marshal content: %v", err)
+	}
+
+	var parts []map[string]any
+	if err := json.Unmarshal(contentJSON, &parts); err != nil {
+		t.Fatalf("content = %s, want OpenAI content parts: %v", contentJSON, err)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("content parts = %d, want 2: %s", len(parts), contentJSON)
+	}
+	if got, want := parts[0]["type"], "text"; got != want {
+		t.Fatalf("first part type = %v, want %s", got, want)
+	}
+	if got, want := parts[0]["text"], "Describe this screen"; got != want {
+		t.Fatalf("first part text = %v, want %s", got, want)
+	}
+
+	imageURL, ok := parts[1]["image_url"].(map[string]any)
+	if !ok {
+		t.Fatalf("second part image_url missing: %s", contentJSON)
+	}
+	if got, want := imageURL["url"], "data:image/png;base64,iVBORw0KGgo="; got != want {
+		t.Fatalf("image url = %v, want %s", got, want)
+	}
+}
+
+func TestTransformRequest_TextOnlyModelOmitsImageURL(t *testing.T) {
+	req := &types.MessageRequest{
+		Model:     "claude-3-5-sonnet",
+		MaxTokens: 1024,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"ci sei?"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	transformer := NewRequestTransformer()
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		Provider:       "opencode-go",
+		ModelID:        "deepseek-v4-pro",
+		SupportsVision: false,
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest: %v", err)
+	}
+
+	body, err := json.Marshal(openaiReq)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	if strings.Contains(string(body), "image_url") || strings.Contains(string(body), "data:image") {
+		t.Fatalf("text-only request leaked image content: %s", body)
+	}
+	if !strings.Contains(string(body), "[Image omitted for text-only model]") {
+		t.Fatalf("text-only request missing image placeholder: %s", body)
 	}
 }
 

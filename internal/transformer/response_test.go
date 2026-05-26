@@ -202,6 +202,45 @@ func TestTransformResponseNoReasoningContent(t *testing.T) {
 	}
 }
 
+func TestTransformResponseExtractsTextFromContentParts(t *testing.T) {
+	transformer := NewResponseTransformer()
+
+	resp := &types.ChatCompletionResponse{
+		ID:      "chatcmpl_parts",
+		Object:  "chat.completion",
+		Created: 1234567890,
+		Model:   "qwen3.6-plus",
+		Choices: []types.Choice{
+			{
+				Index: 0,
+				Message: types.ChatMessage{
+					Role: "assistant",
+					Content: []interface{}{
+						map[string]interface{}{"type": "text", "text": "Vedo uno screenshot."},
+					},
+				},
+				FinishReason: "stop",
+			},
+		},
+		Usage: types.UsageInfo{
+			PromptTokens:     10,
+			CompletionTokens: 5,
+			TotalTokens:      15,
+		},
+	}
+
+	anthropicResp, err := transformer.TransformResponse(resp, "qwen3.6-plus")
+	if err != nil {
+		t.Fatalf("TransformResponse() error = %v", err)
+	}
+	if got, want := len(anthropicResp.Content), 1; got != want {
+		t.Fatalf("len(Content) = %d, want %d", got, want)
+	}
+	if got, want := anthropicResp.Content[0].Text, "Vedo uno screenshot."; got != want {
+		t.Fatalf("Content[0].Text = %q, want %q", got, want)
+	}
+}
+
 func TestTransformResponseWithCacheTokens(t *testing.T) {
 	transformer := NewResponseTransformer()
 

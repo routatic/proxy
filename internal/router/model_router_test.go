@@ -221,7 +221,10 @@ func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 
 	router := NewModelRouter(newTestAtomicConfig(cfg))
 
-	result, ok := router.resolveRequestedModel(cfg, "kimi-k2.6")
+	result, ok, err := router.resolveRequestedModel(cfg, "kimi-k2.6", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if !ok {
 		t.Fatal("expected resolveRequestedModel to match")
 	}
@@ -230,5 +233,60 @@ func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 	}
 	if result.Fallbacks[0].ModelID != "qwen3.5-plus" {
 		t.Errorf("expected first fallback qwen3.5-plus, got %s", result.Fallbacks[0].ModelID)
+	}
+}
+
+func TestRoute_VisionScenarioRequiresConfiguredVisionModel(t *testing.T) {
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {ModelID: "deepseek-v4-pro"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{ModelID: "deepseek-v4-flash"}},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+	_, err := router.Route([]MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
+	}, 100, "")
+	if err == nil {
+		t.Fatal("expected missing vision model to return an error")
+	}
+}
+
+func TestRoute_VisionFallbacksMustSupportVision(t *testing.T) {
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {ModelID: "deepseek-v4-pro"},
+			"vision":  {ModelID: "qwen3.6-plus", SupportsVision: true},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"vision": {{ModelID: "deepseek-v4-pro", SupportsVision: false}},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+	_, err := router.Route([]MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
+	}, 100, "")
+	if err == nil {
+		t.Fatal("expected text-only vision fallback to return an error")
+	}
+}
+
+func TestRoute_RespectRequestedTextModelRejectsVisionRequest(t *testing.T) {
+	cfg := &config.Config{
+		RespectRequestedModel: true,
+		Models: map[string]config.ModelConfig{
+			"default":         {ModelID: "deepseek-v4-pro"},
+			"deepseek-v4-pro": {ModelID: "deepseek-v4-pro", SupportsVision: false},
+			"vision":          {ModelID: "qwen3.6-plus", SupportsVision: true},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+	_, err := router.Route([]MessageContent{
+		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
+	}, 100, "deepseek-v4-pro")
+	if err == nil {
+		t.Fatal("expected requested text-only model to reject vision request")
 	}
 }

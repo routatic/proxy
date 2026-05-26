@@ -4,3 +4,4 @@ bin/
 .env
 .tmp/
 oc-go-cc
+tmp/

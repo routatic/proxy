@@ -23,8 +23,13 @@ type ModelConfig struct {
 	ModelID          string          `json:"model_id"`
 	Temperature      float64         `json:"temperature"`
 	MaxTokens        int             `json:"max_tokens"`
+	MaxOutputTokens  int             `json:"max_output_tokens,omitempty"`
+	ContextWindow    int             `json:"context_window,omitempty"`
+	ContextMargin    int             `json:"context_margin,omitempty"`
 	ContextThreshold int             `json:"context_threshold"`
 	ReasoningEffort  string          `json:"reasoning_effort"`
+	SupportsVision   bool            `json:"supports_vision,omitempty"`
+	SupportsTools    *bool           `json:"supports_tools,omitempty"`
 	Thinking         json.RawMessage `json:"thinking,omitempty"`
 }
 

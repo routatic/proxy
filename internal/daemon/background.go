@@ -24,7 +24,7 @@ func ForkIntoBackground(opts BackgroundOpts) error {
 		return fmt.Errorf("cannot create config directory: %w", err)
 	}
 	if pid, err := GetPID(paths.PIDFile); err == nil {
-		if IsProcessRunning(pid) {
+		if IsProcessRunning(pid) && IsAppProcess(pid, AppName) {
 			return fmt.Errorf("server is already running (PID %d)", pid)
 		}
 		_ = os.Remove(paths.PIDFile)

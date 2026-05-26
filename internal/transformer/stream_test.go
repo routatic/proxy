@@ -63,6 +63,42 @@ func parseSSEEvents(t *testing.T, raw string) []types.MessageEvent {
 	return events
 }
 
+func TestEmitMessageResponse_SynthesizesAnthropicSSE(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	resp := &types.MessageResponse{
+		ID:         "msg_test",
+		Type:       "message",
+		Role:       "assistant",
+		Model:      "qwen3.6-plus",
+		StopReason: "end_turn",
+		Content: []types.ContentBlock{
+			{Type: "text", Text: "Vedo uno screenshot."},
+		},
+		Usage: types.Usage{InputTokens: 10, OutputTokens: 4},
+	}
+
+	if err := handler.EmitMessageResponse(w, resp); err != nil {
+		t.Fatalf("EmitMessageResponse error: %v", err)
+	}
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("events = %d, want 6: %+v", len(events), events)
+	}
+	if events[0].Type != "message_start" {
+		t.Fatalf("event[0] = %s, want message_start", events[0].Type)
+	}
+	if events[2].Type != "content_block_delta" || events[2].Delta.Type != "text_delta" {
+		t.Fatalf("event[2] = %+v, want text_delta", events[2])
+	}
+	if got, want := events[2].Delta.Text, "Vedo uno screenshot."; got != want {
+		t.Fatalf("text delta = %q, want %q", got, want)
+	}
+	if events[4].Type != "message_delta" || events[5].Type != "message_stop" {
+		t.Fatalf("tail events = %+v %+v, want message_delta/message_stop", events[4], events[5])
+	}
+}
+
 func TestProxyStream_ReasoningContentFastPath(t *testing.T) {
 	handler := NewStreamHandler()
 	w := newMockResponseWriter()
@@ -206,6 +242,36 @@ func TestProxyStream_TextOnlyStillWorks(t *testing.T) {
 	}
 	if events[2].Delta.Text != "Hello" {
 		t.Errorf("event[2].Delta.Text = %q, want Hello", events[2].Delta.Text)
+	}
+}
+
+func TestProxyStream_ContentArrayTextDelta(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"content":[{"type":"text","text":"Vedo uno screenshot."}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	if events[1].Type != "content_block_start" || events[1].ContentBlock == nil || events[1].ContentBlock.Type != "text" {
+		t.Errorf("event[1] = %+v, want content_block_start(text)", events[1])
+	}
+	if events[2].Type != "content_block_delta" || events[2].Delta.Type != "text_delta" {
+		t.Errorf("event[2] = %+v, want content_block_delta(text_delta)", events[2])
+	}
+	if got, want := events[2].Delta.Text, "Vedo uno screenshot."; got != want {
+		t.Errorf("event[2].Delta.Text = %q, want %q", got, want)
 	}
 }
 
