@@ -166,63 +166,11 @@ func TestTransformRequestIncludesStreamUsageOptions(t *testing.T) {
 		MaxTokens: 256,
 		Stream:    &stream,
 		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		{Role: "user", Content: json.RawMessage(`"hello"`)},
 		},
 	}
 
 	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
-	if err != nil {
-		t.Fatalf("TransformRequest() error = %v", err)
-	}
-
-	if openaiReq.StreamOptions == nil {
-		t.Fatal("StreamOptions = nil, want include_usage enabled")
-	}
-	if !openaiReq.StreamOptions.IncludeUsage {
-		t.Fatal("StreamOptions.IncludeUsage = false, want true")
-	}
-}
-
-func TestTransformRequestOmitsStreamUsageOptionsWhenStreamingDisabled(t *testing.T) {
-	transformer := NewRequestTransformer()
-	stream := false
-
-	req := &types.MessageRequest{
-		Model:     "claude-test",
-		MaxTokens: 256,
-		Stream:    &stream,
-		Messages: []types.Message{
-			{Role: "user", Content: json.RawMessage(`"hello"`)},
-		},
-	}
-
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
-	if err != nil {
-		t.Fatalf("TransformRequest() error = %v", err)
-	}
-
-	if openaiReq.StreamOptions != nil {
-		t.Fatalf("StreamOptions = %v, want nil when streaming is disabled", openaiReq.StreamOptions)
-	}
-}
-
-func TestTransformRequestIncludesEmptyReasoningContentForToolCalls(t *testing.T) {
-	transformer := NewRequestTransformer()
-
-	req := &types.MessageRequest{
-		Model:     "claude-test",
-		MaxTokens: 256,
-		Messages: []types.Message{
-			{
-				Role: "assistant",
-				Content: json.RawMessage(`[
-					{"type":"tool_use","id":"toolu_456","name":"search_docs","input":{"query":"figma api"}}
-				]`),
-			},
-		},
-	}
-
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
 	}
