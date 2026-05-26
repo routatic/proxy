@@ -172,7 +172,8 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 			Content: systemText,
 		}
 		// Try to extract cache_control from system array blocks
-		if len(anthropicReq.System) > 0 {
+		// Kimi models reject cache_control, skip for those.
+		if !strings.HasPrefix(modelID, "kimi-") && len(anthropicReq.System) > 0 {
 			var blocks []types.SystemContentBlock
 			if err := json.Unmarshal(anthropicReq.System, &blocks); err == nil {
 				for _, b := range blocks {
