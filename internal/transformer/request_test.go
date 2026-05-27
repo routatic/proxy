@@ -388,6 +388,31 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	}
 }
 
+func TestTransformRequestStripsCacheControlForKimi(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"You are helpful","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if systemMsg.CacheControl != nil {
+		t.Fatal("Messages[0].CacheControl should be nil for Kimi models")
+	}
+}
+
 func TestTransformRequestOmitsCacheControlWhenAbsent(t *testing.T) {
 	transformer := NewRequestTransformer()
 
