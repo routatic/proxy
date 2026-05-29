@@ -407,9 +407,13 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 		"model_id", modelID,
 		"body_preview", string(rawBody)[:min(len(rawBody), 200)])
 
+	// Clean incompatible fields (e.g. thinking, cache_control) before
+	// forwarding to the Anthropic /v1/messages endpoint.
+	cleanBody := client.CleanAnthropicBody(rawBody)
+
 	// Send raw Anthropic request to Anthropic endpoint
 	// Use ctx so cancellation propagates when client disconnects
-	resp, err := h.client.SendAnthropicRequest(ctx, rawBody, true)
+	resp, err := h.client.SendAnthropicRequest(ctx, cleanBody, true)
 	if err != nil {
 		return err
 	}
@@ -501,8 +505,11 @@ func (h *MessagesHandler) executeAnthropicRequest(
 	rawBody json.RawMessage,
 	model config.ModelConfig,
 ) ([]byte, error) {
+	// Clean incompatible fields before forwarding.
+	cleanBody := client.CleanAnthropicBody(rawBody)
+
 	// Send raw Anthropic request to Anthropic endpoint
-	resp, err := h.client.SendAnthropicRequest(ctx, rawBody, false)
+	resp, err := h.client.SendAnthropicRequest(ctx, cleanBody, false)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic request failed: %w", err)
 	}

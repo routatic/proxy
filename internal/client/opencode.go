@@ -49,11 +49,132 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 // IsAnthropicModel returns true if the model requires the Anthropic endpoint.
 func IsAnthropicModel(modelID string) bool {
 	switch modelID {
-	case "minimax-m2.5", "minimax-m2.7", "qwen3.7-max":
+	case "minimax-m2.5", "minimax-m2.7",
+		"qwen3.5-plus", "qwen3.6-plus", "qwen3.7-max":
 		return true
 	default:
 		return false
 	}
+}
+
+// CleanAnthropicBody removes fields that are not compatible with the Anthropic
+// /v1/messages endpoint:
+//   - thinking field unless type is "enabled" (e.g. "disabled", "adaptive")
+//   - top-level fields not recognized by Anthropic: context_management, output_config, metadata
+//   - cache_control from message content blocks and system blocks
+func CleanAnthropicBody(raw json.RawMessage) json.RawMessage {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+
+	dirty := false
+
+	// Remove thinking unless type is "enabled".
+	if thinking, ok := m["thinking"]; ok {
+		var t struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(thinking, &t); err != nil || t.Type != "enabled" {
+			delete(m, "thinking")
+			dirty = true
+		}
+	}
+
+	// Remove top-level fields not supported by Anthropic endpoint.
+	for _, key := range []string{"context_management", "output_config", "metadata"} {
+		if _, ok := m[key]; ok {
+			delete(m, key)
+			dirty = true
+		}
+	}
+
+	// Strip $schema from tool input_schema (not supported by Anthropic endpoint).
+	if tools, ok := m["tools"]; ok {
+		var toolList []map[string]json.RawMessage
+		if err := json.Unmarshal(tools, &toolList); err == nil {
+			toolDirty := false
+			for _, tool := range toolList {
+				if schema, ok := tool["input_schema"]; ok {
+					var s map[string]json.RawMessage
+					if err := json.Unmarshal(schema, &s); err == nil {
+						if _, ok := s["$schema"]; ok {
+							delete(s, "$schema")
+							newSchema, _ := json.Marshal(s)
+							tool["input_schema"] = newSchema
+							toolDirty = true
+						}
+					}
+				}
+			}
+			if toolDirty {
+				newTools, _ := json.Marshal(toolList)
+				m["tools"] = newTools
+				dirty = true
+			}
+		}
+	}
+
+	// Strip cache_control from message content blocks.
+	if msgs, ok := m["messages"]; ok {
+		var messages []map[string]json.RawMessage
+		if err := json.Unmarshal(msgs, &messages); err == nil {
+			msgDirty := false
+			for _, msg := range messages {
+				if content, ok := msg["content"]; ok {
+					var blocks []map[string]json.RawMessage
+					if err := json.Unmarshal(content, &blocks); err == nil {
+						blockDirty := false
+						for _, block := range blocks {
+							if _, ok := block["cache_control"]; ok {
+								delete(block, "cache_control")
+								blockDirty = true
+							}
+						}
+						if blockDirty {
+							newContent, _ := json.Marshal(blocks)
+							msg["content"] = newContent
+							msgDirty = true
+						}
+					}
+				}
+			}
+			if msgDirty {
+				newMsgs, _ := json.Marshal(messages)
+				m["messages"] = newMsgs
+				dirty = true
+			}
+		}
+	}
+
+	// Strip cache_control from system blocks.
+	if sys, ok := m["system"]; ok {
+		var blocks []map[string]json.RawMessage
+		if err := json.Unmarshal(sys, &blocks); err == nil {
+			sysDirty := false
+			for _, block := range blocks {
+				if _, ok := block["cache_control"]; ok {
+					delete(block, "cache_control")
+					sysDirty = true
+				}
+			}
+			if sysDirty {
+				newSys, _ := json.Marshal(blocks)
+				m["system"] = newSys
+				dirty = true
+			}
+		}
+	}
+
+	if !dirty {
+		return raw
+	}
+
+	cleaned, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return cleaned
 }
 
 // getEndpoint returns the appropriate endpoint config for a model.
