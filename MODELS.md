@@ -27,10 +27,10 @@ Comprehensive guide to OpenCode Go models with capabilities, costs, and routing 
 
 | Models                                                                                                             | Endpoint                                         | Format                   |
 | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------ |
-| GLM-5, GLM-5.1, Kimi K2.6, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, Qwen3.5 Plus, Qwen3.6 Plus, DeepSeek V4 Pro/Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI-compatible        |
-| **MiniMax M2.5, MiniMax M2.7**                                                                                     | `https://opencode.ai/zen/go/v1/messages`         | **Anthropic-compatible** |
+| GLM-5, GLM-5.1, Kimi K2.6, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, DeepSeek V4 Pro/Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI-compatible        |
+| **MiniMax M2.5, MiniMax M2.7, Qwen3.5 Plus, Qwen3.6 Plus, Qwen3.7 Max**                   | `https://opencode.ai/zen/go/v1/messages`         | **Anthropic-compatible** |
 
-**Why this matters:** MiniMax models expect Anthropic format natively. oc-go-cc detects MiniMax models and routes them to the correct endpoint automatically without transformation. This means MiniMax models work seamlessly with Claude Code.
+**Why this matters:** MiniMax and Qwen models expect Anthropic format natively. oc-go-cc detects these models and routes them to the correct endpoint automatically without transformation. This means they work seamlessly with Claude Code.
 
 DeepSeek V4 Pro and Flash are OpenAI-compatible in OpenCode Go. oc-go-cc transforms Claude Code's Anthropic request into OpenAI Chat Completions format, including tools, tool results, thinking history, `reasoning_effort`, and `thinking`.
 
@@ -122,6 +122,7 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
 #### Qwen3.5 Plus — The Workhorse
 
 - **Model ID:** `qwen3.5-plus`
+- **Endpoint:** **Anthropic-compatible** (`/v1/messages`)
 - **Cost:** **10,200 requests per $12** (best value!)
 - **Context:** ~128K tokens
 - **Quality:** ★★☆☆☆ (adequate for simple tasks)
@@ -207,6 +208,7 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
 #### Qwen3.6 Plus — Cost-Effective General Coding ⭐ RECOMMENDED DEFAULT
 
 - **Model ID:** `qwen3.6-plus`
+- **Endpoint:** **Anthropic-compatible** (`/v1/messages`)
 - **Cost:** **3,300 requests per $12** (3.8x more than GLM-5.1!)
 - **Context:** ~128K tokens
 - **Quality:** ★★★☆☆ (good enough for most tasks)
@@ -217,6 +219,21 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
   - Bug fixes
   - Refactoring
 - **When to Use:** Default for cost-conscious users
+
+#### Qwen3.7 Max — Highest Quality Qwen
+
+- **Model ID:** `qwen3.7-max`
+- **Endpoint:** **Anthropic-compatible** (`/v1/messages`)
+- **Context:** ~1M tokens
+- **Output:** up to 65,536 tokens
+- **Quality:** ★★★★★ (best Qwen model)
+- **Reasoning:** Yes
+- **Best For:**
+  - Complex architectural decisions
+  - Multi-step reasoning
+  - High-quality code generation
+  - Tasks requiring maximum accuracy
+- **When to Use:** When quality matters more than cost
 
 #### Kimi K2.6 — Best Quality at Balanced Cost
 

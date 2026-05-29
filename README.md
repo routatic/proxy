@@ -2,7 +2,7 @@
 
 A Go CLI proxy that lets you use your [OpenCode Go](https://opencode.ai/docs/go/) subscription with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-`oc-go-cc` sits between Claude Code and OpenCode Go, intercepting Anthropic API requests, transforming them to OpenAI format, and forwarding them to OpenCode Go's endpoint. Claude Code thinks it's talking to Anthropic — but your requests go to affordable open models instead.
+`oc-go-cc` sits between Claude Code and OpenCode Go, intercepting Anthropic API requests, transforming them to the appropriate format (OpenAI or Anthropic), and forwarding them to OpenCode Go's endpoint. Claude Code thinks it's talking to Anthropic — but your requests go to affordable open models instead.
 
 ## Why?
 
@@ -10,7 +10,7 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 
 ## Features
 
-- **Transparent Proxy** — Claude Code sends Anthropic-format requests, proxy transforms to OpenAI format and back
+- **Transparent Proxy** — Claude Code sends Anthropic-format requests, proxy transforms to OpenAI or forwards natively in Anthropic format
 - **Model Routing** — Automatically routes to different models based on context (default, thinking, long context, background)
 - **Fallback Chains** — If a model fails, automatically tries the next one in your configured chain
 - **Circuit Breaker** — Tracks model health and skips failing models to avoid latency spikes

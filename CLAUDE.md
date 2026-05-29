@@ -24,8 +24,8 @@ Run a single test: `go test ./internal/router/ -v`
 
 **Two API endpoints:**
 
-- OpenAI endpoint (`/v1/chat/completions`) — used by most models (GLM, Kimi, MiMo, Qwen)
-- Anthropic endpoint (`/v1/messages`) — used only by MiniMax models
+- OpenAI endpoint (`/v1/chat/completions`) — used by GLM, Kimi, MiMo, DeepSeek
+- Anthropic endpoint (`/v1/messages`) — used by MiniMax (M2.5, M2.7) and Qwen (3.5 Plus, 3.6 Plus, 3.7 Max)
 
 `internal/client/opencode.go` routes by model ID via `IsAnthropicModel()`.
 
