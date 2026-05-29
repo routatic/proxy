@@ -295,6 +295,7 @@ func modelsCmd() *cobra.Command {
 			fmt.Println("  mimo-v2.5          OpenAI-compatible")
 			fmt.Println("  mimo-v2-pro        OpenAI-compatible")
 			fmt.Println("  mimo-v2-omni       OpenAI-compatible")
+			fmt.Println("  qwen3.7-max        Anthropic-compatible")
 			fmt.Println("  minimax-m2.7       Anthropic-compatible")
 			fmt.Println("  minimax-m2.5       Anthropic-compatible")
 			fmt.Println("  deepseek-v4-pro    OpenAI-compatible")

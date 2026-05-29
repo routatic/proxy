@@ -49,7 +49,7 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 // IsAnthropicModel returns true if the model requires the Anthropic endpoint.
 func IsAnthropicModel(modelID string) bool {
 	switch modelID {
-	case "minimax-m2.5", "minimax-m2.7":
+	case "minimax-m2.5", "minimax-m2.7", "qwen3.7-max":
 		return true
 	default:
 		return false

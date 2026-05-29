@@ -19,6 +19,11 @@ func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
 			want:    true,
 		},
 		{
+			name:    "qwen3.7-max uses anthropic endpoint",
+			modelID: "qwen3.7-max",
+			want:    true,
+		},
+		{
 			name:    "deepseek pro uses openai endpoint",
 			modelID: "deepseek-v4-pro",
 			want:    false,
