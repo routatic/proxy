@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"oc-go-cc/internal/config"
 	"oc-go-cc/pkg/types"
 )
@@ -18,6 +20,7 @@ import (
 type OpenCodeClient struct {
 	atomic     *config.AtomicConfig
 	httpClient *http.Client
+	sessionID  string
 }
 
 // NewOpenCodeClient creates a new OpenCode Go client.
@@ -43,6 +46,7 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 			Timeout:   timeout,
 			Transport: transport,
 		},
+		sessionID: uuid.New().String(),
 	}
 }
 
@@ -295,6 +299,7 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 	ctx context.Context,
 	body []byte,
 	stream bool,
+	requestID string,
 ) (*http.Response, error) {
 	cfg := c.atomic.Get()
 	baseURL := cfg.OpenCodeGo.AnthropicBaseURL
@@ -305,13 +310,13 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	// Incase OpenCode Go expects x-api-key instead
 	httpReq.Header.Set("x-api-key", apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	httpReq.Header.Set("x-opencode-session", c.sessionID)
+	httpReq.Header.Set("x-opencode-request", requestID)
+	httpReq.Header.Set("x-opencode-client", "oc-go-cc")
 
-	// Add streaming header if requested
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
 	}

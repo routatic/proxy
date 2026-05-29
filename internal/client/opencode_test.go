@@ -1,8 +1,13 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"oc-go-cc/internal/config"
 )
 
 func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
@@ -165,5 +170,83 @@ func TestCleanAnthropicBody_InvalidJSON(t *testing.T) {
 	cleaned := CleanAnthropicBody(input)
 	if string(cleaned) != string(input) {
 		t.Fatal("invalid JSON should be returned as-is")
+	}
+}
+
+func TestSendAnthropicRequest_Headers(t *testing.T) {
+	var captured http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"type":"message"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key-123",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: srv.URL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomic := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomic)
+
+	resp, err := c.SendAnthropicRequest(context.Background(), []byte(`{"model":"qwen3.7-max"}`), true, "req-abc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := captured.Get("Anthropic-Version"); got != "2023-06-01" {
+		t.Fatalf("anthropic-version = %q, want 2023-06-01", got)
+	}
+	if got := captured.Get("X-Api-Key"); got != "test-key-123" {
+		t.Fatalf("x-api-key = %q, want test-key-123", got)
+	}
+	if got := captured.Get("Authorization"); got != "" {
+		t.Fatalf("Authorization header should not be set, got %q", got)
+	}
+	if got := captured.Get("X-Opencode-Session"); got == "" {
+		t.Fatal("x-opencode-session should be set")
+	}
+	if got := captured.Get("X-Opencode-Request"); got != "req-abc" {
+		t.Fatalf("x-opencode-request = %q, want req-abc", got)
+	}
+	if got := captured.Get("X-Opencode-Client"); got != "oc-go-cc" {
+		t.Fatalf("x-opencode-client = %q, want oc-go-cc", got)
+	}
+	if got := captured.Get("Accept"); got != "text/event-stream" {
+		t.Fatalf("Accept = %q, want text/event-stream", got)
+	}
+}
+
+func TestSendAnthropicRequest_NonStreaming(t *testing.T) {
+	var captured http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"type":"message"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: srv.URL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomic := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomic)
+
+	resp, err := c.SendAnthropicRequest(context.Background(), []byte(`{}`), false, "req-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := captured.Get("Accept"); got != "" {
+		t.Fatalf("Accept should not be set for non-streaming, got %q", got)
 	}
 }

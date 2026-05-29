@@ -291,10 +291,9 @@ func (h *MessagesHandler) handleStreaming(
 
 		// Check if this is an Anthropic-native model (MiniMax)
 		if client.IsAnthropicModel(model.ModelID) {
-			// For MiniMax models, send raw Anthropic request to Anthropic endpoint
-			// But we need to replace the model name in the raw body
 			modelBody := replaceModelInRawBody(rawBody, model.ModelID)
-			if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID); err != nil {
+			reqID := r.Header.Get("X-Request-ID")
+			if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID, reqID); err != nil {
 				cancel()
 				// Check if this was a client disconnect
 				if clientCtx.Err() == context.Canceled {
@@ -401,6 +400,7 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 	w http.ResponseWriter,
 	rawBody json.RawMessage,
 	modelID string,
+	requestID string,
 ) error {
 	// Debug: Log what we're sending
 	h.logger.Debug("sending anthropic streaming request",
@@ -411,9 +411,7 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 	// forwarding to the Anthropic /v1/messages endpoint.
 	cleanBody := client.CleanAnthropicBody(rawBody)
 
-	// Send raw Anthropic request to Anthropic endpoint
-	// Use ctx so cancellation propagates when client disconnects
-	resp, err := h.client.SendAnthropicRequest(ctx, cleanBody, true)
+	resp, err := h.client.SendAnthropicRequest(ctx, cleanBody, true, requestID)
 	if err != nil {
 		return err
 	}
@@ -472,7 +470,7 @@ func (h *MessagesHandler) handleNonStreaming(
 		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
 			// Check if this is an Anthropic-native model (MiniMax)
 			if client.IsAnthropicModel(model.ModelID) {
-				return h.executeAnthropicRequest(ctx, rawBody, model)
+				return h.executeAnthropicRequest(ctx, rawBody, model, r.Header.Get("X-Request-ID"))
 			}
 			// Otherwise use OpenAI transformation
 			return h.executeOpenAIRequest(ctx, anthropicReq, model)
@@ -504,12 +502,12 @@ func (h *MessagesHandler) executeAnthropicRequest(
 	ctx context.Context,
 	rawBody json.RawMessage,
 	model config.ModelConfig,
+	requestID string,
 ) ([]byte, error) {
 	// Clean incompatible fields before forwarding.
 	cleanBody := client.CleanAnthropicBody(rawBody)
 
-	// Send raw Anthropic request to Anthropic endpoint
-	resp, err := h.client.SendAnthropicRequest(ctx, cleanBody, false)
+	resp, err := h.client.SendAnthropicRequest(ctx, cleanBody, false, requestID)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic request failed: %w", err)
 	}
