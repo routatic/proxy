@@ -35,6 +35,32 @@ install: build
 		cp bin/$(BINARY) $(HOME)/go/bin/$(BINARY) 2>/dev/null || \
 		go install -ldflags "$(LDFLAGS)" $(CMD)
 
+# ── Docker ─────────────────────────────────────────────────────────
+
+docker-up:
+	@echo "Building Docker image..."
+	docker build -t oc-go-cc .
+	@echo ""
+	@echo "Starting container..."
+	@if [ ! -f .env ]; then \
+		echo "WARNING: .env file not found. Create it with: echo OC_GO_CC_API_KEY=your_key > .env"; \
+	fi
+	docker run -d \
+			--name oc-go-cc \
+			--restart unless-stopped \
+			--env-file .env \
+			-p 3456:3456 \
+			oc-go-cc
+	@echo ""
+	@echo "Container started! Proxy listening on http://localhost:3456"
+	@echo "Stop with:  docker stop oc-go-cc && docker rm oc-go-cc"
+
+docker-stop:
+	@echo "Stopping container..."
+	docker stop oc-go-cc 2>/dev/null || true
+	docker rm oc-go-cc 2>/dev/null || true
+	@echo "Container stopped and removed."
+
 # ── Release / Cross-Compilation ────────────────────────────────────
 
 PLATFORMS = \

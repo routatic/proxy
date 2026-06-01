@@ -32,6 +32,15 @@ brew tap samueltuyizere/tap && brew install oc-go-cc
 
 # Windows
 scoop bucket add oc-go-cc https://github.com/samueltuyizere/scoop-bucket && scoop install oc-go-cc
+
+# Docker (with Makefile)
+cp .env.example .env                    # then put your API key in .env
+make docker-up
+
+# Docker (manual)
+cp .env.example .env
+docker build -t oc-go-cc .
+docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 oc-go-cc
 ```
 
 Or see [INSTALLATION.md](INSTALLATION.md) for more options.
@@ -52,6 +61,12 @@ export OC_GO_CC_API_KEY=sk-opencode-your-key-here
 
 ```bash
 oc-go-cc serve
+```
+
+Stop the Docker container (if using Docker):
+
+```bash
+make docker-stop
 ```
 
 ### 4. Configure Claude Code

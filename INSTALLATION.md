@@ -50,7 +50,41 @@ Invoke-WebRequest -Uri "https://github.com/samueltuyizere/oc-go-cc/releases/late
 Move-Item -Path "oc-go-cc.exe" -Destination "$env:LOCALAPPDATA\Microsoft\WindowsApps\oc-go-cc.exe"
 ```
 
+## Docker
+
+### Quick start with Makefile
+
+```bash
+cp .env.example .env
+# Edit .env and put your OpenCode Go API key
+make docker-up
+```
+
+Stop the container:
+
+```bash
+make docker-stop
+```
+
+### Build and run manually
+
+```bash
+docker build -t oc-go-cc .
+docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 oc-go-cc
+```
+
+### Use a custom config
+
+The Docker image uses `configs/config.json` by default (or `configs/config.example.json` as fallback). Override with a volume:
+
+```bash
+docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 \
+  -v /path/to/your/config.json:/etc/oc-go-cc/config.json:ro \
+  oc-go-cc
+```
+
 ## Requirements
 
 - An [OpenCode Go](https://opencode.ai/auth) subscription and API key
 - Go 1.21+ (only needed if building from source)
+- Docker (only needed for Docker setup)
