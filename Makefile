@@ -1,4 +1,4 @@
-.PHONY: build run test clean install dist lint vet
+.PHONY: build run test clean install dist lint vet docker-up docker-stop
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -43,8 +43,12 @@ docker-up:
 	@echo ""
 	@echo "Starting container..."
 	@if [ ! -f .env ]; then \
-		echo "WARNING: .env file not found. Create it with: echo OC_GO_CC_API_KEY=your_key > .env"; \
+		echo "ERROR: .env file not found."; \
+		echo "Create it with: cp .env.example .env"; \
+		exit 1; \
 	fi
+	@docker stop oc-go-cc 2>/dev/null || true
+	@docker rm oc-go-cc 2>/dev/null || true
 	docker run -d \
 			--name oc-go-cc \
 			--restart unless-stopped \
@@ -53,7 +57,7 @@ docker-up:
 			oc-go-cc
 	@echo ""
 	@echo "Container started! Proxy listening on http://localhost:3456"
-	@echo "Stop with:  docker stop oc-go-cc && docker rm oc-go-cc"
+	@echo "Stop with:  make docker-stop"
 
 docker-stop:
 	@echo "Stopping container..."
