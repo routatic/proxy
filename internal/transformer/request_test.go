@@ -678,6 +678,75 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	}
 }
 
+func TestTransformRequestSkipsCacheControlForKimiSystem(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"system prompt","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if got, want := systemMsg.Role, "system"; got != want {
+		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
+	}
+	if got, want := systemMsg.Content, "system prompt"; got != want {
+		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
+	}
+	if systemMsg.CacheControl != nil {
+		t.Fatalf("Kimi system message CacheControl = %v, want nil (guard should prevent assignment)", systemMsg.CacheControl)
+	}
+}
+
+func TestTransformRequestStripsCacheControlForNonKimiNonDeepSeek(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"system prompt","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	// Use a non-Kimi, non-DeepSeek model (e.g. GLM) — cache_control should be
+	// set by transformMessages then stripped by stripCacheControl().
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "glm-5"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if got, want := systemMsg.Role, "system"; got != want {
+		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
+	}
+	if systemMsg.CacheControl != nil {
+		t.Fatalf("Non-Kimi/non-DeepSeek system message CacheControl = %v, want nil", systemMsg.CacheControl)
+	}
+}
+
 func TestTransformRequestStripsCacheControlForNonDeepSeek(t *testing.T) {
 	transformer := NewRequestTransformer()
 
