@@ -66,6 +66,15 @@ Override with `OC_GO_CC_CONFIG` environment variable.
     "fast": [{ "provider": "opencode-go", "model_id": "qwen3.5-plus" }]
   },
 
+  "model_overrides": {
+    "claude-sonnet-4.5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4.5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  },
+
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
@@ -173,3 +182,34 @@ Primary model -> Fallback 1 -> Fallback 2 -> ... -> Error (all failed)
 ```
 
 Each model also has a **circuit breaker** that tracks consecutive failures. After 3 failures, the circuit opens and that model is skipped for 30 seconds, then tested again (half-open state).
+
+## Model Overrides (`model_overrides`)
+
+`model_overrides` lets you map a specific client-requested model name (the value of the `model` field in `/v1/messages`) to a fixed `ModelConfig`. This is useful when you want clients to be able to request a particular model (e.g. `claude-sonnet-4.5`) without that model going through the scenario router.
+
+When a request arrives, the proxy checks `model_overrides[<model>]` **first**. If the requested model has an entry, the override is used as the primary. The scenario-routed chain is then appended as a **safety-net fallback** (deduplicated by `model_id`).
+
+```json
+{
+  "model_overrides": {
+    "claude-sonnet-4.5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4.5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  }
+}
+```
+
+Each entry accepts the same fields as a `ModelConfig` (`provider`, `model_id`, `temperature`, `max_tokens`, `reasoning_effort`, `thinking`, etc.). `model_id` is required; `provider` must be `"opencode-go"` or `"opencode-zen"` (or omitted to inherit the default).
+
+### Routing precedence
+
+When a request arrives, the proxy selects a model chain using the following order:
+
+1. **`model_overrides[<model>]`** — if the request's `model` field has an entry, use it as the primary and append the scenario chain as a safety net.
+2. **`respect_requested_model`** — if enabled and `models[<model>]` is configured, use the requested model with default fallbacks.
+3. **Scenario routing** — fall back to the scenario chain (`default`, `background`, `think`, `complex`, `long_context`, `fast`).
+
+> **Trust model:** any client whose requests flow through the proxy can select from the configured `model_overrides` set without additional authentication. If you run the proxy as a shared service, treat `model_overrides` as a privileged allowlist.

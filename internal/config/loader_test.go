@@ -225,6 +225,71 @@ func TestInterpolateEnvVars(t *testing.T) {
 	}
 }
 
+func TestApplyDefaults_InitializesNilMaps(t *testing.T) {
+	cfg := &Config{APIKey: "test"}
+	applyDefaults(cfg)
+	if cfg.Fallbacks == nil {
+		t.Error("applyDefaults should initialize Fallbacks to non-nil map")
+	}
+	if cfg.ModelOverrides == nil {
+		t.Error("applyDefaults should initialize ModelOverrides to non-nil map")
+	}
+	// Both maps should be writable (read-then-write) without panicking.
+	cfg.Fallbacks["default"] = nil
+	cfg.ModelOverrides["kimi-k2.6"] = ModelConfig{}
+}
+
+func TestValidateModelOverrides_EmptyModelID(t *testing.T) {
+	cfg := &Config{
+		APIKey: "test",
+		ModelOverrides: map[string]ModelConfig{
+			"bad-entry": {Provider: "opencode-go", ModelID: ""},
+		},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatal("expected validation error for empty model_id, got nil")
+	}
+}
+
+func TestValidateModelOverrides_InvalidProvider(t *testing.T) {
+	cfg := &Config{
+		APIKey: "test",
+		ModelOverrides: map[string]ModelConfig{
+			"bad-provider": {Provider: "unknown-provider", ModelID: "some-model"},
+		},
+	}
+	if err := validate(cfg); err == nil {
+		t.Fatal("expected validation error for unknown provider, got nil")
+	}
+}
+
+func TestValidateModelOverrides_EmptyProviderOK(t *testing.T) {
+	// Empty provider should be allowed (defaults to opencode-go at request time).
+	cfg := &Config{
+		APIKey: "test",
+		ModelOverrides: map[string]ModelConfig{
+			"good-entry": {ModelID: "kimi-k2.6"},
+		},
+	}
+	if err := validate(cfg); err != nil {
+		t.Errorf("expected no validation error for empty provider, got %v", err)
+	}
+}
+
+func TestValidateModelOverrides_AllValidProviders(t *testing.T) {
+	cfg := &Config{
+		APIKey: "test",
+		ModelOverrides: map[string]ModelConfig{
+			"a": {Provider: "opencode-go", ModelID: "m1"},
+			"b": {Provider: "opencode-zen", ModelID: "m2"},
+			"c": {ModelID: "m3"},
+		},
+	}
+	if err := validate(cfg); err != nil {
+		t.Errorf("expected no validation error, got %v", err)
+	}
+}
+
 func TestExpandHome(t *testing.T) {
 	home, _ := os.UserHomeDir()
 

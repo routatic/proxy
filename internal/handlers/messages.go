@@ -190,17 +190,11 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !isOverride {
-		requestedModel := anthropicReq.Model
-		if isStreaming && !h.modelRouter.IsStreamingScenarioRoutingEnabled() {
-			// Streaming: use faster models to minimize TTFT (time-to-first-token)
-			routeResult = h.modelRouter.RouteForStreaming(routerMessages, tokenCount, requestedModel)
-		} else {
-			var err error
-			routeResult, err = h.modelRouter.Route(routerMessages, tokenCount, requestedModel)
-			if err != nil {
-				h.sendError(w, http.StatusInternalServerError, "routing failed", err)
-				return
-			}
+		var err error
+		routeResult, err = h.routeOnce(routerMessages, tokenCount, anthropicReq.Model, isStreaming)
+		if err != nil {
+			h.sendError(w, http.StatusInternalServerError, "routing failed", err)
+			return
 		}
 	}
 
@@ -215,17 +209,10 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	modelChain := routeResult.GetModelChain()
 
 	if isOverride {
-		// Append scenario fallback chain as safety net
-		var scenarioResult router.RouteResult
-		var scenarioErr error
-		if isStreaming && !h.modelRouter.IsStreamingScenarioRoutingEnabled() {
-			scenarioResult = h.modelRouter.RouteForStreaming(routerMessages, tokenCount, "")
-		} else {
-			scenarioResult, scenarioErr = h.modelRouter.Route(routerMessages, tokenCount, "")
-		}
-		if scenarioErr == nil {
-			scenarioChain := scenarioResult.GetModelChain()
-			modelChain = append(modelChain, scenarioChain...)
+		// Append scenario fallback chain as safety net (deduplicated by ModelID).
+		scenarioResult, err := h.routeOnce(routerMessages, tokenCount, "", isStreaming)
+		if err == nil {
+			modelChain = appendUniqueModels(modelChain, scenarioResult.GetModelChain())
 		}
 	}
 
@@ -236,6 +223,44 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		// Non-streaming: execute with fallback and return full response
 		h.handleNonStreaming(w, r, &anthropicReq, modelChain, rawBody)
 	}
+}
+
+// routeOnce performs scenario-based routing, honoring the streaming-scenario-routing
+// toggle. Pass requestedModel="" to force scenario routing (used for the override
+// safety-net chain), or a non-empty value to let resolveRequestedModel kick in
+// (only when respect_requested_model is enabled and no override matched).
+func (h *MessagesHandler) routeOnce(
+	routerMessages []router.MessageContent,
+	tokenCount int,
+	requestedModel string,
+	isStreaming bool,
+) (router.RouteResult, error) {
+	if isStreaming && !h.modelRouter.IsStreamingScenarioRoutingEnabled() {
+		// Streaming: use faster models to minimize TTFT (time-to-first-token)
+		return h.modelRouter.RouteForStreaming(routerMessages, tokenCount, requestedModel), nil
+	}
+	return h.modelRouter.Route(routerMessages, tokenCount, requestedModel)
+}
+
+// appendUniqueModels appends models from extra to base, skipping any model_id
+// already present in base. The first occurrence of a ModelID is kept; later
+// duplicates are dropped. Order of the base chain is preserved.
+func appendUniqueModels(base, extra []config.ModelConfig) []config.ModelConfig {
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base))
+	for _, m := range base {
+		seen[m.ModelID] = struct{}{}
+	}
+	for _, m := range extra {
+		if _, ok := seen[m.ModelID]; ok {
+			continue
+		}
+		base = append(base, m)
+		seen[m.ModelID] = struct{}{}
+	}
+	return base
 }
 
 // handleStreaming handles a streaming request with real-time SSE proxying.

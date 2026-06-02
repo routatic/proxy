@@ -99,7 +99,15 @@ func (r *ModelRouter) IsStreamingScenarioRoutingEnabled() bool {
 }
 
 // RouteWithOverride checks if the requested model matches a model_overrides entry.
-// Returns the override RouteResult and true if matched, zero value and false otherwise.
+//
+// When matched, the returned RouteResult uses the override ModelConfig as the
+// primary, and fallbacks[<requestedModel>] (which may be nil/empty) as the
+// fallback chain. Unlike Route/RouteForStreaming, this method does NOT fall
+// back to fallbacks["default"] when the key is missing — the caller is expected
+// to merge a scenario-derived safety-net chain on top (see MessagesHandler).
+//
+// Returns the override RouteResult and true if matched, or a zero value and
+// false if the requested model has no entry in model_overrides.
 func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, bool) {
 	cfg := r.atomic.Get()
 	if cfg.ModelOverrides == nil {
@@ -113,7 +121,7 @@ func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, boo
 	return RouteResult{
 		Primary:   override,
 		Fallbacks: fallbacks,
-		Scenario:  "override",
+		Scenario:  ScenarioOverride,
 	}, true
 }
 
