@@ -12,14 +12,8 @@ RUN apk add --no-cache ca-certificates tzdata wget && \
     chown -R appuser:appgroup /etc/oc-go-cc
 
 COPY --from=builder /app/oc-go-cc /usr/local/bin/oc-go-cc
-COPY --from=builder /app/configs /tmp/configs
-RUN if [ -f /tmp/configs/config.json ]; then \
-      cp /tmp/configs/config.json /etc/oc-go-cc/config.json; \
-    else \
-      cp /tmp/configs/config.example.json /etc/oc-go-cc/config.json; \
-    fi && \
-    chown -R appuser:appgroup /etc/oc-go-cc && \
-    rm -rf /tmp/configs
+COPY --from=builder /app/configs/config.example.json /etc/oc-go-cc/config.json
+RUN chown -R appuser:appgroup /etc/oc-go-cc
 
 USER appuser
 
