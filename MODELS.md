@@ -1,36 +1,87 @@
-# OpenCode Go Models Guide
+# OpenCode Models Guide
 
-Comprehensive guide to OpenCode Go models with capabilities, costs, and routing recommendations.
+Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and routing recommendations.
 
-**Source:** [OpenCode Go Documentation](https://opencode.ai/docs/go/)
+**Sources:** [OpenCode Go Documentation](https://opencode.ai/docs/go/) | [OpenCode Zen Documentation](https://opencode.ai/docs/zen/)
 
 ## Quick Cost Comparison
 
-> 💰 **Cost-conscious routing matters!** GLM-5.1 gives you 880 requests per 5-hour block, while Qwen3.5 Plus gives you **10,200** — that's **11.6x more requests** for the same $12 budget.
+> 💰 **Cost-conscious routing matters!** Qwen3.5 Plus gives you 10,200 requests per $12, while GLM-5.1 gives you only 880 — that's **11.6x fewer requests** for the same budget.
 
-| Model            | Requests per $12 (5hr) | Cost Efficiency | Quality |
-| ---------------- | ---------------------- | --------------- | ------- |
-| **Qwen3.5 Plus** | **10,200**             | ★★★★★           | ★★☆☆☆   |
-| **MiniMax M2.5** | **6,300**              | ★★★★★           | ★★☆☆☆   |
-| **MiniMax M2.7** | **3,400**              | ★★★★☆           | ★★★☆☆   |
-| **Qwen3.6 Plus** | **3,300**              | ★★★★☆           | ★★★☆☆   |
-| **MiMo-V2-Omni** | **2,150**              | ★★★☆☆           | ★★★☆☆   |
-| **Kimi K2.5**    | **1,850**              | ★★☆☆☆           | ★★★★☆   |
-| **MiMo-V2-Pro**  | **1,290**              | ★★☆☆☆           | ★★★★☆   |
-| **Kimi K2.6**    | **~1,150**             | ★☆☆☆☆           | ★★★★★   |
-| **GLM-5**        | **1,150**              | ★☆☆☆☆           | ★★★★☆   |
-| **GLM-5.1**      | **880**                | ☆☆☆☆☆           | ★★★★★   |
+| Model            | Provider      | Requests per $12 (5hr) | Cost Efficiency | Quality |
+| ---------------- | ------------- | ---------------------- | --------------- | ------- |
+| **Qwen3.5 Plus** | Go            | **10,200**             | ★★★★★           | ★★☆☆☆   |
+| **MiniMax M2.5** | Go            | **6,300**              | ★★★★★           | ★★☆☆☆   |
+| **MiniMax M2.7** | Go            | **3,400**              | ★★★★☆           | ★★★☆☆   |
+| **Qwen3.6 Plus** | Go            | **3,300**              | ★★★★☆           | ★★★☆☆   |
+| **MiMo-V2-Omni** | Go            | **2,150**              | ★★★☆☆           | ★★★☆☆   |
+| **Kimi K2.5**    | Go            | **1,850**              | ★★☆☆☆           | ★★★★☆   |
+| **MiMo-V2-Pro**  | Go            | **1,290**              | ★★☆☆☆           | ★★★★☆   |
+| **Kimi K2.6**    | Go            | **~1,150**             | ★☆☆☆☆           | ★★★★★   |
+| **GLM-5**        | Go            | **1,150**              | ★☆☆☆☆           | ★★★★☆   |
+| **GLM-5.1**      | Go            | **880**                | ☆☆☆☆☆           | ★★★★★   |
+
+## Providers
+
+### OpenCode Go (`opencode-go`)
+
+- Subscription-based ($5/month then $10/month)
+- OpenAI Chat Completions and Anthropic Messages endpoints
+- Best for: Most use cases, cost-effective models
+
+### OpenCode Zen (`opencode-zen`)
+
+- Pay-as-you-go pricing
+- Additional endpoint formats: Responses (GPT), Gemini
+- Best for: GPT models, Gemini models, premium Anthropic models
 
 ## Important: API Endpoints
 
 ⚠️ **Critical:** Not all models use the same API endpoint! oc-go-cc handles this automatically, but you should know:
+
+### OpenCode Go Endpoints
 
 | Models                                                                                                             | Endpoint                                         | Format                   |
 | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------ |
 | GLM-5, GLM-5.1, Kimi K2.6, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, Qwen3.5 Plus, Qwen3.6 Plus, DeepSeek V4 Pro/Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI-compatible        |
 | **MiniMax M2.5, MiniMax M2.7**                                                                                     | `https://opencode.ai/zen/go/v1/messages`         | **Anthropic-compatible** |
 
-**Why this matters:** MiniMax models expect Anthropic format natively. oc-go-cc detects MiniMax models and routes them to the correct endpoint automatically without transformation. This means MiniMax models work seamlessly with Claude Code.
+### OpenCode Zen Endpoints
+
+| Models                                    | Endpoint                                     | Format                   |
+| ----------------------------------------- | -------------------------------------------- | ------------------------ |
+| MiniMax M2.5, MiniMax M2.7, GLM-5, GLM-5.1, Kimi K2.5, Kimi K2.6, Qwen3.5 Plus, Qwen3.6 Plus, DeepSeek V4 Flash | `https://opencode.ai/zen/v1/chat/completions` | OpenAI-compatible        |
+| **Claude models, Qwen3.7 Max**            | `https://opencode.ai/zen/v1/messages`        | **Anthropic-compatible** |
+| **GPT models** (gpt-5.5, gpt-5.4, etc.)  | `https://opencode.ai/zen/v1/responses`       | **OpenAI Responses**     |
+| **Gemini models** (gemini-3.5-flash, etc.)| `https://opencode.ai/zen/v1/models/{id}`     | **Google Gemini**        |
+
+**Why this matters:** MiniMax models expect Anthropic format natively. oc-go-cc detects MiniMax models and routes them to the correct endpoint automatically without transformation.
+
+## Using OpenCode Zen
+
+To use Zen models, set `"provider": "opencode-zen"` in your model config:
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "opencode-zen",
+      "model_id": "kimi-k2.6",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    }
+  }
+}
+```
+
+### Zen-Specific Models
+
+Some models are only available through Zen:
+
+- **GPT Models:** gpt-5.5, gpt-5.4, gpt-5.3-codex, gpt-5.2, gpt-5.1, gpt-5
+- **Gemini Models:** gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash
+- **Claude Models:** claude-opus-4.8, claude-sonnet-4.6, etc.
+- **Free Models:** big-pickle, deepseek-v4-flash-free, mimo-v2.5-free, nemotron-3-super-free
 
 DeepSeek V4 Pro and Flash are OpenAI-compatible in OpenCode Go. oc-go-cc transforms Claude Code's Anthropic request into OpenAI Chat Completions format, including tools, tool results, thinking history, `reasoning_effort`, and `thinking`.
 

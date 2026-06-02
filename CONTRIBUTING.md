@@ -30,32 +30,36 @@ Run a single test: `go test ./internal/router/ -v`
 ## How It Works
 
 ```
-┌─────────────┐     Anthropic API      ┌─────────────┐     OpenAI API       ┌─────────────┐
-│  Claude Code ├──────────────────────►│  oc-go-cc    ├────────────────────►│  OpenCode Go │
-│  (CLI)       │  POST /v1/messages   │  (Proxy)     │  /chat/completions  │  (Upstream)  │
-│              │◄──────────────────────┤              │◄────────────────────┤              │
-└─────────────┘   Anthropic SSE        └─────────────┘   OpenAI SSE          └─────────────┘
+┌─────────────┐     Anthropic API      ┌─────────────┐     OpenAI/Gemini/Responses  ┌─────────────┐
+│  Claude Code ├──────────────────────►│  oc-go-cc    ├─────────────────────────────►│  OpenCode   │
+│  (CLI)       │  POST /v1/messages   │  (Proxy)     │  Multiple endpoint formats   │  (Upstream) │
+│              │◄──────────────────────┤              │◄─────────────────────────────┤              │
+└─────────────┘   Anthropic SSE        └─────────────┘   Format-appropriate SSE      └─────────────┘
 ```
 
 1. Claude Code sends a request in [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) format
 2. oc-go-cc parses the request, counts tokens, and selects a model via routing rules
-3. The request is transformed to [OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat) format
-4. The transformed request is sent to OpenCode Go's endpoint
+3. Based on the model's provider and endpoint type, the request is transformed to the appropriate format:
+   - **OpenAI Chat Completions** — for most OpenCode Go and Zen models
+   - **Anthropic Messages** — for MiniMax models (sent directly without transformation)
+   - **OpenAI Responses** — for GPT models on Zen
+   - **Google Gemini** — for Gemini models on Zen
+4. The transformed request is sent to the appropriate OpenCode endpoint
 5. The response (streaming or non-streaming) is transformed back to Anthropic format
 6. Claude Code receives the response as if it came from Anthropic directly
 
 ### What Gets Transformed
 
-| Anthropic                                                    | OpenAI                                  |
-| ------------------------------------------------------------ | --------------------------------------- |
-| `system` (string or array)                                   | `messages[0]` with `role: "system"`     |
-| `content: [{"type":"text","text":"..."}]`                    | `content: "..."`                        |
-| `tool_use` content blocks                                    | `tool_calls` array                      |
-| `tool_result` content blocks                                 | `role: "tool"` messages                 |
-| `thinking` content blocks                                    | `reasoning_content`                     |
-| `stop_reason: "end_turn"`                                    | `finish_reason: "stop"`                 |
-| `stop_reason: "tool_use"`                                    | `finish_reason: "tool_calls"`           |
-| SSE `message_start` / `content_block_delta` / `message_stop` | SSE `role` / `delta.content` / `[DONE]` |
+| Anthropic                                                    | OpenAI/Responses/Gemini                          |
+| ------------------------------------------------------------ | ----------------------------------------------- |
+| `system` (string or array)                                   | `messages[0]` with `role: "system"` (OpenAI) or `developer` role (Responses) |
+| `content: [{"type":"text","text":"..."}]`                    | `content: "..."` (OpenAI) or `parts: [{text}]` (Gemini) |
+| `tool_use` content blocks                                    | `tool_calls` array (OpenAI) or `function_call` (Responses) |
+| `tool_result` content blocks                                 | `role: "tool"` messages (OpenAI)                |
+| `thinking` content blocks                                    | `reasoning_content` (OpenAI)                    |
+| `stop_reason: "end_turn"`                                    | `finish_reason: "stop"` (OpenAI) or `STOP` (Gemini) |
+| `stop_reason: "tool_use"`                                    | `finish_reason: "tool_calls"` (OpenAI)          |
+| SSE `message_start` / `content_block_delta` / `message_stop` | SSE format-appropriate events                   |
 
 ### DeepSeek V4 Thinking Mode
 
@@ -88,7 +92,7 @@ DeepSeek V4 thinking responses are returned as OpenAI `reasoning_content` and tr
 cmd/oc-go-cc/main.go           CLI entry point (cobra commands)
 internal/
 ├── config/
-│   ├── config.go               Config types
+│   ├── config.go               Config types (OpenCodeGoConfig, OpenCodeZenConfig)
 │   ├── loader.go               JSON loading, env overrides, ${VAR} interpolation
 │   ├── watcher.go              Hot reload file watcher (fsnotify)
 │   └── atomic.go               Atomic config swap for concurrent access
@@ -102,11 +106,11 @@ internal/
 │   ├── messages.go             POST /v1/messages handler (streaming + non-streaming)
 │   └── health.go               Health check and token counting endpoints
 ├── transformer/
-│   ├── request.go              Anthropic → OpenAI request transformation
-│   ├── response.go             OpenAI → Anthropic response transformation
-│   └── stream.go               Real-time SSE stream transformation
+│   ├── request.go              Anthropic → OpenAI/Responses/Gemini request transformation
+│   ├── response.go             OpenAI/Responses/Gemini → Anthropic response transformation
+│   └── stream.go               Real-time SSE stream transformation for all formats
 ├── client/
-│   └── opencode.go             OpenCode Go HTTP client
+│   └── opencode.go             OpenCode client with provider-aware routing
 ├── daemon/
 │   ├── launchd.go              macOS launchd plist management
 │   ├── background.go           Background daemon fork
@@ -115,7 +119,8 @@ internal/
     └── counter.go              Tiktoken token counter (cl100k_base)
 pkg/types/
 ├── anthropic.go                Anthropic API types (polymorphic system/content fields)
-└── openai.go                   OpenAI API types
+├── openai.go                   OpenAI Chat Completions types
+└── zen.go                      OpenAI Responses and Google Gemini types
 configs/
 └── config.example.json         Example configuration
 ```
@@ -123,9 +128,10 @@ configs/
 ### Key Design Decisions
 
 - **Polymorphic field handling**: Anthropic's `system` and `content` fields accept both strings and arrays. We use `json.RawMessage` with accessor methods (`SystemText()`, `ContentBlocks()`) to handle both formats correctly.
-- **Real-time stream proxying**: SSE events are transformed in-flight, not buffered. This means Claude Code sees responses as they arrive from OpenCode Go.
+- **Real-time stream proxying**: SSE events are transformed in-flight, not buffered. This means Claude Code sees responses as they arrive from upstream.
 - **Circuit breaker per model**: Each model gets its own circuit breaker. After 3 consecutive failures, the model is skipped for 30 seconds, then tested again.
 - **Environment variable interpolation**: Config values like `"${OC_GO_CC_API_KEY}"` are resolved at load time, so you never need to put secrets in the config file.
+- **Provider-aware routing**: The `provider` field in model config determines which upstream service to use (Go or Zen). Zen models are further classified by endpoint type (Chat Completions, Anthropic, Responses, Gemini).
 
 ## API Endpoints
 

@@ -1,4 +1,4 @@
-.PHONY: build run test clean install dist lint vet
+.PHONY: build run test clean install dist lint vet docker-up docker-stop
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -34,6 +34,36 @@ install: build
 	cp bin/$(BINARY) $(GOPATH)/bin/$(BINARY) 2>/dev/null || \
 		cp bin/$(BINARY) $(HOME)/go/bin/$(BINARY) 2>/dev/null || \
 		go install -ldflags "$(LDFLAGS)" $(CMD)
+
+# ── Docker ─────────────────────────────────────────────────────────
+
+docker-up:
+	@echo "Building Docker image..."
+	docker build -t oc-go-cc .
+	@echo ""
+	@echo "Starting container..."
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found."; \
+		echo "Create it with: cp .env.example .env"; \
+		exit 1; \
+	fi
+	@docker stop oc-go-cc 2>/dev/null || true
+	@docker rm oc-go-cc 2>/dev/null || true
+	docker run -d \
+			--name oc-go-cc \
+			--restart unless-stopped \
+			--env-file .env \
+			-p 3456:3456 \
+			oc-go-cc
+	@echo ""
+	@echo "Container started! Proxy listening on http://localhost:3456"
+	@echo "Stop with:  make docker-stop"
+
+docker-stop:
+	@echo "Stopping container..."
+	docker stop oc-go-cc 2>/dev/null || true
+	docker rm oc-go-cc 2>/dev/null || true
+	@echo "Container stopped and removed."
 
 # ── Release / Cross-Compilation ────────────────────────────────────
 

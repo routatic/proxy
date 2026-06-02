@@ -232,3 +232,121 @@ func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 		t.Errorf("expected first fallback qwen3.5-plus, got %s", result.Fallbacks[0].ModelID)
 	}
 }
+
+func TestRouteWithOverride_MatchesKey(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {
+				Provider:    "opencode-go",
+				ModelID:     "kimi-k2.6",
+				Temperature: 0.3,
+				MaxTokens:   2048,
+			},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"kimi-k2.6": {
+				{Provider: "opencode-go", ModelID: "qwen3.5-plus"},
+			},
+		},
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("kimi-k2.6")
+	if !ok {
+		t.Fatal("expected RouteWithOverride to match")
+	}
+	if result.Primary.ModelID != "kimi-k2.6" {
+		t.Errorf("expected primary kimi-k2.6, got %s", result.Primary.ModelID)
+	}
+	if result.Primary.Temperature != 0.3 {
+		t.Errorf("expected temperature 0.3, got %f", result.Primary.Temperature)
+	}
+	if result.Scenario != ScenarioOverride {
+		t.Errorf("expected ScenarioOverride, got %s", result.Scenario)
+	}
+	if len(result.Fallbacks) != 1 || result.Fallbacks[0].ModelID != "qwen3.5-plus" {
+		t.Errorf("expected single fallback qwen3.5-plus, got %+v", result.Fallbacks)
+	}
+}
+
+func TestRouteWithOverride_NoMatch(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("some-other-model")
+	if ok {
+		t.Errorf("expected no match, got result %+v", result)
+	}
+}
+
+func TestRouteWithOverride_NilMap(t *testing.T) {
+	cfg := &config.Config{} // ModelOverrides is nil
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	if _, ok := router.RouteWithOverride("anything"); ok {
+		t.Error("expected no match for nil ModelOverrides map (must not panic)")
+	}
+}
+
+func TestRouteWithOverride_MissingFallbacksKey_FallsBackToDefault(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {
+				{Provider: "opencode-go", ModelID: "qwen3.5-plus"},
+				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+			},
+		},
+		// No entry in Fallbacks for "kimi-k2.6" — should fall back to
+		// fallbacks["default"], matching Route/RouteForStreaming behavior.
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("kimi-k2.6")
+	if !ok {
+		t.Fatal("expected RouteWithOverride to match")
+	}
+	if len(result.Fallbacks) != 2 {
+		t.Fatalf("expected 2 default fallbacks, got %d: %+v", len(result.Fallbacks), result.Fallbacks)
+	}
+	if result.Fallbacks[0].ModelID != "qwen3.5-plus" || result.Fallbacks[1].ModelID != "mimo-v2-pro" {
+		t.Errorf("expected default fallbacks [qwen3.5-plus, mimo-v2-pro], got %+v", result.Fallbacks)
+	}
+	chain := result.GetModelChain()
+	if len(chain) != 3 {
+		t.Errorf("expected 3-element chain (primary + 2 default fallbacks), got %d", len(chain))
+	}
+}
+
+func TestRouteWithOverride_NoFallbacksAnywhere(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		// Both the override key and "default" are missing.
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("kimi-k2.6")
+	if !ok {
+		t.Fatal("expected RouteWithOverride to match")
+	}
+	if len(result.Fallbacks) != 0 {
+		t.Errorf("expected empty fallbacks, got %+v", result.Fallbacks)
+	}
+	chain := result.GetModelChain()
+	if len(chain) != 1 {
+		t.Errorf("expected 1-element chain, got %d", len(chain))
+	}
+}

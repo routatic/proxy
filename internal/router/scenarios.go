@@ -17,6 +17,7 @@ const (
 	ScenarioComplex     Scenario = "complex"
 	ScenarioLongContext Scenario = "long_context"
 	ScenarioFast        Scenario = "fast"
+	ScenarioOverride    Scenario = "override"
 )
 
 // ScenarioResult contains the detected scenario and token count.

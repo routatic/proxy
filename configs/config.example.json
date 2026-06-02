@@ -93,9 +93,26 @@
     ]
   },
 
+  "model_overrides": {
+    "claude-sonnet-4.5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4.5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  },
+
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
+    "timeout_ms": 300000
+  },
+
+  "opencode_zen": {
+    "base_url": "https://opencode.ai/zen/v1/chat/completions",
+    "anthropic_base_url": "https://opencode.ai/zen/v1/messages",
+    "responses_base_url": "https://opencode.ai/zen/v1/responses",
+    "gemini_base_url": "https://opencode.ai/zen/v1/models",
     "timeout_ms": 300000
   },
 

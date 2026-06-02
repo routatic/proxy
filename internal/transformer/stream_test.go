@@ -634,8 +634,8 @@ func TestProxyStream_SingleToolCall(t *testing.T) {
 	if events[5].Type != "message_delta" {
 		t.Errorf("event[5].Type = %q, want message_delta", events[5].Type)
 	}
-	if events[5].Delta == nil || events[5].Delta.StopReason != "end_turn" {
-		t.Errorf("event[5].Delta.StopReason = %q, want end_turn", events[5].Delta.StopReason)
+	if events[5].Delta == nil || events[5].Delta.StopReason != "tool_use" {
+		t.Errorf("event[5].Delta.StopReason = %q, want tool_use", events[5].Delta.StopReason)
 	}
 	if events[6].Type != "message_stop" {
 		t.Errorf("event[6].Type = %q, want message_stop", events[6].Type)
@@ -773,14 +773,297 @@ func TestProxyStream_MixedTextAndToolCall(t *testing.T) {
 	}
 
 	// Verify tool_use block at index 1
-	if events[3].Type != "content_block_start" || events[3].ContentBlock == nil || events[3].ContentBlock.Type != "tool_use" {
-		t.Errorf("event[3] = %+v, want content_block_start(tool_use)", events[3])
+	if events[4].Type != "content_block_start" || events[4].ContentBlock == nil || events[4].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[4] = %+v, want content_block_start(tool_use)", events[4])
 	}
-	if *events[3].Index != 1 {
-		t.Errorf("tool start index = %d, want 1", *events[3].Index)
+	if *events[4].Index != 1 {
+		t.Errorf("tool start index = %d, want 1", *events[4].Index)
 	}
-	if events[3].ContentBlock.Name != "get_data" {
-		t.Errorf("tool name = %q, want get_data", events[3].ContentBlock.Name)
+	if events[4].ContentBlock.Name != "get_data" {
+		t.Errorf("tool name = %q, want get_data", events[4].ContentBlock.Name)
+	}
+
+	var stopIndices []int
+	for _, ev := range events {
+		if ev.Type == "content_block_stop" && ev.Index != nil {
+			stopIndices = append(stopIndices, *ev.Index)
+		}
+	}
+	if len(stopIndices) != 2 {
+		t.Fatalf("expected text and tool blocks to be stopped exactly once, got %v", stopIndices)
+	}
+	if stopIndices[0] != 0 || stopIndices[1] != 1 {
+		t.Fatalf("stop indices = %v, want [0 1]", stopIndices)
+	}
+}
+
+// TestProxyStream_MixedReasoningAndToolCall verifies that a reasoning block is
+// closed before the stream starts a tool_use block.
+func TestProxyStream_MixedReasoningAndToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		fmt.Sprintf(`{"choices":[{"delta":%s}]}`, mustJSON(t, types.ChatMessage{ReasoningContent: strPtr("Need a tool.")})),
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_x","type":"function","function":{"name":"get_data","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"id\":1}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	if events[1].Type != "content_block_start" || events[1].ContentBlock == nil || events[1].ContentBlock.Type != "thinking" {
+		t.Errorf("event[1] = %+v, want content_block_start(thinking)", events[1])
+	}
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 0 {
+		t.Errorf("event[3] = %+v, want content_block_stop(index=0)", events[3])
+	}
+	if events[4].Type != "content_block_start" || events[4].ContentBlock == nil || events[4].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[4] = %+v, want content_block_start(tool_use)", events[4])
+	}
+
+	var stopIndices []int
+	for _, ev := range events {
+		if ev.Type == "content_block_stop" && ev.Index != nil {
+			stopIndices = append(stopIndices, *ev.Index)
+		}
+	}
+	if len(stopIndices) != 2 {
+		t.Fatalf("expected reasoning and tool blocks to be stopped exactly once, got %v", stopIndices)
+	}
+	if stopIndices[0] != 0 || stopIndices[1] != 1 {
+		t.Fatalf("stop indices = %v, want [0 1]", stopIndices)
+	}
+}
+
+// TestProxyStream_ToolCallFinishReasonFastPath verifies that when a tool call
+// finish reason arrives in a chunk matching the fast path, the stop reason
+// is correctly set to "tool_use".
+func TestProxyStream_ToolCallFinishReasonFastPath(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_xyz","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Expected events: message_start, content_block_start, content_block_stop, message_delta, message_stop = 5
+	if len(events) != 5 {
+		t.Fatalf("expected 5 events, got %d: %+v", len(events), events)
+	}
+
+	// Verify message_delta has StopReason set to tool_use
+	msgDelta := events[3]
+	if msgDelta.Type != "message_delta" {
+		t.Errorf("expected event[3] to be message_delta, got %q", msgDelta.Type)
+	}
+	if msgDelta.Delta == nil || msgDelta.Delta.StopReason != "tool_use" {
+		t.Errorf("stop reason = %q, want tool_use", msgDelta.Delta.StopReason)
+	}
+}
+
+// TestProxyStream_ContentAndFinishReasonInSameChunk verifies that when a chunk
+// contains both a text content delta and a finish reason, both are handled.
+func TestProxyStream_ContentAndFinishReasonInSameChunk(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"content":"Hello"},"finish_reason":"stop"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Expected events:
+	// 0: message_start
+	// 1: content_block_start (index 0, type text)
+	// 2: content_block_delta (index 0, text "Hello")
+	// 3: content_block_stop (index 0)
+	// 4: message_delta (stop_reason: end_turn)
+	// 5: message_stop
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].Type != "content_block_start" || events[1].ContentBlock == nil || events[1].ContentBlock.Type != "text" {
+		t.Errorf("event[1] = %+v, want content_block_start(text)", events[1])
+	}
+	if events[2].Type != "content_block_delta" || events[2].Delta == nil || events[2].Delta.Text != "Hello" {
+		t.Errorf("event[2] = %+v, want content_block_delta(Hello)", events[2])
+	}
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 0 {
+		t.Errorf("event[3] = %+v, want content_block_stop(0)", events[3])
+	}
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "end_turn" {
+		t.Errorf("event[4] = %+v, want message_delta(end_turn)", events[4])
+	}
+}
+
+// TestProxyStream_ToolCallAndFinishReasonInSameChunk verifies that when a chunk
+// contains both a tool call arguments delta and a finish reason, both are handled.
+func TestProxyStream_ToolCallAndFinishReasonInSameChunk(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_xyz","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"loc\":\"Beijing\"}"}}]},"finish_reason":"tool_calls"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// Expected events:
+	// 0: message_start
+	// 1: content_block_start (index 1, type tool_use)
+	// 2: content_block_delta (index 1, partial_json "{\"loc\":\"Beijing\"}")
+	// 3: content_block_stop (index 1)
+	// 4: message_delta (stop_reason: tool_use)
+	// 5: message_stop
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].Type != "content_block_start" || events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[1] = %+v, want content_block_start(tool_use)", events[1])
+	}
+	if events[2].Type != "content_block_delta" || events[2].Delta == nil || events[2].Delta.PartialJSON != `{"loc":"Beijing"}` {
+		t.Errorf("event[2] = %+v, want content_block_delta", events[2])
+	}
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 1 {
+		t.Errorf("event[3] = %+v, want content_block_stop(1)", events[3])
+	}
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
+		t.Errorf("event[4] = %+v, want message_delta(tool_use)", events[4])
+	}
+}
+
+func TestProxyStream_NoUsageFallback(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"content":"Hello"}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	var messageDeltaEvent *types.MessageEvent
+	for _, event := range events {
+		if event.Type == "message_delta" {
+			messageDeltaEvent = &event
+			break
+		}
+	}
+
+	if messageDeltaEvent == nil {
+		t.Fatalf("expected message_delta event, got none: %+v", events)
+	}
+
+	if messageDeltaEvent.Usage == nil {
+		t.Fatal("expected message_delta event to have non-nil Usage, but it was nil")
+	}
+
+	if messageDeltaEvent.Usage.InputTokens != 0 || messageDeltaEvent.Usage.OutputTokens != 0 {
+		t.Errorf("Usage = %+v, want InputTokens: 0, OutputTokens: 0", messageDeltaEvent.Usage)
+	}
+}
+
+func TestProxyStream_NoFinishReasonFallback(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"content":"Hello"}}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	// Expected events:
+	// 0: message_start
+	// 1: content_block_start
+	// 2: content_block_delta
+	// 3: content_block_stop
+	// 4: message_delta (fallback stop_reason: end_turn)
+	// 5: message_stop
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "end_turn" {
+		t.Errorf("event[4] = %+v, want message_delta(end_turn)", events[4])
+	}
+}
+
+// TestProxyStream_EOFFallbackStopReasonToolUse verifies that when the stream
+// ends mid-tool-call (no finish_reason), the EOF fallback sets stop_reason
+// to "tool_use" rather than "end_turn".
+func TestProxyStream_EOFFallbackStopReasonToolUse(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_abc","type":"function","function":{"name":"read_file","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"/tmp/test\"}"}}]}}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	var msgDelta *types.MessageEvent
+	for i := range events {
+		if events[i].Type == "message_delta" {
+			msgDelta = &events[i]
+			break
+		}
+	}
+	if msgDelta == nil {
+		t.Fatalf("expected message_delta event, got none: %+v", events)
+	}
+	if msgDelta.Delta == nil || msgDelta.Delta.StopReason != "tool_use" {
+		t.Errorf("stop_reason = %q, want tool_use (stream ended mid-tool-call)", msgDelta.Delta.StopReason)
 	}
 }
 
