@@ -177,25 +177,11 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		tokenCount = 0
 	}
 
-	// Route to appropriate model.
-	var routeResult router.RouteResult
-	var isOverride bool
-
-	// Check model_overrides first
-	if anthropicReq.Model != "" {
-		if overrideResult, ok := h.modelRouter.RouteWithOverride(anthropicReq.Model); ok {
-			routeResult = overrideResult
-			isOverride = true
-		}
-	}
-
-	if !isOverride {
-		var err error
-		routeResult, err = h.routeOnce(routerMessages, tokenCount, anthropicReq.Model, isStreaming)
-		if err != nil {
-			h.sendError(w, http.StatusInternalServerError, "routing failed", err)
-			return
-		}
+	// Route to appropriate model and build fallback chain.
+	modelChain, routeResult, err := h.buildModelChain(anthropicReq.Model, routerMessages, tokenCount, isStreaming)
+	if err != nil {
+		h.sendError(w, http.StatusInternalServerError, "routing failed", err)
+		return
 	}
 
 	h.logger.Info("routing request",
@@ -205,17 +191,6 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		"tokens", tokenCount,
 	)
 
-	// Build fallback chain.
-	modelChain := routeResult.GetModelChain()
-
-	if isOverride {
-		// Append scenario fallback chain as safety net (deduplicated by ModelID).
-		scenarioResult, err := h.routeOnce(routerMessages, tokenCount, "", isStreaming)
-		if err == nil {
-			modelChain = appendUniqueModels(modelChain, scenarioResult.GetModelChain())
-		}
-	}
-
 	if isStreaming {
 		// Streaming: use ProxyStream for real-time SSE transformation
 		h.handleStreaming(w, r, &anthropicReq, modelChain, rawBody)
@@ -223,6 +198,40 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		// Non-streaming: execute with fallback and return full response
 		h.handleNonStreaming(w, r, &anthropicReq, modelChain, rawBody)
 	}
+}
+
+// buildModelChain resolves the request to a model chain (primary + fallbacks),
+// honoring model_overrides (with a deduplicated scenario safety-net) and
+// respecting the streaming-scenario-routing toggle.
+//
+// Precedence:
+//  1. If requestedModel matches an entry in model_overrides, use that as the
+//     primary and append the scenario chain as a deduplicated safety net.
+//  2. Otherwise, fall through to scenario-based routing via routeOnce.
+func (h *MessagesHandler) buildModelChain(
+	requestedModel string,
+	routerMessages []router.MessageContent,
+	tokenCount int,
+	isStreaming bool,
+) ([]config.ModelConfig, router.RouteResult, error) {
+	if requestedModel != "" {
+		if overrideResult, ok := h.modelRouter.RouteWithOverride(requestedModel); ok {
+			scenarioResult, err := h.routeOnce(routerMessages, tokenCount, "", isStreaming)
+			if err != nil {
+				// Override is valid; surface the scenario routing error rather
+				// than silently dropping the safety net.
+				return overrideResult.GetModelChain(), overrideResult, err
+			}
+			chain := appendUniqueModels(overrideResult.GetModelChain(), scenarioResult.GetModelChain())
+			return chain, overrideResult, nil
+		}
+	}
+
+	result, err := h.routeOnce(routerMessages, tokenCount, requestedModel, isStreaming)
+	if err != nil {
+		return nil, result, err
+	}
+	return result.GetModelChain(), result, nil
 }
 
 // routeOnce performs scenario-based routing, honoring the streaming-scenario-routing

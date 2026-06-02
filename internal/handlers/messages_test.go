@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"log/slog"
 	"testing"
 
 	"oc-go-cc/internal/config"
+	"oc-go-cc/internal/router"
 )
 
 func TestAppendUniqueModels_DedupsByModelID(t *testing.T) {
@@ -92,4 +94,232 @@ func TestAppendUniqueModels_EmptyBase(t *testing.T) {
 	if len(got) != 2 {
 		t.Errorf("expected 2 models, got %d (got=%+v)", len(got), got)
 	}
+}
+
+// newTestMessagesHandler returns a MessagesHandler wired with a real ModelRouter
+// and a non-nil logger. Other dependencies (client, fallbackHandler, metrics)
+// are nil — these tests only exercise buildModelChain, which uses modelRouter.
+func newTestMessagesHandler(t *testing.T, cfg *config.Config) *MessagesHandler {
+	t.Helper()
+	return &MessagesHandler{
+		modelRouter: router.NewModelRouter(config.NewAtomicConfig(cfg, "/tmp/test-config.json")),
+		logger:      slog.Default(),
+	}
+}
+
+func chainIDs(chain []config.ModelConfig) []string {
+	out := make([]string, len(chain))
+	for i, m := range chain {
+		out[i] = m.ModelID
+	}
+	return out
+}
+
+func TestBuildModelChain_NoOverride_UsesScenarioRoute(t *testing.T) {
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {
+				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "qwen3.6-plus"},
+			},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	chain, result, err := h.buildModelChain("", nil, 100, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"kimi-k2.6", "mimo-v2-pro", "qwen3.6-plus"}
+	if got := chainIDs(chain); !equalStrings(got, want) {
+		t.Errorf("chain = %v, want %v", got, want)
+	}
+	if result.Scenario != router.ScenarioDefault {
+		t.Errorf("scenario = %s, want %s", result.Scenario, router.ScenarioDefault)
+	}
+}
+
+func TestBuildModelChain_Override_AppendsScenarioChainDeduped(t *testing.T) {
+	// The override's primary overlaps with the default scenario's primary.
+	// The dedup logic must drop the duplicate.
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {
+				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "qwen3.6-plus"},
+			},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {
+				Provider:    "opencode-zen",
+				ModelID:     "kimi-k2.6",
+				Temperature: 0.3,
+				MaxTokens:   2048,
+			},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	chain, result, err := h.buildModelChain("kimi-k2.6", nil, 100, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Order: [override.primary=kimi-k2.6, scenario.primary=kimi-k2.6 (DROPPED), scenario.fallbacks...]
+	// Final chain: [kimi-k2.6, mimo-v2-pro, qwen3.6-plus]
+	want := []string{"kimi-k2.6", "mimo-v2-pro", "qwen3.6-plus"}
+	if got := chainIDs(chain); !equalStrings(got, want) {
+		t.Errorf("chain = %v, want %v (dedup must drop scenario.primary that overlaps override.primary)", got, want)
+	}
+
+	// Primary must come from the override (preserving the override's settings).
+	if result.Primary.Temperature != 0.3 {
+		t.Errorf("primary.Temperature = %f, want 0.3 (override settings must be preserved)", result.Primary.Temperature)
+	}
+	if result.Scenario != router.ScenarioOverride {
+		t.Errorf("scenario = %s, want %s", result.Scenario, router.ScenarioOverride)
+	}
+}
+
+func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
+	// Override primary does NOT overlap with the scenario chain.
+	// Result: override primary + override fallbacks + (scenario primary, dedup check, scenario fallbacks).
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {
+				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+			},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-sonnet-4.5": {
+				Provider: "opencode-zen",
+				ModelID:  "claude-sonnet-4.5",
+			},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	chain, result, err := h.buildModelChain("claude-sonnet-4.5", nil, 100, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"claude-sonnet-4.5", "kimi-k2.6", "mimo-v2-pro"}
+	if got := chainIDs(chain); !equalStrings(got, want) {
+		t.Errorf("chain = %v, want %v", got, want)
+	}
+	if result.Scenario != router.ScenarioOverride {
+		t.Errorf("scenario = %s, want %s", result.Scenario, router.ScenarioOverride)
+	}
+}
+
+func TestBuildModelChain_Override_NoMatchingFallbacksKey(t *testing.T) {
+	// Override has no entry in fallbacks[]. The chain should be the override
+	// primary alone, then the scenario chain appended.
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {
+				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+			},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-sonnet-4.5": {Provider: "opencode-zen", ModelID: "claude-sonnet-4.5"},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	chain, _, err := h.buildModelChain("claude-sonnet-4.5", nil, 100, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"claude-sonnet-4.5", "kimi-k2.6", "mimo-v2-pro"}
+	if got := chainIDs(chain); !equalStrings(got, want) {
+		t.Errorf("chain = %v, want %v", got, want)
+	}
+}
+
+func TestBuildModelChain_StreamingFlag_UsesStreamingRoute(t *testing.T) {
+	// With streaming + EnableStreamingScenarioRouting=false, the safety-net
+	// append should use the streaming route (RouteForStreaming), not Route.
+	cfg := &config.Config{
+		EnableStreamingScenarioRouting: false,
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+			"fast":    {Provider: "opencode-go", ModelID: "qwen3.6-plus"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{ModelID: "mimo-v2-pro"}},
+			"fast":    {{ModelID: "qwen3.5-plus"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-sonnet-4.5": {Provider: "opencode-zen", ModelID: "claude-sonnet-4.5"},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	// Non-streaming: scenario is default
+	_, resultNonStream, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, false)
+	if resultNonStream.Scenario != router.ScenarioOverride {
+		t.Errorf("non-streaming scenario = %s, want %s", resultNonStream.Scenario, router.ScenarioOverride)
+	}
+
+	// Streaming: override still wins, but the safety-net uses fast route.
+	chain, _, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, true)
+	want := []string{"claude-sonnet-4.5", "qwen3.6-plus", "qwen3.5-plus"}
+	if got := chainIDs(chain); !equalStrings(got, want) {
+		t.Errorf("streaming chain = %v, want %v (safety-net should use RouteForStreaming)", got, want)
+	}
+}
+
+func TestBuildModelChain_UnknownModel_FallsThroughToScenarioRoute(t *testing.T) {
+	// Requested model has no entry in model_overrides and not in models map,
+	// and respect_requested_model is false → scenario routing.
+	cfg := &config.Config{
+		RespectRequestedModel: false,
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{ModelID: "mimo-v2-pro"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"some-other-model": {Provider: "opencode-zen", ModelID: "some-other-model"},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	chain, result, err := h.buildModelChain("completely-unknown", nil, 100, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"kimi-k2.6", "mimo-v2-pro"}
+	if got := chainIDs(chain); !equalStrings(got, want) {
+		t.Errorf("chain = %v, want %v", got, want)
+	}
+	if result.Scenario == router.ScenarioOverride {
+		t.Errorf("scenario should not be override, got %s", result.Scenario)
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

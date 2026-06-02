@@ -64,6 +64,83 @@ func TestLoadJSON(t *testing.T) {
 	}
 }
 
+func TestLoadJSON_WithModelOverrides(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "test-key",
+		"model_overrides": {
+			"claude-sonnet-4.5": {
+				"provider": "opencode-zen",
+				"model_id": "claude-sonnet-4.5",
+				"temperature": 0.5,
+				"max_tokens": 4096
+			}
+		}
+	}`
+
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("OC_GO_CC_CONFIG", cfgPath)
+	defer func() { _ = os.Unsetenv("OC_GO_CC_CONFIG") }()
+	oldAPIKey := os.Getenv("OC_GO_CC_API_KEY")
+	_ = os.Unsetenv("OC_GO_CC_API_KEY")
+	defer func() { _ = os.Setenv("OC_GO_CC_API_KEY", oldAPIKey) }()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	entry, ok := cfg.ModelOverrides["claude-sonnet-4.5"]
+	if !ok {
+		t.Fatal("expected model_overrides[\"claude-sonnet-4.5\"] to be present after Load()")
+	}
+	if entry.Provider != "opencode-zen" {
+		t.Errorf("Provider = %q, want %q", entry.Provider, "opencode-zen")
+	}
+	if entry.ModelID != "claude-sonnet-4.5" {
+		t.Errorf("ModelID = %q, want %q", entry.ModelID, "claude-sonnet-4.5")
+	}
+	if entry.Temperature != 0.5 {
+		t.Errorf("Temperature = %f, want 0.5", entry.Temperature)
+	}
+	if entry.MaxTokens != 4096 {
+		t.Errorf("MaxTokens = %d, want 4096", entry.MaxTokens)
+	}
+}
+
+func TestLoadJSON_ModelOverrides_InvalidEntryRejected(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "test-key",
+		"model_overrides": {
+			"bad-entry": {
+				"provider": "opencode-go"
+			}
+		}
+	}`
+
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("OC_GO_CC_CONFIG", cfgPath)
+	defer func() { _ = os.Unsetenv("OC_GO_CC_CONFIG") }()
+	oldAPIKey := os.Getenv("OC_GO_CC_API_KEY")
+	_ = os.Unsetenv("OC_GO_CC_API_KEY")
+	defer func() { _ = os.Setenv("OC_GO_CC_API_KEY", oldAPIKey) }()
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected Load() to fail validation for empty model_id, got nil")
+	}
+}
+
 func TestLoadMissingAPIKey(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
