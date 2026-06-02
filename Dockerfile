@@ -6,10 +6,10 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=docker" -o /app/oc-go-cc ./cmd/oc-go-cc
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata && \
+RUN apk add --no-cache ca-certificates tzdata wget && \
     addgroup -S appgroup && adduser -S appuser -G appgroup && \
-    mkdir -p /etc/oc-go-cc /home/appuser/.config/oc-go-cc && \
-    chown -R appuser:appgroup /etc/oc-go-cc /home/appuser
+    mkdir -p /etc/oc-go-cc && \
+    chown -R appuser:appgroup /etc/oc-go-cc
 
 COPY --from=builder /app/oc-go-cc /usr/local/bin/oc-go-cc
 COPY --from=builder /app/configs /tmp/configs
