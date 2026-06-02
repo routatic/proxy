@@ -158,13 +158,57 @@ func TestDefaults(t *testing.T) {
 		t.Errorf("Port = %d, want %d", cfg.Port, defaultPort)
 	}
 	if cfg.OpenCodeGo.BaseURL != defaultBaseURL {
-		t.Errorf("BaseURL = %q, want %q", cfg.OpenCodeGo.BaseURL, defaultBaseURL)
+		t.Errorf("OpenCodeGo.BaseURL = %q, want %q", cfg.OpenCodeGo.BaseURL, defaultBaseURL)
+	}
+	if cfg.OpenCodeGo.AnthropicBaseURL != defaultAnthropicBaseURL {
+		t.Errorf("OpenCodeGo.AnthropicBaseURL = %q, want %q", cfg.OpenCodeGo.AnthropicBaseURL, defaultAnthropicBaseURL)
 	}
 	if cfg.OpenCodeGo.TimeoutMs != defaultTimeoutMs {
-		t.Errorf("TimeoutMs = %d, want %d", cfg.OpenCodeGo.TimeoutMs, defaultTimeoutMs)
+		t.Errorf("OpenCodeGo.TimeoutMs = %d, want %d", cfg.OpenCodeGo.TimeoutMs, defaultTimeoutMs)
+	}
+	if cfg.OpenCodeZen.BaseURL != defaultZenBaseURL {
+		t.Errorf("OpenCodeZen.BaseURL = %q, want %q", cfg.OpenCodeZen.BaseURL, defaultZenBaseURL)
+	}
+	if cfg.OpenCodeZen.AnthropicBaseURL != defaultZenAnthropicBaseURL {
+		t.Errorf("OpenCodeZen.AnthropicBaseURL = %q, want %q", cfg.OpenCodeZen.AnthropicBaseURL, defaultZenAnthropicBaseURL)
+	}
+	if cfg.OpenCodeZen.ResponsesBaseURL != defaultZenResponsesBaseURL {
+		t.Errorf("OpenCodeZen.ResponsesBaseURL = %q, want %q", cfg.OpenCodeZen.ResponsesBaseURL, defaultZenResponsesBaseURL)
+	}
+	if cfg.OpenCodeZen.GeminiBaseURL != defaultZenGeminiBaseURL {
+		t.Errorf("OpenCodeZen.GeminiBaseURL = %q, want %q", cfg.OpenCodeZen.GeminiBaseURL, defaultZenGeminiBaseURL)
+	}
+	if cfg.OpenCodeZen.TimeoutMs != defaultTimeoutMs {
+		t.Errorf("OpenCodeZen.TimeoutMs = %d, want %d", cfg.OpenCodeZen.TimeoutMs, defaultTimeoutMs)
 	}
 	if cfg.Logging.Level != defaultLogLevel {
 		t.Errorf("LogLevel = %q, want %q", cfg.Logging.Level, defaultLogLevel)
+	}
+}
+
+func TestZenEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{"api_key": "test-key"}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("OC_GO_CC_CONFIG", cfgPath)
+	_ = os.Setenv("OC_GO_CC_OPENCODE_ZEN_URL", "https://custom-zen.url/v1/chat/completions")
+	defer func() {
+		_ = os.Unsetenv("OC_GO_CC_CONFIG")
+		_ = os.Unsetenv("OC_GO_CC_OPENCODE_ZEN_URL")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.OpenCodeZen.BaseURL != "https://custom-zen.url/v1/chat/completions" {
+		t.Errorf("OpenCodeZen.BaseURL = %q, want %q", cfg.OpenCodeZen.BaseURL, "https://custom-zen.url/v1/chat/completions")
 	}
 }
 

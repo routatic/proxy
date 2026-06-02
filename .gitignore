@@ -2,5 +2,6 @@ bin/
 *.exe
 *.pid
 .env
+configs/config.json
 .tmp/
 oc-go-cc

@@ -15,6 +15,7 @@ type Config struct {
 	Fallbacks                      map[string][]ModelConfig `json:"fallbacks"`
 	ModelOverrides                 map[string]ModelConfig   `json:"model_overrides"`
 	OpenCodeGo                     OpenCodeGoConfig         `json:"opencode_go"`
+	OpenCodeZen                    OpenCodeZenConfig        `json:"opencode_zen"`
 	Logging                        LoggingConfig            `json:"logging"`
 }
 
@@ -33,6 +34,15 @@ type ModelConfig struct {
 type OpenCodeGoConfig struct {
 	BaseURL          string `json:"base_url"`
 	AnthropicBaseURL string `json:"anthropic_base_url"`
+	TimeoutMs        int    `json:"timeout_ms"`
+}
+
+// OpenCodeZenConfig holds the upstream OpenCode Zen API settings.
+type OpenCodeZenConfig struct {
+	BaseURL          string `json:"base_url"`
+	AnthropicBaseURL string `json:"anthropic_base_url"`
+	ResponsesBaseURL string `json:"responses_base_url"`
+	GeminiBaseURL    string `json:"gemini_base_url"`
 	TimeoutMs        int    `json:"timeout_ms"`
 }
 

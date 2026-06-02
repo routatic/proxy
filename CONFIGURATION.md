@@ -68,6 +68,15 @@ Override with `OC_GO_CC_CONFIG` environment variable.
 
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
+    "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
+    "timeout_ms": 300000
+  },
+
+  "opencode_zen": {
+    "base_url": "https://opencode.ai/zen/v1/chat/completions",
+    "anthropic_base_url": "https://opencode.ai/zen/v1/messages",
+    "responses_base_url": "https://opencode.ai/zen/v1/responses",
+    "gemini_base_url": "https://opencode.ai/zen/v1/models",
     "timeout_ms": 300000
   },
 
@@ -77,6 +86,26 @@ Override with `OC_GO_CC_CONFIG` environment variable.
   }
 }
 ```
+
+## Providers
+
+oc-go-cc supports two providers for upstream API calls:
+
+### OpenCode Go (`opencode-go`)
+
+- Default provider for most models
+- Uses OpenAI Chat Completions and Anthropic Messages endpoints
+- Pricing: $5/month subscription + usage-based
+
+### OpenCode Zen (`opencode-zen`)
+
+- Curated, tested models with pay-as-you-go pricing
+- Supports additional endpoint formats:
+  - **Chat Completions** (`/v1/chat/completions`) — OpenAI-compatible models
+  - **Anthropic Messages** (`/v1/messages`) — Claude, Qwen models
+  - **OpenAI Responses** (`/v1/responses`) — GPT models
+  - **Google Gemini** (`/v1/models/{id}`) — Gemini models
+- Set `"provider": "opencode-zen"` in your model config to use Zen
 
 ## Environment Variables
 
@@ -89,6 +118,7 @@ Environment variables override config file values. Config values also support `$
 | `OC_GO_CC_HOST`         | Proxy listen host                           | `127.0.0.1`                                      |
 | `OC_GO_CC_PORT`         | Proxy listen port                           | `3456`                                           |
 | `OC_GO_CC_OPENCODE_URL` | OpenCode Go API endpoint                    | `https://opencode.ai/zen/go/v1/chat/completions` |
+| `OC_GO_CC_OPENCODE_ZEN_URL` | OpenCode Zen API endpoint              | `https://opencode.ai/zen/v1/chat/completions`    |
 | `OC_GO_CC_LOG_LEVEL`    | Log level: `debug`, `info`, `warn`, `error` | `info`                                           |
 
 ## Hot Reload

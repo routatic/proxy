@@ -592,3 +592,378 @@ func writeSSEEvent(w http.ResponseWriter, event types.MessageEvent) error {
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
+
+// ProxyResponsesStream takes an OpenAI Responses streaming response and writes Anthropic-format SSE.
+func (h *StreamHandler) ProxyResponsesStream(
+	w http.ResponseWriter,
+	responsesResp io.ReadCloser,
+	originalModel string,
+	clientCtx context.Context,
+) error {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("streaming not supported by response writer")
+	}
+
+	msgID := "msg_" + generateID()
+	msgStart := types.MessageEvent{
+		Type: "message_start",
+		Message: &types.MessageResponse{
+			ID:      msgID,
+			Type:    "message",
+			Role:    "assistant",
+			Content: []types.ContentBlock{},
+			Model:   originalModel,
+		},
+	}
+	if err := writeSSEEvent(w, msgStart); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+
+	contentIndex := 0
+	var lineBuf bytes.Buffer
+	contentStarted := false
+	stopSent := false
+	readBuf := make([]byte, 4096)
+
+	for {
+		select {
+		case <-clientCtx.Done():
+			return ErrClientDisconnected
+		default:
+		}
+
+		n, err := responsesResp.Read(readBuf)
+		if n > 0 {
+			for i := 0; i < n; i++ {
+				b := readBuf[i]
+				if b == '\n' {
+					line := lineBuf.String()
+					lineBuf.Reset()
+					if err := h.processResponsesSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+						return err
+					}
+				} else {
+					lineBuf.WriteByte(b)
+				}
+			}
+		}
+
+		if err == io.EOF {
+			if lineBuf.Len() > 0 {
+				line := lineBuf.String()
+				if err := h.processResponsesSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+					return err
+				}
+			}
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read stream: %w", err)
+		}
+	}
+
+	if contentStarted {
+		stopEvent := types.MessageEvent{
+			Type:  "content_block_stop",
+			Index: &contentIndex,
+		}
+		if err := writeSSEEvent(w, stopEvent); err != nil {
+			return ErrClientDisconnected
+		}
+	}
+
+	if !stopSent {
+		msgDelta := types.MessageEvent{
+			Type: "message_delta",
+			Delta: &types.Delta{
+				StopReason: "end_turn",
+			},
+			Usage: &types.Usage{InputTokens: 0, OutputTokens: 0},
+		}
+		if err := writeSSEEvent(w, msgDelta); err != nil {
+			return ErrClientDisconnected
+		}
+		stopSent = true
+	}
+
+	stopEvent := types.MessageEvent{
+		Type: "message_stop",
+	}
+	if err := writeSSEEvent(w, stopEvent); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+
+	return nil
+}
+
+func (h *StreamHandler) processResponsesSSELine(
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	line string,
+	contentIndex *int,
+	contentStarted *bool,
+	stopSent *bool,
+	originalModel string,
+) error {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "data: ") {
+		return nil
+	}
+
+	data := strings.TrimPrefix(line, "data: ")
+	if data == "" || data == "[DONE]" {
+		return nil
+	}
+
+	var chunk types.ResponsesChunk
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return nil
+	}
+
+	if chunk.Type == "response.output_text.delta" && chunk.Delta != "" {
+		if !*contentStarted {
+			*contentStarted = true
+			startEvent := types.MessageEvent{
+				Type:         "content_block_start",
+				Index:        contentIndex,
+				ContentBlock: &types.ContentBlock{Type: "text", Text: ""},
+			}
+			if err := writeSSEEvent(w, startEvent); err != nil {
+				return ErrClientDisconnected
+			}
+		}
+
+		delta := types.Delta{
+			Type: "text_delta",
+			Text: chunk.Delta,
+		}
+		event := types.MessageEvent{
+			Type:  "content_block_delta",
+			Index: contentIndex,
+			Delta: &delta,
+		}
+		if err := writeSSEEvent(w, event); err != nil {
+			return ErrClientDisconnected
+		}
+		flusher.Flush()
+	}
+
+	if chunk.Type == "response.completed" || chunk.Type == "response.done" {
+		if !*stopSent {
+			msgDelta := types.MessageEvent{
+				Type: "message_delta",
+				Delta: &types.Delta{
+					StopReason: "end_turn",
+				},
+				Usage: usageInfoToAnthropic(nil),
+			}
+			if err := writeSSEEvent(w, msgDelta); err != nil {
+				return ErrClientDisconnected
+			}
+			*stopSent = true
+			flusher.Flush()
+		}
+	}
+
+	return nil
+}
+
+// ProxyGeminiStream takes a Gemini streaming response and writes Anthropic-format SSE.
+func (h *StreamHandler) ProxyGeminiStream(
+	w http.ResponseWriter,
+	geminiResp io.ReadCloser,
+	originalModel string,
+	clientCtx context.Context,
+) error {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("streaming not supported by response writer")
+	}
+
+	msgID := "msg_" + generateID()
+	msgStart := types.MessageEvent{
+		Type: "message_start",
+		Message: &types.MessageResponse{
+			ID:      msgID,
+			Type:    "message",
+			Role:    "assistant",
+			Content: []types.ContentBlock{},
+			Model:   originalModel,
+		},
+	}
+	if err := writeSSEEvent(w, msgStart); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+
+	contentIndex := 0
+	var lineBuf bytes.Buffer
+	contentStarted := false
+	stopSent := false
+	readBuf := make([]byte, 4096)
+
+	for {
+		select {
+		case <-clientCtx.Done():
+			return ErrClientDisconnected
+		default:
+		}
+
+		n, err := geminiResp.Read(readBuf)
+		if n > 0 {
+			for i := 0; i < n; i++ {
+				b := readBuf[i]
+				if b == '\n' {
+					line := lineBuf.String()
+					lineBuf.Reset()
+					if err := h.processGeminiSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+						return err
+					}
+				} else {
+					lineBuf.WriteByte(b)
+				}
+			}
+		}
+
+		if err == io.EOF {
+			if lineBuf.Len() > 0 {
+				line := lineBuf.String()
+				if err := h.processGeminiSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+					return err
+				}
+			}
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read stream: %w", err)
+		}
+	}
+
+	if contentStarted {
+		stopEvent := types.MessageEvent{
+			Type:  "content_block_stop",
+			Index: &contentIndex,
+		}
+		if err := writeSSEEvent(w, stopEvent); err != nil {
+			return ErrClientDisconnected
+		}
+	}
+
+	if !stopSent {
+		msgDelta := types.MessageEvent{
+			Type: "message_delta",
+			Delta: &types.Delta{
+				StopReason: "end_turn",
+			},
+			Usage: &types.Usage{InputTokens: 0, OutputTokens: 0},
+		}
+		if err := writeSSEEvent(w, msgDelta); err != nil {
+			return ErrClientDisconnected
+		}
+		stopSent = true
+	}
+
+	stopEvent := types.MessageEvent{
+		Type: "message_stop",
+	}
+	if err := writeSSEEvent(w, stopEvent); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+
+	return nil
+}
+
+func (h *StreamHandler) processGeminiSSELine(
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	line string,
+	contentIndex *int,
+	contentStarted *bool,
+	stopSent *bool,
+	originalModel string,
+) error {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "data: ") {
+		return nil
+	}
+
+	data := strings.TrimPrefix(line, "data: ")
+	if data == "" {
+		return nil
+	}
+
+	var chunk types.GeminiStreamChunk
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return nil
+	}
+
+	if len(chunk.Candidates) > 0 {
+		candidate := chunk.Candidates[0]
+		for _, part := range candidate.Content.Parts {
+			if part.Text != "" {
+				if !*contentStarted {
+					*contentStarted = true
+					startEvent := types.MessageEvent{
+						Type:         "content_block_start",
+						Index:        contentIndex,
+						ContentBlock: &types.ContentBlock{Type: "text", Text: ""},
+					}
+					if err := writeSSEEvent(w, startEvent); err != nil {
+						return ErrClientDisconnected
+					}
+				}
+
+				delta := types.Delta{
+					Type: "text_delta",
+					Text: part.Text,
+				}
+				event := types.MessageEvent{
+					Type:  "content_block_delta",
+					Index: contentIndex,
+					Delta: &delta,
+				}
+				if err := writeSSEEvent(w, event); err != nil {
+					return ErrClientDisconnected
+				}
+				flusher.Flush()
+			}
+		}
+
+		if candidate.FinishReason != "" && !*stopSent {
+			if *contentStarted {
+				stopEvent := types.MessageEvent{
+					Type:  "content_block_stop",
+					Index: contentIndex,
+				}
+				if err := writeSSEEvent(w, stopEvent); err != nil {
+					return ErrClientDisconnected
+				}
+				*contentStarted = false
+			}
+
+			stopReason := "end_turn"
+			if candidate.FinishReason == "MAX_TOKENS" {
+				stopReason = "max_tokens"
+			}
+
+			msgDelta := types.MessageEvent{
+				Type: "message_delta",
+				Delta: &types.Delta{
+					StopReason: stopReason,
+				},
+				Usage: usageInfoToAnthropic(nil),
+			}
+			if err := writeSSEEvent(w, msgDelta); err != nil {
+				return ErrClientDisconnected
+			}
+			*stopSent = true
+			flusher.Flush()
+		}
+	}
+
+	return nil
+}
