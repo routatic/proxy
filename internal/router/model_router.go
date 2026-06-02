@@ -101,10 +101,10 @@ func (r *ModelRouter) IsStreamingScenarioRoutingEnabled() bool {
 // RouteWithOverride checks if the requested model matches a model_overrides entry.
 //
 // When matched, the returned RouteResult uses the override ModelConfig as the
-// primary, and fallbacks[<requestedModel>] (which may be nil/empty) as the
-// fallback chain. Unlike Route/RouteForStreaming, this method does NOT fall
-// back to fallbacks["default"] when the key is missing — the caller is expected
-// to merge a scenario-derived safety-net chain on top (see MessagesHandler).
+// primary. The fallback chain is fallbacks[<requestedModel>], falling back to
+// fallbacks["default"] when the override key has no entry (matching the
+// behavior of Route and RouteForStreaming). The caller (MessagesHandler) is
+// expected to merge a scenario-derived safety-net chain on top.
 //
 // Returns the override RouteResult and true if matched, or a zero value and
 // false if the requested model has no entry in model_overrides.
@@ -118,6 +118,9 @@ func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, boo
 		return RouteResult{}, false
 	}
 	fallbacks := cfg.Fallbacks[requestedModel]
+	if len(fallbacks) == 0 {
+		fallbacks = cfg.Fallbacks["default"]
+	}
 	return RouteResult{
 		Primary:   override,
 		Fallbacks: fallbacks,

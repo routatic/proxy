@@ -188,8 +188,9 @@ func TestBuildModelChain_Override_AppendsScenarioChainDeduped(t *testing.T) {
 }
 
 func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
-	// Override primary does NOT overlap with the scenario chain.
-	// Result: override primary + override fallbacks + (scenario primary, dedup check, scenario fallbacks).
+	// Override primary does NOT overlap with the scenario chain. With default
+	// fallbacks, the chain is: [override primary, default fallback, scenario
+	// primary, scenario fallback(s)] with dups removed.
 	cfg := &config.Config{
 		Models: map[string]config.ModelConfig{
 			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
@@ -212,7 +213,13 @@ func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{"claude-sonnet-4.5", "kimi-k2.6", "mimo-v2-pro"}
+	// Chain construction:
+	//   1. override primary       = claude-sonnet-4.5
+	//   2. default fallbacks      = [mimo-v2-pro]            (from fallbacks["default"])
+	//   3. scenario safety-net:
+	//        scenario primary      = kimi-k2.6                 (new)
+	//        scenario fallbacks    = [mimo-v2-pro]            (dup, dropped)
+	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "kimi-k2.6"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("chain = %v, want %v", got, want)
 	}
@@ -222,8 +229,9 @@ func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
 }
 
 func TestBuildModelChain_Override_NoMatchingFallbacksKey(t *testing.T) {
-	// Override has no entry in fallbacks[]. The chain should be the override
-	// primary alone, then the scenario chain appended.
+	// Override has no entry in fallbacks[]. RouteWithOverride should fall back
+	// to fallbacks["default"], then the scenario chain is appended as a
+	// deduplicated safety net.
 	cfg := &config.Config{
 		Models: map[string]config.ModelConfig{
 			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
@@ -243,9 +251,13 @@ func TestBuildModelChain_Override_NoMatchingFallbacksKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{"claude-sonnet-4.5", "kimi-k2.6", "mimo-v2-pro"}
+	// Expected: [override primary, default fallback (mimo-v2-pro), scenario primary (kimi-k2.6)]
+	// Note: mimo-v2-pro is in BOTH the default fallback and NOT in the scenario
+	// chain here, so dedup is exercised on the override primary not overlapping
+	// the scenario primary.
+	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "kimi-k2.6"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
-		t.Errorf("chain = %v, want %v", got, want)
+		t.Errorf("chain = %v, want %v (override -> default fallback -> scenario primary)", got, want)
 	}
 }
 
@@ -275,8 +287,10 @@ func TestBuildModelChain_StreamingFlag_UsesStreamingRoute(t *testing.T) {
 	}
 
 	// Streaming: override still wins, but the safety-net uses fast route.
+	// Chain: [claude-sonnet-4.5 (override), mimo-v2-pro (default fallback),
+	//         qwen3.6-plus (fast scenario primary), qwen3.5-plus (fast scenario fallback)]
 	chain, _, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, true)
-	want := []string{"claude-sonnet-4.5", "qwen3.6-plus", "qwen3.5-plus"}
+	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "qwen3.6-plus", "qwen3.5-plus"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("streaming chain = %v, want %v (safety-net should use RouteForStreaming)", got, want)
 	}
