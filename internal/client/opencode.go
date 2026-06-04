@@ -33,6 +33,11 @@ type OpenCodeClient struct {
 	// keyCooldown tracks per-key rate-limit cooldowns. Mutex guards the map.
 	keyMu       sync.Mutex
 	keyCooldown map[string]time.Time
+
+	// keyCB holds per-key circuit breakers (key-level upstream protection).
+	// Mirrors router.CircuitBreaker but scoped to individual API keys.
+	cbMu  sync.Mutex
+	keyCB map[string]*KeyCircuitBreaker
 }
 
 // NewOpenCodeClient creates a new OpenCode Go client.
@@ -59,6 +64,7 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 			Transport: transport,
 		},
 		keyCooldown: make(map[string]time.Time),
+		keyCB:       make(map[string]*KeyCircuitBreaker),
 	}
 }
 
@@ -76,8 +82,27 @@ func (c *OpenCodeClient) configuredKeys() []string {
 	return nil
 }
 
+// getKeyCircuitBreaker returns or creates a circuit breaker for the given key.
+func (c *OpenCodeClient) getKeyCircuitBreaker(key string) *KeyCircuitBreaker {
+	c.cbMu.Lock()
+	defer c.cbMu.Unlock()
+	cb, ok := c.keyCB[key]
+	if !ok {
+		cb = NewKeyCircuitBreaker(3, 30*time.Second)
+		c.keyCB[key] = cb
+	}
+	return cb
+}
+
+// isRetryableStatus returns true for HTTP codes worth retrying with another key.
+func isRetryableStatus(code int) bool {
+	return code == http.StatusInternalServerError ||
+		code == http.StatusBadGateway ||
+		code == http.StatusServiceUnavailable
+}
+
 // pickKey returns the next non-cold key from the rotation, or empty when all
-// keys are in cooldown. Round-robin across configured keys.
+// keys are in cooldown or have open circuit breakers.
 //
 // Lock-free for the index: atomic.Uint64 guarantees each concurrent caller
 // gets a unique starting position, eliminating mutex contention on the hot path.
@@ -110,6 +135,9 @@ func (c *OpenCodeClient) pickKey() string {
 		idx := (startIdx + attempt) % len(keys)
 		key := keys[idx]
 		if until, cold := c.keyCooldown[key]; !cold || now.After(until) {
+			if cb := c.getKeyCircuitBreaker(key); !cb.Allow() {
+				continue
+			}
 			return key
 		}
 	}
@@ -147,8 +175,10 @@ func (c *OpenCodeClient) baseURLFor(modelID string) string {
 
 // ChatCompletion sends a chat completion request to the OpenCode Go API.
 // On HTTP 429 (rate limit) it marks the current api_key cold and retries with
-// the next non-cold key. Returns the upstream 429 only after every configured
-// key has been tried.
+// the next non-cold key. On retryable non-429 failures (5xx, network) it
+// records a circuit-breaker failure and also retries. Returns the upstream
+// error only after every configured key has been tried or a non-retryable
+// error occurs.
 func (c *OpenCodeClient) ChatCompletion(
 	ctx context.Context,
 	modelID string,
@@ -174,11 +204,17 @@ func (c *OpenCodeClient) ChatCompletion(
 
 		resp, statusCode, attemptErr := c.doRequest(ctx, baseURL, key, body, req.Stream != nil && *req.Stream, false)
 		if attemptErr == nil {
+			c.getKeyCircuitBreaker(key).RecordSuccess()
 			return resp, nil
 		}
 		lastErr = attemptErr
 		if statusCode == http.StatusTooManyRequests {
 			c.markKeyCold(key)
+			continue
+		}
+		// Retryable infrastructure errors: record CB failure and try next key.
+		if statusCode == 0 || isRetryableStatus(statusCode) {
+			c.getKeyCircuitBreaker(key).RecordFailure()
 			continue
 		}
 		return nil, attemptErr
@@ -290,7 +326,7 @@ func (c *OpenCodeClient) GetStreamingBody(
 
 // SendAnthropicRequest sends a raw Anthropic-format request (for MiniMax models).
 // This skips the OpenAI transformation entirely. Honors the same per-key
-// rate-limit rotation as ChatCompletion.
+// rate-limit rotation and circuit-breaker logic as ChatCompletion.
 func (c *OpenCodeClient) SendAnthropicRequest(
 	ctx context.Context,
 	body []byte,
@@ -312,11 +348,16 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 
 		resp, statusCode, attemptErr := c.doRequest(ctx, baseURL, key, body, stream, true)
 		if attemptErr == nil {
+			c.getKeyCircuitBreaker(key).RecordSuccess()
 			return resp, nil
 		}
 		lastErr = attemptErr
 		if statusCode == http.StatusTooManyRequests {
 			c.markKeyCold(key)
+			continue
+		}
+		if statusCode == 0 || isRetryableStatus(statusCode) {
+			c.getKeyCircuitBreaker(key).RecordFailure()
 			continue
 		}
 		return nil, attemptErr
