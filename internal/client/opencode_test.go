@@ -74,7 +74,7 @@ func TestPickKeyRoundRobinsAcrossConfiguredKeys(t *testing.T) {
 func TestPickKeySkipsColdKeys(t *testing.T) {
 	c := newTestClient(&config.Config{APIKeys: []string{"k1", "k2"}})
 
-	c.markKeyCold("k1")
+	c.markKeyCold("k1", "")
 
 	for i := 0; i < 3; i++ {
 		if got := c.pickKey(); got != "k2" {
@@ -86,8 +86,8 @@ func TestPickKeySkipsColdKeys(t *testing.T) {
 func TestPickKeyReturnsEmptyWhenAllKeysCold(t *testing.T) {
 	c := newTestClient(&config.Config{APIKeys: []string{"k1", "k2"}})
 
-	c.markKeyCold("k1")
-	c.markKeyCold("k2")
+	c.markKeyCold("k1", "")
+	c.markKeyCold("k2", "")
 
 	if got := c.pickKey(); got != "" {
 		t.Fatalf("pickKey() = %q, want empty (all cold)", got)
@@ -115,10 +115,42 @@ func TestPickKeyReturnsEmptyWhenNoKeysConfigured(t *testing.T) {
 
 func TestMarkKeyColdIgnoresEmptyString(t *testing.T) {
 	c := newTestClient(&config.Config{APIKeys: []string{"k1"}})
-	c.markKeyCold("") // must not panic; must not pollute cooldown map
+	c.markKeyCold("", "") // must not panic; must not pollute cooldown map
 
 	if got := c.pickKey(); got != "k1" {
 		t.Fatalf("pickKey() = %q after no-op markKeyCold, want %q", got, "k1")
+	}
+}
+
+// TestMarkKeyColdUsesRetryAfter verifies that an explicit Retry-After value
+// is respected instead of the default cooldown.
+func TestMarkKeyColdUsesRetryAfter(t *testing.T) {
+	c := newTestClient(&config.Config{APIKeys: []string{"k1"}})
+
+	c.markKeyCold("k1", "2") // 2 seconds
+
+	if got := c.pickKey(); got != "" {
+		t.Fatalf("pickKey() = %q, want empty (k1 cold for 2s)", got)
+	}
+
+	// Fast-forward cooldown.
+	c.keyMu.Lock()
+	c.keyCooldown["k1"] = time.Now().Add(-1 * time.Second)
+	c.keyMu.Unlock()
+
+	if got := c.pickKey(); got != "k1" {
+		t.Fatalf("pickKey() = %q, want %q (k1 rehab after expiry)", got, "k1")
+	}
+}
+
+// TestMarkKeyColdIgnoresInvalidRetryAfter falls back to default on bad input.
+func TestMarkKeyColdIgnoresInvalidRetryAfter(t *testing.T) {
+	c := newTestClient(&config.Config{APIKeys: []string{"k1"}})
+	c.markKeyCold("k1", "not-a-number")
+
+	// Should still be cold (default 60s), not panicked.
+	if got := c.pickKey(); got != "" {
+		t.Fatalf("pickKey() = %q, want empty (fallback cooldown applied)", got)
 	}
 }
 
@@ -140,6 +172,64 @@ func TestPickKeySkipsCircuitBrokenKeys(t *testing.T) {
 		if got := c.pickKey(); got != "k2" {
 			t.Fatalf("attempt %d: pickKey() = %q, want %q (k1 circuit open)", i, got, "k2")
 		}
+	}
+}
+
+// TestKeyCircuitBreakerHalfOpen verifies the half-open probe behaviour.
+func TestKeyCircuitBreakerHalfOpen(t *testing.T) {
+	cb := NewKeyCircuitBreaker(3, 100*time.Millisecond)
+
+	// Open the circuit.
+	for i := 0; i < 3; i++ {
+		cb.RecordFailure()
+	}
+	if cb.State() != CircuitOpen {
+		t.Fatalf("expected state Open, got %d", cb.State())
+	}
+
+	// Should still block immediately.
+	if cb.Allow() {
+		t.Fatal("expected blocked while open")
+	}
+
+	// Wait for recovery timeout → transitions to HalfOpen.
+	time.Sleep(150 * time.Millisecond)
+	if !cb.Allow() {
+		t.Fatal("expected allowed in half-open (probe)")
+	}
+	if cb.State() != CircuitHalfOpen {
+		t.Fatalf("expected state HalfOpen, got %d", cb.State())
+	}
+
+	// Success in half-open should close circuit after enough probes.
+	cb.RecordSuccess()
+	cb.RecordSuccess()
+	cb.RecordSuccess()
+	if cb.State() != CircuitClosed {
+		t.Fatalf("expected state Closed after successes, got %d", cb.State())
+	}
+	if !cb.Allow() {
+		t.Fatal("expected allowed after closed")
+	}
+}
+
+// TestKeyCircuitBreakerHalfOpenFailureReopens verifies that a failure in
+// half-open immediately reopens the circuit.
+func TestKeyCircuitBreakerHalfOpenFailureReopens(t *testing.T) {
+	cb := NewKeyCircuitBreaker(3, 100*time.Millisecond)
+
+	for i := 0; i < 3; i++ {
+		cb.RecordFailure()
+	}
+
+	time.Sleep(150 * time.Millisecond)
+	if !cb.Allow() {
+		t.Fatal("expected allowed in half-open")
+	}
+
+	cb.RecordFailure()
+	if cb.State() != CircuitOpen {
+		t.Fatalf("expected state Open after half-open failure, got %d", cb.State())
 	}
 }
 

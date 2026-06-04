@@ -16,10 +16,11 @@ import (
 	"oc-go-cc/pkg/types"
 )
 
-// keyCooldownDuration is how long a key stays "cold" after a 429.
-// Picked to outlast the typical OpenCode Go per-minute rate window without
-// permanently shelving a key that recovers within the minute.
-const keyCooldownDuration = 60 * time.Second
+// defaultKeyCooldownDuration is the fallback cooldown when upstream does not
+// provide a Retry-After header. Picked to outlast the typical OpenCode Go
+// per-minute rate window without permanently shelving a key that recovers
+// within the minute.
+const defaultKeyCooldownDuration = 60 * time.Second
 
 // OpenCodeClient handles communication with OpenCode Go API.
 type OpenCodeClient struct {
@@ -144,14 +145,16 @@ func (c *OpenCodeClient) pickKey() string {
 	return ""
 }
 
-// markKeyCold parks a key for keyCooldownDuration so subsequent picks skip it.
-func (c *OpenCodeClient) markKeyCold(key string) {
+// markKeyCold parks a key for the given duration (parsed from upstream
+// Retry-After header, falling back to defaultKeyCooldownDuration).
+func (c *OpenCodeClient) markKeyCold(key string, rawRetryAfter string) {
 	if key == "" {
 		return
 	}
 	c.keyMu.Lock()
 	defer c.keyMu.Unlock()
-	c.keyCooldown[key] = time.Now().Add(keyCooldownDuration)
+	duration := parseRetryAfter(rawRetryAfter, defaultKeyCooldownDuration)
+	c.keyCooldown[key] = time.Now().Add(duration)
 }
 
 // IsAnthropicModel returns true if the model requires the Anthropic endpoint.
@@ -209,7 +212,11 @@ func (c *OpenCodeClient) ChatCompletion(
 		}
 		lastErr = attemptErr
 		if statusCode == http.StatusTooManyRequests {
-			c.markKeyCold(key)
+			retryAfter := ""
+			if ue, ok := types.AsUpstreamError(attemptErr); ok {
+				retryAfter = ue.RetryAfter
+			}
+			c.markKeyCold(key, retryAfter)
 			continue
 		}
 		// Retryable infrastructure errors: record CB failure and try next key.
@@ -353,7 +360,11 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 		}
 		lastErr = attemptErr
 		if statusCode == http.StatusTooManyRequests {
-			c.markKeyCold(key)
+			retryAfter := ""
+			if ue, ok := types.AsUpstreamError(attemptErr); ok {
+				retryAfter = ue.RetryAfter
+			}
+			c.markKeyCold(key, retryAfter)
 			continue
 		}
 		if statusCode == 0 || isRetryableStatus(statusCode) {
