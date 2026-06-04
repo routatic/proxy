@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -40,6 +41,7 @@ Configuration is stored at ~/.config/oc-go-cc/config.json`,
 	rootCmd.AddCommand(statusCmd())
 	rootCmd.AddCommand(initCmd())
 	rootCmd.AddCommand(validateCmd())
+	rootCmd.AddCommand(checkCmd())
 	rootCmd.AddCommand(modelsCmd())
 	rootCmd.AddCommand(autostartCmd())
 
@@ -269,6 +271,81 @@ func validateCmd() *cobra.Command {
 			fmt.Printf("  Base URL: %s\n", cfg.OpenCodeGo.BaseURL)
 			fmt.Printf("  Models configured: %d\n", len(cfg.Models))
 			fmt.Printf("  Fallback chains: %d\n", len(cfg.Fallbacks))
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file")
+	return cmd
+}
+
+// checkCmd returns the command to check Claude Code environment conflicts.
+func checkCmd() *cobra.Command {
+	var configPath string
+
+	cmd := &cobra.Command{
+		Use:          "check",
+		Short:        "Check Claude Code env conflicts",
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if configPath != "" {
+				_ = os.Setenv("OC_GO_CC_CONFIG", configPath)
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("invalid config: %w", err)
+			}
+
+			expectedURL := fmt.Sprintf("http://%s:%d", cfg.Host, cfg.Port)
+			conflicts := 0
+			checkEnv := func(source string, env map[string]string) {
+				if value, ok := env["ANTHROPIC_BASE_URL"]; ok && value != expectedURL {
+					fmt.Printf("%s: ANTHROPIC_BASE_URL is %q, expected %q\n", source, value, expectedURL)
+					conflicts++
+				}
+				if _, ok := env["ANTHROPIC_API_KEY"]; ok {
+					fmt.Printf("%s: ANTHROPIC_API_KEY is set\n", source)
+					conflicts++
+				}
+			}
+
+			env := map[string]string{}
+			if value, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
+				env["ANTHROPIC_BASE_URL"] = value
+			}
+			if _, ok := os.LookupEnv("ANTHROPIC_API_KEY"); ok {
+				env["ANTHROPIC_API_KEY"] = ""
+			}
+			checkEnv("environment", env)
+
+			home, _ := os.UserHomeDir()
+			for _, path := range []string{
+				filepath.Join(home, ".claude", "settings.json"),
+				filepath.Join(home, ".claude.json"),
+			} {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						fmt.Printf("%s: %v\n", path, err)
+					}
+					continue
+				}
+
+				var settings struct {
+					Env map[string]string `json:"env"`
+				}
+				if err := json.Unmarshal(data, &settings); err != nil {
+					fmt.Printf("%s: %v\n", path, err)
+					continue
+				}
+				checkEnv(path, settings.Env)
+			}
+
+			if conflicts > 0 {
+				return fmt.Errorf("found %d Claude Code env conflict(s)", conflicts)
+			}
+			fmt.Println("No Claude Code env conflicts found.")
 			return nil
 		},
 	}
