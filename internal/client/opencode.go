@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"oc-go-cc/internal/config"
@@ -25,11 +26,13 @@ type OpenCodeClient struct {
 	atomic     *config.AtomicConfig
 	httpClient *http.Client
 
-	// keyState rotates across the configured api_keys and tracks per-key
-	// cooldowns. Mutex guards both fields. nextIdx is round-robin pointer.
+	// keyNextIdx is a lock-free round-robin counter (atomic.Uint64).
+	// It is incremented once per pickKey call regardless of success.
+	keyNextIdx atomic.Uint64
+
+	// keyCooldown tracks per-key rate-limit cooldowns. Mutex guards the map.
 	keyMu       sync.Mutex
 	keyCooldown map[string]time.Time
-	keyNextIdx  int
 }
 
 // NewOpenCodeClient creates a new OpenCode Go client.
@@ -75,21 +78,38 @@ func (c *OpenCodeClient) configuredKeys() []string {
 
 // pickKey returns the next non-cold key from the rotation, or empty when all
 // keys are in cooldown. Round-robin across configured keys.
+//
+// Lock-free for the index: atomic.Uint64 guarantees each concurrent caller
+// gets a unique starting position, eliminating mutex contention on the hot path.
+// The mutex is held only while inspecting / mutating the cooldown map.
 func (c *OpenCodeClient) pickKey() string {
 	keys := c.configuredKeys()
 	if len(keys) == 0 {
 		return ""
 	}
 
+	// Atomically claim a round-robin slot (wrap-around safe on 64-bit).
+	startIdx := int(c.keyNextIdx.Add(1)-1) % len(keys)
+	if startIdx < 0 {
+		startIdx += len(keys)
+	}
+
 	c.keyMu.Lock()
 	defer c.keyMu.Unlock()
 
 	now := time.Now()
+
+	// GC expired entries while we have the lock.
+	for k, until := range c.keyCooldown {
+		if now.After(until) {
+			delete(c.keyCooldown, k)
+		}
+	}
+
 	for attempt := 0; attempt < len(keys); attempt++ {
-		idx := (c.keyNextIdx + attempt) % len(keys)
+		idx := (startIdx + attempt) % len(keys)
 		key := keys[idx]
 		if until, cold := c.keyCooldown[key]; !cold || now.After(until) {
-			c.keyNextIdx = (idx + 1) % len(keys)
 			return key
 		}
 	}

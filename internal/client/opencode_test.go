@@ -1,6 +1,7 @@
 package client
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -118,5 +119,57 @@ func TestMarkKeyColdIgnoresEmptyString(t *testing.T) {
 
 	if got := c.pickKey(); got != "k1" {
 		t.Fatalf("pickKey() = %q after no-op markKeyCold, want %q", got, "k1")
+	}
+}
+
+// TestPickKeyConcurrentUniqueIndices verifies that atomic.Uint64 eliminates
+// mutex contention on the hot path: many goroutines pick distinct keys.
+func TestPickKeyConcurrentUniqueIndices(t *testing.T) {
+	c := newTestClient(&config.Config{APIKeys: []string{"k1", "k2", "k3"}})
+	const n = 300
+	results := make([]string, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx] = c.pickKey()
+		}(i)
+	}
+	wg.Wait()
+
+	counts := map[string]int{}
+	for _, k := range results {
+		if k == "" {
+			t.Fatal("concurrent pickKey returned empty")
+		}
+		counts[k]++
+	}
+	// With 300 picks across 3 keys we expect ~100 each (±30 for variance).
+	for _, key := range []string{"k1", "k2", "k3"} {
+		if counts[key] < 70 || counts[key] > 130 {
+			t.Fatalf("key %q count = %d, expected ~100 (±30); distribution = %v", key, counts[key], counts)
+		}
+	}
+}
+
+// TestPickKeyGCSExpiredCooldowns verifies that expired entries are deleted
+// from the cooldown map during pickKey, preventing unbounded growth.
+func TestPickKeyGCSExpiredCooldowns(t *testing.T) {
+	c := newTestClient(&config.Config{APIKeys: []string{"k1", "k2"}})
+
+	c.keyMu.Lock()
+	c.keyCooldown["k1"] = time.Now().Add(-1 * time.Second) // expired
+	c.keyCooldown["k2"] = time.Now().Add(-1 * time.Second) // expired
+	c.keyMu.Unlock()
+
+	c.pickKey() // should GC both entries
+
+	c.keyMu.Lock()
+	mapLen := len(c.keyCooldown)
+	c.keyMu.Unlock()
+
+	if mapLen != 0 {
+		t.Fatalf("expected cooldown map GC'd to 0, got %d", mapLen)
 	}
 }
