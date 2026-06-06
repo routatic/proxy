@@ -412,7 +412,10 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock) (
 				})
 			}
 			parts = append(parts, imageParts...)
-			contentJSON, _ := json.Marshal(parts)
+			contentJSON, err := json.Marshal(parts)
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal multimodal content: %w", err)
+				}
 			result = append(result, types.ChatMessage{Role: "user", Content: contentJSON})
 		} else {
 			// Text-only message

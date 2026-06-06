@@ -20,6 +20,7 @@ type ImageURL struct {
 
 // TextContent is a helper to create a json.RawMessage for a plain-text content value.
 func TextContent(s string) json.RawMessage {
+	// json.Marshal(string) never fails for a valid Go string.
 	b, _ := json.Marshal(s)
 	return b
 }
@@ -60,7 +61,9 @@ type ChatMessage struct {
 
 // ContentText extracts the text content from the message, handling both
 // plain text strings and multimodal content arrays (where it concatenates
-// all text-type parts). Returns empty string if content is absent.
+// all text-type parts). Returns empty string if content is absent or unparseable. This is intentional
+// — ContentText is a best-effort text extractor for routing and display purposes, not a
+// strict parser. Failures are never fatal; callers should handle empty returns gracefully.
 func (m ChatMessage) ContentText() string {
 	if len(m.Content) == 0 {
 		return ""
