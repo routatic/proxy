@@ -6,6 +6,24 @@ import "encoding/json"
 // OpenAI API types for the Chat Completions API.
 // Reference: https://platform.openai.com/docs/api-reference/chat
 
+// ChatContentPart represents a single part in a multimodal message content array.
+type ChatContentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+}
+
+// ImageURL represents the URL source for an image in a multimodal message.
+type ImageURL struct {
+	URL string `json:"url"`
+}
+
+// TextContent is a helper to create a json.RawMessage for a plain-text content value.
+func TextContent(s string) json.RawMessage {
+	b, _ := json.Marshal(s)
+	return b
+}
+
 // ChatCompletionRequest represents a request to the OpenAI Chat Completions API.
 type ChatCompletionRequest struct {
 	Model           string          `json:"model"`
@@ -28,14 +46,40 @@ type StreamOptions struct {
 }
 
 // ChatMessage represents a single message in the conversation.
+// Content can be either a plain text string or an array of ChatContentPart
+// for multimodal messages containing images.
 type ChatMessage struct {
 	Role             string        `json:"role"`
-	Content          string        `json:"content"`
+	Content          json.RawMessage `json:"content"`
 	ReasoningContent *string       `json:"reasoning_content,omitempty"`
 	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
 	Name             string        `json:"name,omitempty"`
 	ToolCallID       string        `json:"tool_call_id,omitempty"`
 	CacheControl     *CacheControl `json:"cache_control,omitempty"`
+}
+
+// ContentText extracts the text content from the message, handling both
+// plain text strings and multimodal content arrays (where it concatenates
+// all text-type parts). Returns empty string if content is absent.
+func (m ChatMessage) ContentText() string {
+	if len(m.Content) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(m.Content, &s); err == nil {
+		return s
+	}
+	var parts []ChatContentPart
+	if err := json.Unmarshal(m.Content, &parts); err == nil {
+		var text string
+		for _, p := range parts {
+			if p.Type == "text" {
+				text += p.Text
+			}
+		}
+		return text
+	}
+	return ""
 }
 
 // ToolCall represents a function call made by the model.

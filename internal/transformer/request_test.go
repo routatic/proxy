@@ -24,7 +24,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 			Index: 0,
 			Message: types.ChatMessage{
 				Role:             "assistant",
-				Content:          "The answer is 42",
+				Content:          contentText("The answer is 42"),
 				ReasoningContent: &deepSeekReasoning,
 			},
 			FinishReason: "stop",
@@ -667,7 +667,7 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	if got, want := systemMsg.Role, "system"; got != want {
 		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
 	}
-	if got, want := systemMsg.Content, "You are helpful"; got != want {
+	if got, want := systemMsg.ContentText(), "You are helpful"; got != want {
 		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
 	}
 	if systemMsg.CacheControl == nil {
@@ -705,7 +705,7 @@ func TestTransformRequestSkipsCacheControlForKimiSystem(t *testing.T) {
 	if got, want := systemMsg.Role, "system"; got != want {
 		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
 	}
-	if got, want := systemMsg.Content, "system prompt"; got != want {
+	if got, want := systemMsg.ContentText(), "system prompt"; got != want {
 		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
 	}
 	if systemMsg.CacheControl != nil {
@@ -847,7 +847,7 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 	if got, want := openaiReq.Messages[2].Role, "user"; got != want {
 		t.Fatalf("Messages[2].Role = %q, want %q", got, want)
 	}
-	if got, want := openaiReq.Messages[2].Content, "now continue"; got != want {
+	if got, want := openaiReq.Messages[2].ContentText(), "now continue"; got != want {
 		t.Fatalf("Messages[2].Content = %q, want %q", got, want)
 	}
 }

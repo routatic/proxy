@@ -11,6 +11,12 @@ import (
 	"oc-go-cc/pkg/types"
 )
 
+// contentText is a convenience wrapper around types.TextContent for brevity
+// at call sites that construct ChatMessage values.
+func contentText(s string) json.RawMessage {
+	return types.TextContent(s)
+}
+
 // RequestTransformer converts Anthropic requests to OpenAI format.
 type RequestTransformer struct{}
 
@@ -305,7 +311,7 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 	if systemText != "" {
 		systemMsg := types.ChatMessage{
 			Role:    "system",
-			Content: systemText,
+			Content: contentText(systemText),
 		}
 		// Try to extract cache_control from system array blocks
 		// Kimi models reject cache_control, skip for those.
@@ -353,14 +359,18 @@ func (t *RequestTransformer) transformMessage(msg types.Message, modelID string,
 				text += b.Text
 			}
 		}
-		return []types.ChatMessage{{Role: msg.Role, Content: text}}, nil
+		return []types.ChatMessage{{Role: msg.Role, Content: contentText(text)}}, nil
 	}
 }
 
-// transformUserMessage converts a user message with potential tool_result blocks.
+// transformUserMessage converts a user message with potential tool_result and image blocks.
+// Image blocks are converted to OpenAI's multimodal content format (content array
+// with image_url parts) so that vision-capable models (Kimi K2.6, etc.) receive
+// the actual image data instead of a text placeholder.
 func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock) ([]types.ChatMessage, error) {
 	var result []types.ChatMessage
 	var textParts []string
+	var imageParts []types.ChatContentPart
 
 	for _, block := range blocks {
 		switch block.Type {
@@ -371,27 +381,46 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock) (
 			toolContent := block.TextContent()
 			result = append(result, types.ChatMessage{
 				Role:       "tool",
-				Content:    toolContent,
+				Content:    contentText(toolContent),
 				ToolCallID: block.GetToolID(),
 			})
 		case "image":
-			// Images not supported in text-only models, skip
-			textParts = append(textParts, "[Image]")
+			if block.Source != nil {
+				imageParts = append(imageParts, types.ChatContentPart{
+					Type: "image_url",
+					ImageURL: &types.ImageURL{
+						URL: fmt.Sprintf("data:%s;base64,%s", block.Source.MediaType, block.Source.Data),
+					},
+				})
+			}
 		}
 	}
 
-	// If there's text content, add it as a user message
-	if len(textParts) > 0 {
-		text := ""
-		for _, p := range textParts {
-			text += p
+	// If there's text or image content, add it as a user message.
+	// OpenAI-compatible tool calling requires tool responses to appear
+	// immediately after the assistant message that emitted tool_calls.
+	// If the Anthropic user turn also includes free-form text and/or images,
+	// emit it as a subsequent user message after all tool results.
+	if len(textParts) > 0 || len(imageParts) > 0 {
+		if len(imageParts) > 0 {
+			// Multimodal message: build content array with text + image_url parts
+			var parts []types.ChatContentPart
+			if len(textParts) > 0 {
+				parts = append(parts, types.ChatContentPart{
+					Type: "text",
+					Text: strings.Join(textParts, ""),
+				})
+			}
+			parts = append(parts, imageParts...)
+			contentJSON, _ := json.Marshal(parts)
+			result = append(result, types.ChatMessage{Role: "user", Content: contentJSON})
+		} else {
+			// Text-only message
+			result = append(result, types.ChatMessage{
+				Role:    "user",
+				Content: contentText(strings.Join(textParts, "")),
+			})
 		}
-		// OpenAI-compatible tool calling requires tool responses to appear
-		// immediately after the assistant message that emitted tool_calls.
-		// If the Anthropic user turn also includes free-form text, emit it as
-		// a subsequent user message after all tool results.
-		userMsg := types.ChatMessage{Role: "user", Content: text}
-		result = append(result, userMsg)
 	}
 
 	return result, nil
@@ -474,7 +503,7 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 
 	msg := types.ChatMessage{
 		Role:             "assistant",
-		Content:          content,
+		Content:          contentText(content),
 		ReasoningContent: reasoningContentPtr,
 		ToolCalls:        toolCalls,
 	}
