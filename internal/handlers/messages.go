@@ -72,12 +72,13 @@ func NewMessagesHandler(
 	fallbackHandler *router.FallbackHandler,
 	tokenCounter *token.Counter,
 	metrics *metrics.Metrics,
+	capInjection config.CapabilityInjectionConfig,
 ) *MessagesHandler {
 	return &MessagesHandler{
 		client:              openCodeClient,
 		modelRouter:         modelRouter,
 		fallbackHandler:     fallbackHandler,
-		requestTransformer:  transformer.NewRequestTransformer(),
+		requestTransformer:  transformer.NewRequestTransformer(capInjection),
 		responseTransformer: transformer.NewResponseTransformer(),
 		streamHandler:       transformer.NewStreamHandler(),
 		tokenCounter:        tokenCounter,

@@ -14,9 +14,18 @@ type Config struct {
 	Models                         map[string]ModelConfig   `json:"models"`
 	Fallbacks                      map[string][]ModelConfig `json:"fallbacks"`
 	ModelOverrides                 map[string]ModelConfig   `json:"model_overrides"`
+	CapabilityInjection            CapabilityInjectionConfig `json:"capability_injection"`
 	OpenCodeGo                     OpenCodeGoConfig         `json:"opencode_go"`
 	OpenCodeZen                    OpenCodeZenConfig        `json:"opencode_zen"`
 	Logging                        LoggingConfig            `json:"logging"`
+}
+
+// CapabilityInjectionConfig controls model capability injection into system prompts.
+type CapabilityInjectionConfig struct {
+	Enabled   bool              `json:"enabled"`
+	Prefix    string            `json:"prefix"`
+	Suffix    string            `json:"suffix"`
+	Overrides map[string]string `json:"overrides"`
 }
 
 // ModelConfig defines routing rules for a specific model.

@@ -12,11 +12,13 @@ import (
 )
 
 // RequestTransformer converts Anthropic requests to OpenAI format.
-type RequestTransformer struct{}
+type RequestTransformer struct {
+	capInjection config.CapabilityInjectionConfig
+}
 
 // NewRequestTransformer creates a new request transformer.
-func NewRequestTransformer() *RequestTransformer {
-	return &RequestTransformer{}
+func NewRequestTransformer(capInjection config.CapabilityInjectionConfig) *RequestTransformer {
+	return &RequestTransformer{capInjection: capInjection}
 }
 
 // isThinkingDisabled checks if the thinking JSON config explicitly sets type to "disabled".
@@ -302,6 +304,10 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 
 	// Add system message if present, preserving cache_control if available
 	systemText := anthropicReq.SystemText()
+
+	// Inject model capability declaration into system prompt when configured.
+	systemText = t.capInjection.InjectSystemPrompt(systemText, modelID)
+
 	if systemText != "" {
 		systemMsg := types.ChatMessage{
 			Role:    "system",
@@ -515,6 +521,10 @@ func (t *RequestTransformer) TransformToResponses(
 
 	// Add system message if present
 	systemText := anthropicReq.SystemText()
+
+	// Inject model capability declaration into system prompt when configured.
+	systemText = t.capInjection.InjectSystemPrompt(systemText, model.ModelID)
+
 	if systemText != "" {
 		content, _ := json.Marshal(systemText)
 		input = append(input, types.ResponsesInput{
@@ -608,6 +618,10 @@ func (t *RequestTransformer) TransformToGemini(
 	// Add system instruction via generation config (Gemini handles system separately)
 	// For now, prepend system as a user message if present
 	systemText := anthropicReq.SystemText()
+
+	// Inject model capability declaration into system prompt when configured.
+	systemText = t.capInjection.InjectSystemPrompt(systemText, model.ModelID)
+
 	if systemText != "" {
 		contents = append(contents, types.GeminiContent{
 			Role: "user",

@@ -58,6 +58,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 		fallbackHandler,
 		tokenCounter,
 		metrics,
+		cfg.CapabilityInjection,
 	)
 	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics)
 

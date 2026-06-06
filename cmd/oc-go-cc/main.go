@@ -386,6 +386,12 @@ func getDefaultConfig() string {
   "hot_reload": false,
   "enable_streaming_scenario_routing": false,
   "respect_requested_model": false,
+  "capability_injection": {
+    "enabled": true,
+    "prefix": "",
+    "suffix": "",
+    "overrides": {}
+  },
   "models": {
     "background": {
       "provider": "opencode-go",

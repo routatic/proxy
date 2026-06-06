@@ -69,7 +69,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 	}
 
 	// Step 4: Transform back to OpenAI request.
-	qt := NewRequestTransformer()
+	qt := NewRequestTransformer(config.CapabilityInjectionConfig{})
 	openaiReq, err := qt.TransformRequest(anthropicReq, config.ModelConfig{ModelID: "deepseek-v4-flash"})
 	if err != nil {
 		t.Fatalf("TransformRequest error: %v", err)
@@ -106,7 +106,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 }
 
 func TestTransformRequestPreservesThinkingAsReasoningContent(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 	stream := true
 
 	req := &types.MessageRequest{
@@ -158,7 +158,7 @@ func TestTransformRequestPreservesThinkingAsReasoningContent(t *testing.T) {
 }
 
 func TestTransformRequestIncludesStreamUsageOptions(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 	stream := true
 
 	req := &types.MessageRequest{
@@ -184,7 +184,7 @@ func TestTransformRequestIncludesStreamUsageOptions(t *testing.T) {
 }
 
 func TestTransformRequestOmitsStreamUsageOptionsWhenStreamingDisabled(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 	stream := false
 
 	req := &types.MessageRequest{
@@ -207,7 +207,7 @@ func TestTransformRequestOmitsStreamUsageOptionsWhenStreamingDisabled(t *testing
 }
 
 func TestTransformRequestIncludesEmptyReasoningContentForToolCalls(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -237,7 +237,7 @@ func TestTransformRequestIncludesEmptyReasoningContentForToolCalls(t *testing.T)
 }
 
 func TestTransformRequestSerializesAssistantToolCallContent(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -277,7 +277,7 @@ func TestTransformRequestSerializesAssistantToolCallContent(t *testing.T) {
 }
 
 func TestTransformRequestAppliesReasoningEffortAndThinking(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// When the conversation history already contains thinking blocks,
 	// reasoning_effort and thinking should be applied.
@@ -317,7 +317,7 @@ func TestTransformRequestAppliesReasoningEffortAndThinking(t *testing.T) {
 }
 
 func TestTransformRequestDeepSeekHistoryGuardOverridesExplicitThinking(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// DeepSeek rejects thinking mode when historical assistant messages lack
 	// reasoning_content, so the safety guard must win over explicit config.
@@ -348,7 +348,7 @@ func TestTransformRequestDeepSeekHistoryGuardOverridesExplicitThinking(t *testin
 }
 
 func TestTransformRequestFirstTurnEnablesThinkingWithReasoningEffort(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// First turn (no assistant messages in history), only reasoning_effort
 	// set in config → thinking should be enabled so DeepSeek can produce
@@ -381,7 +381,7 @@ func TestTransformRequestFirstTurnEnablesThinkingWithReasoningEffort(t *testing.
 }
 
 func TestTransformRequestRequestDisabledThinkingSkipsReasoningEffort(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -409,7 +409,7 @@ func TestTransformRequestRequestDisabledThinkingSkipsReasoningEffort(t *testing.
 }
 
 func TestTransformRequestThinkingDecisionMatrix(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	userOnly := []types.Message{
 		{Role: "user", Content: json.RawMessage(`"solve this carefully"`)},
@@ -541,7 +541,7 @@ func TestTransformRequestThinkingDecisionMatrix(t *testing.T) {
 }
 
 func TestTransformRequestFirstTurnReasoningEffortDefaultsToHigh(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// First turn with thinking in history (from previous response round-trip).
 	// No explicit ReasoningEffort → defaults to "high".
@@ -581,7 +581,7 @@ func TestTransformRequestFirstTurnReasoningEffortDefaultsToHigh(t *testing.T) {
 }
 
 func TestTransformRequestSafetyGuardWithReasoningEffortOnly(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// Only ReasoningEffort set (no explicit Thinking). History has an
 	// assistant message without thinking blocks + it's a DeepSeek model
@@ -614,7 +614,7 @@ func TestTransformRequestSafetyGuardWithReasoningEffortOnly(t *testing.T) {
 }
 
 func TestTransformRequestNoThinkingConfigNoHistory(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// No Thinking, no ReasoningEffort, no thinking history → nothing set.
 	req := &types.MessageRequest{
@@ -641,7 +641,7 @@ func TestTransformRequestNoThinkingConfigNoHistory(t *testing.T) {
 }
 
 func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -679,7 +679,7 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 }
 
 func TestTransformRequestSkipsCacheControlForKimiSystem(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -714,7 +714,7 @@ func TestTransformRequestSkipsCacheControlForKimiSystem(t *testing.T) {
 }
 
 func TestTransformRequestStripsCacheControlForNonKimiNonDeepSeek(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -748,7 +748,7 @@ func TestTransformRequestStripsCacheControlForNonKimiNonDeepSeek(t *testing.T) {
 }
 
 func TestTransformRequestStripsCacheControlForNonDeepSeek(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -773,7 +773,7 @@ func TestTransformRequestStripsCacheControlForNonDeepSeek(t *testing.T) {
 }
 
 func TestTransformRequestOmitsCacheControlWhenAbsent(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -803,7 +803,7 @@ func TestTransformRequestOmitsCacheControlWhenAbsent(t *testing.T) {
 }
 
 func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -853,7 +853,7 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 }
 
 func TestTransformRequestSkipsReasoningEffortWhenThinkingDisabled(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// When thinking is explicitly disabled in model config, reasoning_effort
 	// must NOT be set — DeepSeek returns 400 if both are present.
@@ -890,7 +890,7 @@ func TestTransformRequestSkipsReasoningEffortWhenThinkingDisabled(t *testing.T) 
 }
 
 func TestTransformRequestOmitsPlaceholderForDeepSeek(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -919,7 +919,7 @@ func TestTransformRequestOmitsPlaceholderForDeepSeek(t *testing.T) {
 }
 
 func TestTransformRequestDeepSeekPlaceholderWithThinkingHistory(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	// When thinking history exists, DeepSeek assistant messages with tool_calls
 	// but no thinking block MUST get a placeholder reasoning_content, because
@@ -986,7 +986,7 @@ func TestTransformRequestDeepSeekPlaceholderWithThinkingHistory(t *testing.T) {
 // reasoning_content on EVERY assistant message, not just tool_use ones, so
 // the proxy must add the placeholder for text-only turns too.
 func TestTransformRequestDeepSeekPlaceholderForTextOnlyAssistant(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -1075,7 +1075,7 @@ func TestTransformRequestDeepSeekPlaceholderForTextOnlyAssistant(t *testing.T) {
 // explicitly send `thinking: disabled` so upstream switches off thinking
 // mode and stops demanding reasoning_content.
 func TestTransformRequestForceDisablesThinkingForDeepSeekWithoutHistory(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -1121,7 +1121,7 @@ func TestTransformRequestForceDisablesThinkingForDeepSeekWithoutHistory(t *testi
 //     after the first reasoning response from the upstream-default mode)
 //     returns 400 on the next request.
 func TestTransformRequestExtractsThinkingFromToolUseBlock(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 
 	req := &types.MessageRequest{
 		Model:     "claude-test",
@@ -1193,7 +1193,7 @@ func mustJSONBytes(t *testing.T, v any) json.RawMessage {
 }
 
 func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
-	transformer := NewRequestTransformer()
+	transformer := NewRequestTransformer(config.CapabilityInjectionConfig{})
 	stream := true
 
 	req := &types.MessageRequest{
