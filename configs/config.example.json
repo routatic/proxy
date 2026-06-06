@@ -11,20 +11,23 @@
       "provider": "opencode-go",
       "model_id": "qwen3.5-plus",
       "temperature": 0.5,
-      "max_tokens": 2048
+      "max_tokens": 2048,
+      "vision": true
     },
     "default": {
       "provider": "opencode-go",
       "model_id": "kimi-k2.6",
       "temperature": 0.7,
-      "max_tokens": 4096
+      "max_tokens": 4096,
+      "vision": true
     },
     "long_context": {
       "provider": "opencode-go",
       "model_id": "minimax-m2.5",
       "temperature": 0.7,
       "max_tokens": 16384,
-      "context_threshold": 80000
+      "context_threshold": 80000,
+      "vision": true
     },
     "deepseek-v4-pro": {
       "provider": "opencode-go",
@@ -50,19 +53,22 @@
       "provider": "opencode-go",
       "model_id": "glm-5",
       "temperature": 0.7,
-      "max_tokens": 8192
+      "max_tokens": 8192,
+      "vision": true
     },
     "complex": {
       "provider": "opencode-go",
       "model_id": "glm-5.1",
       "temperature": 0.7,
-      "max_tokens": 4096
+      "max_tokens": 4096,
+      "vision": true
     },
     "fast": {
       "provider": "opencode-go",
       "model_id": "qwen3.6-plus",
       "temperature": 0.7,
-      "max_tokens": 4096
+      "max_tokens": 4096,
+      "vision": true
     }
   },
 
@@ -98,7 +104,8 @@
       "provider": "opencode-zen",
       "model_id": "claude-sonnet-4.5",
       "temperature": 0.7,
-      "max_tokens": 8192
+      "max_tokens": 8192,
+      "vision": true
     }
   },
 

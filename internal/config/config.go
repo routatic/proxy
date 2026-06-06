@@ -28,6 +28,7 @@ type ModelConfig struct {
 	ContextThreshold int             `json:"context_threshold"`
 	ReasoningEffort  string          `json:"reasoning_effort"`
 	Thinking         json.RawMessage `json:"thinking,omitempty"`
+	Vision           bool            `json:"vision"`
 }
 
 // OpenCodeGoConfig holds the upstream OpenCode Go API settings.
