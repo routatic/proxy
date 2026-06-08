@@ -578,6 +578,8 @@ func (t *RequestTransformer) TransformToResponses(
 			switch block.Type {
 			case "text":
 				textParts = append(textParts, block.Text)
+			case "image":
+				textParts = append(textParts, "[Image]")
 			case "tool_result":
 				// For Responses API, tool results are separate items
 				toolContent := block.TextContent()
@@ -678,6 +680,8 @@ func (t *RequestTransformer) TransformToGemini(
 			switch block.Type {
 			case "text":
 				textParts = append(textParts, block.Text)
+			case "image":
+				textParts = append(textParts, "[Image]")
 			case "tool_result":
 				toolContent := block.TextContent()
 				contents = append(contents, types.GeminiContent{
