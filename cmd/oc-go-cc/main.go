@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"oc-go-cc/internal/config"
@@ -294,52 +295,46 @@ func checkCmd() *cobra.Command {
 
 			cfg, err := config.Load()
 			if err != nil {
-				return fmt.Errorf("invalid config: %w", err)
+				cfg = &config.Config{Host: "127.0.0.1", Port: 3456}
+				fmt.Printf("Warning: could not load config (%v), using defaults for check\n", err)
 			}
 
-			expectedURL := fmt.Sprintf("http://%s:%d", cfg.Host, cfg.Port)
+			expectedURL := strings.TrimRight(fmt.Sprintf("http://%s:%d", cfg.Host, cfg.Port), "/")
 			conflicts := 0
-			checkEnv := func(source string, env map[string]string) {
-				if value, ok := env["ANTHROPIC_BASE_URL"]; ok && value != expectedURL {
-					fmt.Printf("%s: ANTHROPIC_BASE_URL is %q, expected %q\n", source, value, expectedURL)
-					conflicts++
-				}
-				if _, ok := env["ANTHROPIC_API_KEY"]; ok {
-					fmt.Printf("%s: ANTHROPIC_API_KEY is set\n", source)
-					conflicts++
-				}
-			}
 
 			env := map[string]string{}
-			if value, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
-				env["ANTHROPIC_BASE_URL"] = value
+			for _, key := range []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"} {
+				if value, ok := os.LookupEnv(key); ok {
+					env[key] = value
+				}
 			}
-			if _, ok := os.LookupEnv("ANTHROPIC_API_KEY"); ok {
-				env["ANTHROPIC_API_KEY"] = ""
-			}
-			checkEnv("environment", env)
+			conflicts += checkClaudeEnv("environment", env, expectedURL)
 
-			home, _ := os.UserHomeDir()
-			for _, path := range []string{
-				filepath.Join(home, ".claude", "settings.json"),
-				filepath.Join(home, ".claude.json"),
-			} {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					if !os.IsNotExist(err) {
-						fmt.Printf("%s: %v\n", path, err)
+			home, err := os.UserHomeDir()
+			if err != nil {
+				fmt.Printf("Warning: cannot determine home directory: %v\n", err)
+			} else {
+				for _, path := range []string{
+					filepath.Join(home, ".claude", "settings.json"),
+					filepath.Join(home, ".claude.json"),
+				} {
+					data, err := os.ReadFile(path)
+					if err != nil {
+						if !os.IsNotExist(err) {
+							fmt.Printf("%s: %v\n", path, err)
+						}
+						continue
 					}
-					continue
-				}
 
-				var settings struct {
-					Env map[string]string `json:"env"`
+					var settings struct {
+						Env map[string]string `json:"env"`
+					}
+					if err := json.Unmarshal(data, &settings); err != nil {
+						fmt.Printf("%s: %v\n", path, err)
+						continue
+					}
+					conflicts += checkClaudeEnv(path, settings.Env, expectedURL)
 				}
-				if err := json.Unmarshal(data, &settings); err != nil {
-					fmt.Printf("%s: %v\n", path, err)
-					continue
-				}
-				checkEnv(path, settings.Env)
 			}
 
 			if conflicts > 0 {
@@ -352,6 +347,32 @@ func checkCmd() *cobra.Command {
 
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file")
 	return cmd
+}
+
+// checkClaudeEnv checks a single environment map for conflicting Claude Code settings.
+// Returns the number of conflicts found.
+func checkClaudeEnv(source string, env map[string]string, expectedURL string) int {
+	conflicts := 0
+	if value, ok := env["ANTHROPIC_BASE_URL"]; ok {
+		normalized := strings.TrimRight(value, "/")
+		if normalized != expectedURL {
+			fmt.Printf("%s: ANTHROPIC_BASE_URL is %q, expected %q\n", source, value, expectedURL)
+			conflicts++
+		}
+	}
+	if _, ok := env["ANTHROPIC_API_KEY"]; ok {
+		fmt.Printf("%s: ANTHROPIC_API_KEY is set\n", source)
+		conflicts++
+	}
+	if value, ok := env["ANTHROPIC_AUTH_TOKEN"]; ok {
+		if value != "unused" {
+			fmt.Printf("%s: ANTHROPIC_AUTH_TOKEN is %q, expected \"unused\"\n", source, value)
+			conflicts++
+		}
+	} else {
+		fmt.Printf("%s: ANTHROPIC_AUTH_TOKEN is not set (recommended: \"unused\")\n", source)
+	}
+	return conflicts
 }
 
 // modelsCmd returns the command to list available models.
