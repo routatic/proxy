@@ -414,7 +414,7 @@ func TestProxyStream_ReasoningAndContentInSameChunk(t *testing.T) {
 	body := sseLines(
 		fmt.Sprintf(`{"choices":[{"delta":%s}]}`, mustJSON(t, types.ChatMessage{
 			ReasoningContent: strPtr("Thinking..."),
-			Content:          "Hello",
+			Content:          contentText("Hello"),
 		})),
 		`{"choices":[{"delta":{"content":" world"}}]}`,
 		`{"choices":[{"delta":{},"finish_reason":"stop"}]}`,

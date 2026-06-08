@@ -11,6 +11,12 @@ import (
 	"oc-go-cc/pkg/types"
 )
 
+// contentText is a convenience wrapper around types.TextContent for brevity
+// at call sites that construct ChatMessage values.
+func contentText(s string) json.RawMessage {
+	return types.TextContent(s)
+}
+
 // RequestTransformer converts Anthropic requests to OpenAI format.
 type RequestTransformer struct{}
 
@@ -60,7 +66,7 @@ func (t *RequestTransformer) TransformRequest(
 	model config.ModelConfig,
 ) (*types.ChatCompletionRequest, error) {
 	// Transform messages
-	messages, err := t.transformMessages(anthropicReq, model.ModelID)
+	messages, err := t.transformMessages(anthropicReq, model.ModelID, model.Vision)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform messages: %w", err)
 	}
@@ -295,7 +301,7 @@ func hasAssistantMessages(messages []types.Message) bool {
 }
 
 // transformMessages converts Anthropic messages to OpenAI format.
-func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageRequest, modelID string) ([]types.ChatMessage, error) {
+func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageRequest, modelID string, vision bool) ([]types.ChatMessage, error) {
 	hasThinking := HasThinkingBlocks(anthropicReq.Messages)
 
 	var result []types.ChatMessage
@@ -305,7 +311,7 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 	if systemText != "" {
 		systemMsg := types.ChatMessage{
 			Role:    "system",
-			Content: systemText,
+			Content: contentText(systemText),
 		}
 		// Try to extract cache_control from system array blocks
 		// Kimi models reject cache_control, skip for those.
@@ -325,7 +331,7 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 
 	// Transform each message
 	for _, msg := range anthropicReq.Messages {
-		openaiMsgs, err := t.transformMessage(msg, modelID, hasThinking)
+		openaiMsgs, err := t.transformMessage(msg, modelID, hasThinking, vision)
 		if err != nil {
 			return nil, err
 		}
@@ -337,12 +343,12 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 
 // transformMessage converts a single Anthropic message to one or more OpenAI messages.
 // Tool_use and tool_result require special handling to map to OpenAI's function calling format.
-func (t *RequestTransformer) transformMessage(msg types.Message, modelID string, hasThinkingInHistory bool) ([]types.ChatMessage, error) {
+func (t *RequestTransformer) transformMessage(msg types.Message, modelID string, hasThinkingInHistory bool, vision bool) ([]types.ChatMessage, error) {
 	blocks := msg.ContentBlocks()
 
 	switch msg.Role {
 	case "user":
-		return t.transformUserMessage(blocks)
+		return t.transformUserMessage(blocks, vision)
 	case "assistant":
 		return t.transformAssistantMessage(blocks, modelID, hasThinkingInHistory)
 	default:
@@ -353,14 +359,20 @@ func (t *RequestTransformer) transformMessage(msg types.Message, modelID string,
 				text += b.Text
 			}
 		}
-		return []types.ChatMessage{{Role: msg.Role, Content: text}}, nil
+		return []types.ChatMessage{{Role: msg.Role, Content: contentText(text)}}, nil
 	}
 }
 
-// transformUserMessage converts a user message with potential tool_result blocks.
-func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock) ([]types.ChatMessage, error) {
+// transformUserMessage converts a user message with potential tool_result and image blocks.
+// Image blocks are converted to OpenAI's multimodal content format (content array
+// with image_url parts) so that vision-capable models receive the actual image data.
+// For models without vision support, image blocks are replaced with a "[Image]" text
+// placeholder to prevent upstream 400 errors from unsupported image_url parts.
+func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, vision bool) ([]types.ChatMessage, error) {
 	var result []types.ChatMessage
 	var textParts []string
+	var imageParts []types.ChatContentPart
+	hasImage := false
 
 	for _, block := range blocks {
 		switch block.Type {
@@ -371,27 +383,61 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock) (
 			toolContent := block.TextContent()
 			result = append(result, types.ChatMessage{
 				Role:       "tool",
-				Content:    toolContent,
+				Content:    contentText(toolContent),
 				ToolCallID: block.GetToolID(),
 			})
 		case "image":
-			// Images not supported in text-only models, skip
-			textParts = append(textParts, "[Image]")
+			if block.Source != nil {
+				if vision {
+					imageParts = append(imageParts, types.ChatContentPart{
+						Type: "image_url",
+						ImageURL: &types.ImageURL{
+							URL: fmt.Sprintf("data:%s;base64,%s", block.Source.MediaType, block.Source.Data),
+						},
+					})
+				} else {
+					hasImage = true
+				}
+			}
 		}
 	}
 
-	// If there's text content, add it as a user message
-	if len(textParts) > 0 {
-		text := ""
-		for _, p := range textParts {
-			text += p
+	// If there's text or image content, add it as a user message.
+	// OpenAI-compatible tool calling requires tool responses to appear
+	// immediately after the assistant message that emitted tool_calls.
+	// If the Anthropic user turn also includes free-form text and/or images,
+	// emit it as a subsequent user message after all tool results.
+	if len(textParts) > 0 || len(imageParts) > 0 || hasImage {
+		if len(imageParts) > 0 {
+			// Multimodal message: build content array with text + image_url parts
+			var parts []types.ChatContentPart
+			if len(textParts) > 0 {
+				parts = append(parts, types.ChatContentPart{
+					Type: "text",
+					Text: strings.Join(textParts, ""),
+				})
+			}
+			parts = append(parts, imageParts...)
+			contentJSON, err := json.Marshal(parts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal multimodal content: %w", err)
+			}
+			result = append(result, types.ChatMessage{Role: "user", Content: contentJSON})
+		} else {
+			// Text-only message (possibly with image placeholder for non-vision models)
+			text := strings.Join(textParts, "")
+			if hasImage {
+				if text != "" {
+					text += "\n\n[Image]"
+				} else {
+					text = "[Image]"
+				}
+			}
+			result = append(result, types.ChatMessage{
+				Role:    "user",
+				Content: contentText(text),
+			})
 		}
-		// OpenAI-compatible tool calling requires tool responses to appear
-		// immediately after the assistant message that emitted tool_calls.
-		// If the Anthropic user turn also includes free-form text, emit it as
-		// a subsequent user message after all tool results.
-		userMsg := types.ChatMessage{Role: "user", Content: text}
-		result = append(result, userMsg)
 	}
 
 	return result, nil
@@ -474,7 +520,7 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 
 	msg := types.ChatMessage{
 		Role:             "assistant",
-		Content:          content,
+		Content:          contentText(content),
 		ReasoningContent: reasoningContentPtr,
 		ToolCalls:        toolCalls,
 	}
@@ -532,6 +578,8 @@ func (t *RequestTransformer) TransformToResponses(
 			switch block.Type {
 			case "text":
 				textParts = append(textParts, block.Text)
+			case "image":
+				textParts = append(textParts, "[Image]")
 			case "tool_result":
 				// For Responses API, tool results are separate items
 				toolContent := block.TextContent()
@@ -632,6 +680,8 @@ func (t *RequestTransformer) TransformToGemini(
 			switch block.Type {
 			case "text":
 				textParts = append(textParts, block.Text)
+			case "image":
+				textParts = append(textParts, "[Image]")
 			case "tool_result":
 				toolContent := block.TextContent()
 				contents = append(contents, types.GeminiContent{

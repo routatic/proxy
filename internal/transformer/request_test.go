@@ -3,6 +3,7 @@ package transformer
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"oc-go-cc/internal/config"
@@ -24,7 +25,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 			Index: 0,
 			Message: types.ChatMessage{
 				Role:             "assistant",
-				Content:          "The answer is 42",
+				Content:          contentText("The answer is 42"),
 				ReasoningContent: &deepSeekReasoning,
 			},
 			FinishReason: "stop",
@@ -667,7 +668,7 @@ func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	if got, want := systemMsg.Role, "system"; got != want {
 		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
 	}
-	if got, want := systemMsg.Content, "You are helpful"; got != want {
+	if got, want := systemMsg.ContentText(), "You are helpful"; got != want {
 		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
 	}
 	if systemMsg.CacheControl == nil {
@@ -705,7 +706,7 @@ func TestTransformRequestSkipsCacheControlForKimiSystem(t *testing.T) {
 	if got, want := systemMsg.Role, "system"; got != want {
 		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
 	}
-	if got, want := systemMsg.Content, "system prompt"; got != want {
+	if got, want := systemMsg.ContentText(), "system prompt"; got != want {
 		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
 	}
 	if systemMsg.CacheControl != nil {
@@ -847,7 +848,7 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 	if got, want := openaiReq.Messages[2].Role, "user"; got != want {
 		t.Fatalf("Messages[2].Role = %q, want %q", got, want)
 	}
-	if got, want := openaiReq.Messages[2].Content, "now continue"; got != want {
+	if got, want := openaiReq.Messages[2].ContentText(), "now continue"; got != want {
 		t.Fatalf("Messages[2].Content = %q, want %q", got, want)
 	}
 }
@@ -1190,6 +1191,133 @@ func mustJSONBytes(t *testing.T, v any) json.RawMessage {
 		t.Fatalf("marshal: %v", err)
 	}
 	return json.RawMessage(b)
+}
+
+func TestTransformRequestVisionModelPassesImageContent(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// User message with both text and an image
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"What's in this image?"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	// Vision-capable model: images should be passed as image_url content parts
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "kimi-k2.6",
+		Vision:  true,
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	body, err := json.Marshal(openaiReq.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if !bytes.Contains(body, []byte(`"type":"image_url"`)) {
+		t.Fatalf("vision model content missing image_url: %s", body)
+	}
+	if !bytes.Contains(body, []byte(`"data:image/png;base64,iVBORw0KGgo="`)) {
+		t.Fatalf("vision model content missing image data URL: %s", body)
+	}
+	if !bytes.Contains(body, []byte(`"What's in this image?"`)) {
+		t.Fatalf("vision model content missing text: %s", body)
+	}
+}
+
+func TestTransformRequestNonVisionModelStripsImages(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// User message with both text and an image
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"What's in this image?"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	// Non-vision model: images should be replaced with [Image] placeholder
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-pro",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	content := openaiReq.Messages[0].ContentText()
+	if !strings.Contains(content, "[Image]") {
+		t.Fatalf("non-vision model content missing [Image] placeholder: %q", content)
+	}
+	if !strings.Contains(content, "What's in this image?") {
+		t.Fatalf("non-vision model content missing original text: %q", content)
+	}
+	// Verify no image_url was sent
+	body, err := json.Marshal(openaiReq.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(body, []byte(`"type":"image_url"`)) {
+		t.Fatalf("non-vision model should not contain image_url: %s", body)
+	}
+}
+
+func TestTransformRequestNonVisionModelImageOnly(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// User message with only an image, no text
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	content := openaiReq.Messages[0].ContentText()
+	if got, want := content, "[Image]"; got != want {
+		t.Fatalf("ContentText() = %q, want %q", got, want)
+	}
 }
 
 func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
