@@ -50,13 +50,13 @@ type StreamOptions struct {
 // Content can be either a plain text string or an array of ChatContentPart
 // for multimodal messages containing images.
 type ChatMessage struct {
-	Role             string        `json:"role"`
+	Role             string          `json:"role"`
 	Content          json.RawMessage `json:"content"`
-	ReasoningContent *string       `json:"reasoning_content,omitempty"`
-	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
-	Name             string        `json:"name,omitempty"`
-	ToolCallID       string        `json:"tool_call_id,omitempty"`
-	CacheControl     *CacheControl `json:"cache_control,omitempty"`
+	ReasoningContent *string         `json:"reasoning_content,omitempty"`
+	ToolCalls        []ToolCall      `json:"tool_calls,omitempty"`
+	Name             string          `json:"name,omitempty"`
+	ToolCallID       string          `json:"tool_call_id,omitempty"`
+	CacheControl     *CacheControl   `json:"cache_control,omitempty"`
 }
 
 // ContentText extracts the text content from the message, handling both

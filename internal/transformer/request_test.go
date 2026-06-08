@@ -1320,7 +1320,7 @@ func TestTransformRequestNonVisionModelImageOnly(t *testing.T) {
 	}
 }
 
-	func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
+func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
 	transformer := NewRequestTransformer()
 	stream := true
 
