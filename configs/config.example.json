@@ -106,6 +106,30 @@
       "temperature": 0.7,
       "max_tokens": 8192,
       "vision": true
+    },
+    "deepseek-v4-flash-free": {
+      "provider": "opencode-zen",
+      "model_id": "deepseek-v4-flash-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "mimo-v2.5-free": {
+      "provider": "opencode-zen",
+      "model_id": "mimo-v2.5-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "nemotron-3-ultra-free": {
+      "provider": "opencode-zen",
+      "model_id": "nemotron-3-ultra-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "minimax-m3": {
+      "provider": "opencode-go",
+      "model_id": "minimax-m3",
+      "temperature": 0.7,
+      "max_tokens": 4096
     }
   },
 
