@@ -48,9 +48,24 @@ func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "qwen3.7-plus uses openai endpoint",
+			name:    "qwen3.5-plus uses anthropic endpoint",
+			modelID: "qwen3.5-plus",
+			want:    true,
+		},
+		{
+			name:    "qwen3.6-plus uses anthropic endpoint",
+			modelID: "qwen3.6-plus",
+			want:    true,
+		},
+		{
+			name:    "qwen3.7-plus uses anthropic endpoint",
 			modelID: "qwen3.7-plus",
-			want:    false,
+			want:    true,
+		},
+		{
+			name:    "qwen3.7-max uses anthropic endpoint",
+			modelID: "qwen3.7-max",
+			want:    true,
 		},
 	}
 
@@ -149,9 +164,19 @@ func TestClassifyEndpoint(t *testing.T) {
 			expected: EndpointAnthropic,
 		},
 		{
-			name:     "qwen3.7-plus uses chat completions endpoint",
+			name:     "qwen3.5-plus uses anthropic endpoint",
+			modelID:  "qwen3.5-plus",
+			expected: EndpointAnthropic,
+		},
+		{
+			name:     "qwen3.6-plus uses anthropic endpoint",
+			modelID:  "qwen3.6-plus",
+			expected: EndpointAnthropic,
+		},
+		{
+			name:     "qwen3.7-plus uses anthropic endpoint",
 			modelID:  "qwen3.7-plus",
-			expected: EndpointChatCompletions,
+			expected: EndpointAnthropic,
 		},
 		{
 			name:     "qwen3.7-max uses anthropic endpoint",
