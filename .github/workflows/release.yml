@@ -6,7 +6,15 @@ on:
 
 permissions:
   contents: write
-  packages: write
+permissions:
+  contents: write
+
+jobs:
+  ...
+  docker:
+    permissions:
+      contents: read
+      packages: write
 
 jobs:
   # ── Stage 1: Test & Build Validation ──────────────────────────────
@@ -253,7 +261,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ needs.release.outputs.tag }}
+          build-args: VERSION=${{ needs.release.outputs.tag | trimPrefix 'v' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
