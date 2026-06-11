@@ -6,15 +6,6 @@ on:
 
 permissions:
   contents: write
-permissions:
-  contents: write
-
-jobs:
-  ...
-  docker:
-    permissions:
-      contents: read
-      packages: write
 
 jobs:
   # ── Stage 1: Test & Build Validation ──────────────────────────────
@@ -229,6 +220,9 @@ jobs:
   docker:
     name: Publish Docker Image
     needs: release
+    permissions:
+      contents: read
+      packages: write
     if: github.repository == 'samueltuyizere/oc-go-cc'
     runs-on: ubuntu-latest
     steps:
