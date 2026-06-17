@@ -29,6 +29,10 @@ NC='\033[0m'
 
 cleanup() {
 	echo "=== Cleaning up ==="
+	if [ -n "${PROXY_PID:-}" ]; then
+		kill "${PROXY_PID}" 2>/dev/null || true
+		wait "${PROXY_PID}" 2>/dev/null || true
+	fi
 	./bin/oc-go-cc stop 2>/dev/null || true
 	sleep 1
 	rm -f ~/.config/oc-go-cc/oc-go-cc.pid
@@ -60,12 +64,22 @@ fi
 # --- Start proxy ---
 echo "=== Starting proxy on ${HOST}:${PORT} ==="
 cleanup
-./bin/oc-go-cc serve -b --port "$PORT" 2>&1
-sleep 2
+./bin/oc-go-cc serve -b --port "$PORT" > /tmp/oc-go-cc-e2e.log 2>&1 &
+PROXY_PID=$!
+echo "Server PID: ${PROXY_PID}"
 
-# Health check
-if ! curl -sf "${BASE_URL}/health" > /dev/null 2>&1; then
+# Wait for health check with timeout
+HEALTH_OK=false
+for i in $(seq 1 10); do
+	if curl -sf "${BASE_URL}/health" > /dev/null 2>&1; then
+		HEALTH_OK=true
+		break
+	fi
+	sleep 1
+done
+if [ "${HEALTH_OK}" != "true" ]; then
 	echo -e "${RED}Proxy failed to start${NC}"
+	cat /tmp/oc-go-cc-e2e.log 2>/dev/null || true
 	exit 1
 fi
 echo -e "${GREEN}Proxy is running${NC}"

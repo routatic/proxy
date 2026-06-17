@@ -384,6 +384,11 @@ func (h *MessagesHandler) handleStreaming(
 						}
 						if err == transformer.ErrStreamIdle {
 							h.logger.Warn("upstream anthropic stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
+							if rw.ssePayloadWritten {
+								h.sendStreamError(rw, "stream idle after SSE payload started")
+								h.metrics.RecordFailure()
+								return
+							}
 							continue
 						}
 						h.logger.Warn("anthropic streaming failed", "model", model.ModelID, "error", err)
@@ -405,6 +410,11 @@ func (h *MessagesHandler) handleStreaming(
 					}
 					if err == transformer.ErrStreamIdle {
 						h.logger.Warn("upstream responses stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
+						if rw.ssePayloadWritten {
+							h.sendStreamError(rw, "stream idle after SSE payload started")
+							h.metrics.RecordFailure()
+							return
+						}
 						continue
 					}
 					h.logger.Warn("responses streaming failed", "model", model.ModelID, "error", err)
@@ -425,6 +435,11 @@ func (h *MessagesHandler) handleStreaming(
 					}
 					if err == transformer.ErrStreamIdle {
 						h.logger.Warn("upstream gemini stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
+						if rw.ssePayloadWritten {
+							h.sendStreamError(rw, "stream idle after SSE payload started")
+							h.metrics.RecordFailure()
+							return
+						}
 						continue
 					}
 					h.logger.Warn("gemini streaming failed", "model", model.ModelID, "error", err)
@@ -507,6 +522,11 @@ func (h *MessagesHandler) handleStreaming(
 			}
 			if err == transformer.ErrStreamIdle {
 				h.logger.Warn("upstream stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
+				if rw.ssePayloadWritten {
+					h.sendStreamError(rw, "stream idle after SSE payload started")
+					h.metrics.RecordFailure()
+					return
+				}
 				continue
 			}
 			h.logger.Warn("stream proxy failed", "model", model.ModelID, "error", err)
@@ -613,7 +633,7 @@ func sanitizeAnthropicBody(rawBody json.RawMessage) json.RawMessage {
 		if !ok {
 			continue
 		}
-		if _, hasType := toolMap["type"]; hasType {
+		if toolType, ok := toolMap["type"].(string); ok && toolType == "custom" {
 			delete(toolMap, "type")
 			modified = true
 		}
@@ -688,6 +708,11 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 	for {
 		select {
 		case <-ctx.Done():
+			// ctx is canceled by either the idle watchdog or client disconnect.
+			// Distinguish: watchdog fires while client is still connected.
+			if clientCtx.Err() == nil {
+				return transformer.ErrStreamIdle
+			}
 			return transformer.ErrClientDisconnected
 		default:
 		}
