@@ -142,11 +142,14 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Deduplicate - skip duplicate requests
-	if _, ok := h.requestDedup.TryAcquire(rawBody); !ok {
-		h.metrics.RecordDeduplicated()
-		h.logger.Info("duplicate request skipped", "request_id", requestID)
-		return
+	// Deduplicate - skip duplicate requests. Skip when the deduplicator is
+	// not configured (nil requestDedup) — it is an optional component.
+	if h.requestDedup != nil {
+		if _, ok := h.requestDedup.TryAcquire(rawBody); !ok {
+			h.metrics.RecordDeduplicated()
+			h.logger.Info("duplicate request skipped", "request_id", requestID)
+			return
+		}
 	}
 
 	// Parse into Anthropic request
