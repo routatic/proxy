@@ -208,13 +208,21 @@ func (h *FallbackHandler) ExecuteWithFallback(
 			}, body, nil
 		}
 
-		cb.RecordFailure()
-		h.logger.Warn("model failed, trying fallback",
-			"model", model.ModelID,
-			"error", err,
-			"remaining", totalModels-i-1,
-			"circuit_state", cb.State(),
-		)
+		if IsRetryableError(err) {
+			cb.RecordFailure()
+			h.logger.Warn("model failed, trying fallback",
+				"model", model.ModelID,
+				"error", err,
+				"remaining", totalModels-i-1,
+				"circuit_state", cb.State(),
+			)
+		} else {
+			h.logger.Warn("non-retryable error (skipping circuit breaker), trying fallback",
+				"model", model.ModelID,
+				"error", err,
+				"remaining", totalModels-i-1,
+			)
+		}
 	}
 
 	return &FallbackResult{
@@ -243,6 +251,13 @@ func IsRetryableError(err error) bool {
 	}
 
 	errStr := err.Error()
+
+	// 4xx client errors are not retryable — the request format itself is invalid
+	// for that model, and retrying won't fix it.
+	if strings.Contains(errStr, "API error 4") {
+		return false
+	}
+
 	// Retry on network errors, timeouts, rate limits, server errors
 	retryable := []string{
 		"timeout",

@@ -75,7 +75,7 @@ func TestProxyStream_ReasoningContentFastPath(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -134,7 +134,7 @@ func TestProxyStream_ReasoningThenText(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -187,7 +187,7 @@ func TestProxyStream_TextOnlyStillWorks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -221,7 +221,7 @@ func TestProxyStream_UsageOnlyChunk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -267,7 +267,7 @@ func TestProxyStream_PartialCacheTokensStreaming(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -309,7 +309,7 @@ func TestProxyStream_NoDuplicateMessageDelta(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "deepseek-v4-pro", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -355,7 +355,7 @@ func TestProxyStream_ReasoningJSONFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -389,7 +389,7 @@ func TestProxyStream_EmptyReasoningContentSkipped(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -423,7 +423,7 @@ func TestProxyStream_ReasoningAndContentInSameChunk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -491,7 +491,7 @@ func TestProxyStream_ReasoningBeforeContentFastPathRegression(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "deepseek-v4-flash", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "deepseek-v4-flash", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -542,7 +542,7 @@ func TestProxyStream_ToolCallFinishReasonWithUsage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -587,15 +587,14 @@ func TestProxyStream_SingleToolCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
 	events := parseSSEEvents(t, w.buf.String())
 
-	// Expected: message_start, tool_start(idx=1), 2x input_json_delta (3rd arg arrives
-	// with finish_reason in same chunk, fast path returns before processing delta),
-	// tool_stop(idx=1), message_delta, message_stop = 7
+	// Expected: message_start, tool_start(idx=0), 2x input_json_delta,
+	// tool_stop(idx=0), message_delta, message_stop = 7
 	if len(events) != 7 {
 		t.Fatalf("expected 7 events, got %d: %+v", len(events), events)
 	}
@@ -663,7 +662,7 @@ func TestProxyStream_MultipleParallelToolCalls(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -725,7 +724,7 @@ func TestProxyStream_ToolCallGhostChunk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -758,7 +757,7 @@ func TestProxyStream_MixedTextAndToolCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -812,7 +811,7 @@ func TestProxyStream_MixedReasoningAndToolCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -856,7 +855,7 @@ func TestProxyStream_ToolCallFinishReasonFastPath(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -889,7 +888,7 @@ func TestProxyStream_ContentAndFinishReasonInSameChunk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -933,7 +932,7 @@ func TestProxyStream_ToolCallAndFinishReasonInSameChunk(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -942,8 +941,8 @@ func TestProxyStream_ToolCallAndFinishReasonInSameChunk(t *testing.T) {
 	// Expected events:
 	// 0: message_start
 	// 1: content_block_start (index 1, type tool_use)
-	// 2: content_block_delta (index 1, partial_json "{\"loc\":\"Beijing\"}")
-	// 3: content_block_stop (index 1)
+	// 2: content_block_delta (index 0, partial_json "{\"loc\":\"Beijing\"}")
+	// 3: content_block_stop (index 0)
 	// 4: message_delta (stop_reason: tool_use)
 	// 5: message_stop
 	if len(events) != 6 {
@@ -956,8 +955,8 @@ func TestProxyStream_ToolCallAndFinishReasonInSameChunk(t *testing.T) {
 	if events[2].Type != "content_block_delta" || events[2].Delta == nil || events[2].Delta.PartialJSON != `{"loc":"Beijing"}` {
 		t.Errorf("event[2] = %+v, want content_block_delta", events[2])
 	}
-	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 1 {
-		t.Errorf("event[3] = %+v, want content_block_stop(1)", events[3])
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 0 {
+		t.Errorf("event[3] = %+v, want content_block_stop(0)", events[3])
 	}
 	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
 		t.Errorf("event[4] = %+v, want message_delta(tool_use)", events[4])
@@ -975,7 +974,7 @@ func TestProxyStream_NoUsageFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -1011,7 +1010,7 @@ func TestProxyStream_NoFinishReasonFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 
@@ -1046,7 +1045,7 @@ func TestProxyStream_EOFFallbackStopReasonToolUse(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 

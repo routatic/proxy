@@ -18,6 +18,16 @@ func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
 	return &ModelRouter{atomic: atomic}
 }
 
+// isRespectRequestedModel returns true when the client-specified model should be
+// used as the primary routing target.  nil (unset in config) defaults to true;
+// an explicit *false from the user config is honoured.
+func isRespectRequestedModel(cfg *config.Config) bool {
+	if cfg.RespectRequestedModel == nil {
+		return true // default when not explicitly set
+	}
+	return *cfg.RespectRequestedModel
+}
+
 // RouteResult contains the selected model and fallback chain.
 type RouteResult struct {
 	Primary   config.ModelConfig
@@ -29,7 +39,7 @@ type RouteResult struct {
 // scenario-based routing. Returns the route result and true if it matched,
 // or zero value and false if scenario routing should proceed normally.
 func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel string) (RouteResult, bool) {
-	if !cfg.RespectRequestedModel || requestedModel == "" {
+	if !isRespectRequestedModel(cfg) || requestedModel == "" {
 		return RouteResult{}, false
 	}
 

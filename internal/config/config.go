@@ -11,7 +11,7 @@ type Config struct {
 	Port                           int                      `json:"port"`
 	HotReload                      bool                     `json:"hot_reload"`
 	EnableStreamingScenarioRouting bool                     `json:"enable_streaming_scenario_routing"`
-	RespectRequestedModel          bool                     `json:"respect_requested_model"`
+	RespectRequestedModel          *bool                    `json:"respect_requested_model,omitempty"`
 	Models                         map[string]ModelConfig   `json:"models"`
 	Fallbacks                      map[string][]ModelConfig `json:"fallbacks"`
 	ModelOverrides                 map[string]ModelConfig   `json:"model_overrides"`
@@ -22,14 +22,15 @@ type Config struct {
 
 // ModelConfig defines routing rules for a specific model.
 type ModelConfig struct {
-	Provider         string          `json:"provider"`
-	ModelID          string          `json:"model_id"`
-	Temperature      float64         `json:"temperature"`
-	MaxTokens        int             `json:"max_tokens"`
-	ContextThreshold int             `json:"context_threshold"`
-	ReasoningEffort  string          `json:"reasoning_effort"`
-	Thinking         json.RawMessage `json:"thinking,omitempty"`
-	Vision           bool            `json:"vision"`
+	Provider               string          `json:"provider"`
+	ModelID                string          `json:"model_id"`
+	Temperature            float64         `json:"temperature"`
+	MaxTokens              int             `json:"max_tokens"`
+	ContextThreshold       int             `json:"context_threshold"`
+	ReasoningEffort        string          `json:"reasoning_effort"`
+	Thinking               json.RawMessage `json:"thinking,omitempty"`
+	Vision                 bool            `json:"vision"`
+	AnthropicToolsDisabled bool            `json:"anthropic_tools_disabled"`
 }
 
 // OpenCodeGoConfig holds the upstream OpenCode Go API settings.
@@ -37,6 +38,7 @@ type OpenCodeGoConfig struct {
 	BaseURL          string `json:"base_url"`
 	AnthropicBaseURL string `json:"anthropic_base_url"`
 	TimeoutMs        int    `json:"timeout_ms"`
+	StreamTimeoutMs  int    `json:"stream_timeout_ms"`
 }
 
 // OpenCodeZenConfig holds the upstream OpenCode Zen API settings.
@@ -46,6 +48,7 @@ type OpenCodeZenConfig struct {
 	ResponsesBaseURL string `json:"responses_base_url"`
 	GeminiBaseURL    string `json:"gemini_base_url"`
 	TimeoutMs        int    `json:"timeout_ms"`
+	StreamTimeoutMs  int    `json:"stream_timeout_ms"`
 }
 
 // LoggingConfig controls application logging behavior.

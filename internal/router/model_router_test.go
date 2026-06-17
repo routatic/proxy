@@ -6,13 +6,15 @@ import (
 	"oc-go-cc/internal/config"
 )
 
+func boolPtr(b bool) *bool { return &b }
+
 func newTestAtomicConfig(cfg *config.Config) *config.AtomicConfig {
 	return config.NewAtomicConfig(cfg, "/tmp/test-config.json")
 }
 
 func TestRoute_RespectRequestedModel_BypassesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {
 				Provider: "opencode-go",
@@ -60,7 +62,7 @@ func TestRoute_RespectRequestedModel_BypassesScenarioRouting(t *testing.T) {
 
 func TestRoute_RespectRequestedModel_False_UsesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: false,
+		RespectRequestedModel: boolPtr(false),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "kimi-k2.6"},
 			"complex": {ModelID: "glm-5.1"},
@@ -88,7 +90,7 @@ func TestRoute_RespectRequestedModel_False_UsesScenarioRouting(t *testing.T) {
 
 func TestRoute_RespectRequestedModel_EmptyModel_FallsThrough(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "kimi-k2.6"},
 		},
@@ -115,7 +117,7 @@ func TestRoute_RespectRequestedModel_EmptyModel_FallsThrough(t *testing.T) {
 
 func TestRoute_RespectRequestedModel_UnknownModel_UsesDefaults(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {
 				Provider:    "opencode-go",
@@ -153,7 +155,7 @@ func TestRoute_RespectRequestedModel_UnknownModel_UsesDefaults(t *testing.T) {
 
 func TestRouteForStreaming_RespectRequestedModel_BypassesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "qwen3.6-plus"},
 			"kimi-k2.6": {
@@ -183,7 +185,7 @@ func TestRouteForStreaming_RespectRequestedModel_BypassesScenarioRouting(t *test
 
 func TestRouteForStreaming_RespectRequestedModel_False_UsesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: false,
+		RespectRequestedModel: boolPtr(false),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "qwen3.6-plus"},
 		},
@@ -207,7 +209,7 @@ func TestRouteForStreaming_RespectRequestedModel_False_UsesScenarioRouting(t *te
 
 func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"kimi-k2.6": {ModelID: "kimi-k2.6"},
 		},

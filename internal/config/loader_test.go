@@ -276,6 +276,10 @@ func TestDefaults(t *testing.T) {
 	if cfg.OpenCodeGo.TimeoutMs != defaultTimeoutMs {
 		t.Errorf("OpenCodeGo.TimeoutMs = %d, want %d", cfg.OpenCodeGo.TimeoutMs, defaultTimeoutMs)
 	}
+	if cfg.OpenCodeGo.StreamTimeoutMs != defaultTimeoutMs {
+		t.Errorf("OpenCodeGo.StreamTimeoutMs = %d, want %d (should default to TimeoutMs when unset)",
+			cfg.OpenCodeGo.StreamTimeoutMs, defaultTimeoutMs)
+	}
 	if cfg.OpenCodeZen.BaseURL != defaultZenBaseURL {
 		t.Errorf("OpenCodeZen.BaseURL = %q, want %q", cfg.OpenCodeZen.BaseURL, defaultZenBaseURL)
 	}
@@ -290,6 +294,10 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.OpenCodeZen.TimeoutMs != defaultTimeoutMs {
 		t.Errorf("OpenCodeZen.TimeoutMs = %d, want %d", cfg.OpenCodeZen.TimeoutMs, defaultTimeoutMs)
+	}
+	if cfg.OpenCodeZen.StreamTimeoutMs != defaultTimeoutMs {
+		t.Errorf("OpenCodeZen.StreamTimeoutMs = %d, want %d (should default to TimeoutMs when unset)",
+			cfg.OpenCodeZen.StreamTimeoutMs, defaultTimeoutMs)
 	}
 	if cfg.Logging.Level != defaultLogLevel {
 		t.Errorf("LogLevel = %q, want %q", cfg.Logging.Level, defaultLogLevel)

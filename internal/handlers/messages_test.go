@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"encoding/json"
 	"log/slog"
 	"testing"
 
 	"oc-go-cc/internal/config"
 	"oc-go-cc/internal/router"
 )
+
+func boolPtr(b bool) *bool { return &b }
 
 func TestAppendUniqueModels_DedupsByModelID(t *testing.T) {
 	base := []config.ModelConfig{
@@ -300,7 +303,7 @@ func TestBuildModelChain_UnknownModel_FallsThroughToScenarioRoute(t *testing.T) 
 	// Requested model has no entry in model_overrides and not in models map,
 	// and respect_requested_model is false → scenario routing.
 	cfg := &config.Config{
-		RespectRequestedModel: false,
+		RespectRequestedModel: boolPtr(false),
 		Models: map[string]config.ModelConfig{
 			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
 		},
@@ -336,4 +339,131 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+
+func TestSanitizeAnthropicBody_RemovesToolTypeField(t *testing.T) {
+	rawBody := json.RawMessage(`{
+		"model": "minimax-m3",
+		"tools": [
+			{
+				"type": "custom",
+				"name": "my_tool",
+				"description": "A test tool",
+				"input_schema": {"type": "object"}
+			},
+			{
+				"type": "custom",
+				"name": "other_tool",
+				"description": "Another tool",
+				"input_schema": {"type": "object"}
+			}
+		]
+	}`)
+
+	result := sanitizeAnthropicBody(rawBody)
+
+	var body map[string]any
+	if err := json.Unmarshal(result, &body); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	tools, ok := body["tools"].([]any)
+	if !ok {
+		t.Fatal("expected tools array in result")
+	}
+
+	for i, tool := range tools {
+		toolMap, ok := tool.(map[string]any)
+		if !ok {
+			t.Fatalf("tool %d is not a map", i)
+		}
+		if _, hasType := toolMap["type"]; hasType {
+			t.Errorf("tool %d still has type field after sanitization", i)
+		}
+		if name, ok := toolMap["name"]; !ok || name != ([]string{"my_tool", "other_tool"})[i] {
+			t.Errorf("tool %d name field was corrupted", i)
+		}
+	}
+}
+
+func TestSanitizeAnthropicBody_NoTools(t *testing.T) {
+	rawBody := json.RawMessage(`{"model": "minimax-m3", "messages": []}`)
+	result := sanitizeAnthropicBody(rawBody)
+
+	// Should return the original body unchanged
+	if string(result) != string(rawBody) {
+		t.Error("body without tools should be returned unchanged")
+	}
+}
+
+func TestSanitizeAnthropicBody_ToolsWithoutType(t *testing.T) {
+	rawBody := json.RawMessage(`{
+		"tools": [
+			{
+				"name": "my_tool",
+				"description": "No type field",
+				"input_schema": {"type": "object"}
+			}
+		]
+	}`)
+	result := sanitizeAnthropicBody(rawBody)
+
+	// Should return the original body unchanged (no type field to remove)
+	if string(result) != string(rawBody) {
+		t.Error("body with tools without type should be returned unchanged")
+	}
+}
+
+func TestSanitizeAnthropicBody_InvalidJSON(t *testing.T) {
+	rawBody := json.RawMessage(`{invalid json}`)
+	result := sanitizeAnthropicBody(rawBody)
+
+	// Should return original body unchanged on invalid JSON
+	if string(result) != string(rawBody) {
+		t.Error("invalid JSON should be returned unchanged")
+	}
+}
+
+func TestSanitizeAnthropicBody_EmptyBody(t *testing.T) {
+	rawBody := json.RawMessage(`{}`)
+	result := sanitizeAnthropicBody(rawBody)
+
+	if string(result) != string(rawBody) {
+		t.Error("empty body should be returned unchanged")
+	}
+}
+
+func TestSanitizeAnthropicBody_KeepsOtherFields(t *testing.T) {
+	rawBody := json.RawMessage(`{
+		"model": "minimax-m3",
+		"system": "You are a helpful assistant",
+		"messages": [{"role": "user", "content": "hello"}],
+		"max_tokens": 4096,
+		"tools": [
+			{
+				"type": "custom",
+				"name": "test_tool",
+				"description": "desc",
+				"input_schema": {"type": "object", "properties": {}}
+			}
+		]
+	}`)
+	result := sanitizeAnthropicBody(rawBody)
+
+	var body map[string]any
+	if err := json.Unmarshal(result, &body); err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+
+	// Check that non-tool fields are preserved
+	if body["model"] != "minimax-m3" {
+		t.Error("model field was corrupted")
+	}
+	if body["system"] != "You are a helpful assistant" {
+		t.Error("system field was corrupted")
+	}
+	if body["max_tokens"] != float64(4096) {
+		t.Error("max_tokens field was corrupted")
+	}
 }

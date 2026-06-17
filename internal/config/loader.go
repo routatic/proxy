@@ -146,6 +146,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.OpenCodeGo.TimeoutMs == 0 {
 		cfg.OpenCodeGo.TimeoutMs = defaultTimeoutMs
 	}
+	if cfg.OpenCodeGo.StreamTimeoutMs == 0 {
+		cfg.OpenCodeGo.StreamTimeoutMs = cfg.OpenCodeGo.TimeoutMs
+	}
 	if cfg.OpenCodeZen.BaseURL == "" {
 		cfg.OpenCodeZen.BaseURL = defaultZenBaseURL
 	}
@@ -160,6 +163,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.OpenCodeZen.TimeoutMs == 0 {
 		cfg.OpenCodeZen.TimeoutMs = defaultTimeoutMs
+	}
+	if cfg.OpenCodeZen.StreamTimeoutMs == 0 {
+		cfg.OpenCodeZen.StreamTimeoutMs = cfg.OpenCodeZen.TimeoutMs
 	}
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = defaultLogLevel

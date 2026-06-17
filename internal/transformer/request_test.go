@@ -3,6 +3,7 @@ package transformer
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1347,5 +1348,37 @@ func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
 	}
 	if openaiReq.Thinking != nil {
 		t.Fatalf("expected Thinking to be nil for standard model, got %s", string(openaiReq.Thinking))
+	}
+}
+
+
+func TestConstrainTemperature(t *testing.T) {
+	tests := []struct {
+		modelID string
+		input   float64
+		want    float64
+	}{
+		// kimi-k2.7-code forces temperature to 1.0
+		{modelID: "kimi-k2.7-code", input: 0.7, want: 1.0},
+		{modelID: "kimi-k2.7-code", input: 0.0, want: 1.0},
+		{modelID: "kimi-k2.7-code", input: 1.5, want: 1.0},
+
+		// Other kimi models are not constrained
+		{modelID: "kimi-k2.6", input: 0.7, want: 0.7},
+		{modelID: "kimi-k2.5", input: 0.5, want: 0.5},
+
+		// Other models are not constrained
+		{modelID: "minimax-m3", input: 0.7, want: 0.7},
+		{modelID: "deepseek-v4-pro", input: 0.5, want: 0.5},
+		{modelID: "glm-5.1", input: 0.3, want: 0.3},
+		{modelID: "qwen3.7-plus", input: 0.9, want: 0.9},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.modelID+"/"+fmt.Sprint(tt.input), func(t *testing.T) {
+			if got := constrainTemperature(tt.modelID, tt.input); got != tt.want {
+				t.Errorf("constrainTemperature(%q, %f) = %f, want %f", tt.modelID, tt.input, got, tt.want)
+			}
+		})
 	}
 }

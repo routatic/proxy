@@ -52,6 +52,17 @@ func needsPlaceholderReasoning(modelID string) bool {
 	return strings.HasPrefix(modelID, "kimi-")
 }
 
+// constrainTemperature overrides model-specific temperature constraints.
+// Some models require specific temperature values — return the constrained
+// value or the original if no constraint applies.
+func constrainTemperature(modelID string, temp float64) float64 {
+	// Moonshot AI (kimi-k2.7-code) only allows temperature=1.
+	if modelID == "kimi-k2.7-code" {
+		return 1.0
+	}
+	return temp
+}
+
 // stripCacheControl removes cache_control from all messages in the list.
 // The caller must not hold references to the slice elements.
 func stripCacheControl(messages []types.ChatMessage) {
@@ -100,9 +111,13 @@ func (t *RequestTransformer) TransformRequest(
 		openaiReq.MaxTokens = &maxTokens
 	}
 
-	// Apply model-specific overrides
+	// Apply model-specific overrides and temperature constraints
 	if model.Temperature > 0 {
 		openaiReq.Temperature = &model.Temperature
+	}
+	if openaiReq.Temperature != nil {
+		temp := constrainTemperature(model.ModelID, *openaiReq.Temperature)
+		openaiReq.Temperature = &temp
 	}
 	if model.MaxTokens > 0 {
 		maxTokens := model.MaxTokens

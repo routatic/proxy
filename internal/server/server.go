@@ -74,9 +74,13 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	httpSrv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  120 * time.Second,
+		// WriteTimeout is disabled (zero). Long-running SSE streams must not be
+		// killed mid-flight. IdleTimeout handles stuck connections, and the
+		// per-stream idle deadline (set via http.ResponseController in the
+		// handler) handles stale upstream reads.
+		WriteTimeout: 0,
+		IdleTimeout:  300 * time.Second,
 	}
 
 	srv := &Server{

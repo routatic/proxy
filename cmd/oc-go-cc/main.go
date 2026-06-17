@@ -538,7 +538,7 @@ func getDefaultConfig() string {
   "port": 3456,
   "hot_reload": false,
   "enable_streaming_scenario_routing": false,
-  "respect_requested_model": false,
+  "respect_requested_model": true,
   "models": {
     "background": {
       "provider": "opencode-go",
