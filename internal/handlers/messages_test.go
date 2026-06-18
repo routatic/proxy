@@ -1,11 +1,24 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 
+	"oc-go-cc/internal/client"
 	"oc-go-cc/internal/config"
+	"oc-go-cc/internal/metrics"
 	"oc-go-cc/internal/router"
+	"oc-go-cc/internal/token"
+	"oc-go-cc/internal/transformer"
+	"oc-go-cc/pkg/types"
 )
 
 func TestAppendUniqueModels_DedupsByModelID(t *testing.T) {
@@ -336,4 +349,649 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 regression tests: replaceModelInRawBody (JSON-based replacement)
+// ---------------------------------------------------------------------------
+
+func TestReplaceModelInRawBody_JSONBased(t *testing.T) {
+	raw := json.RawMessage(`{"model":"claude-opus-4-8","stream":true,"messages":[]}`)
+	got := string(replaceModelInRawBody(raw, "minimax-m3"))
+
+	if !strings.Contains(got, `"minimax-m3"`) {
+		t.Fatalf("expected model replaced to minimax-m3, got: %s", got)
+	}
+	if !strings.Contains(got, `"stream":true`) {
+		t.Fatalf("expected other fields preserved, got: %s", got)
+	}
+	if strings.Contains(got, `"claude-opus-4-8"`) {
+		t.Fatalf("old model ID should be gone, got: %s", got)
+	}
+}
+
+func TestReplaceModelInRawBody_HandlesWhitespace(t *testing.T) {
+	raw := json.RawMessage(`{ "model" : "claude-opus-4-8" , "stream" : true }`)
+	got := string(replaceModelInRawBody(raw, "minimax-m3"))
+
+	if !strings.Contains(got, `"minimax-m3"`) {
+		t.Fatalf("expected model replaced despite whitespace, got: %s", got)
+	}
+}
+
+func TestReplaceModelInRawBody_ReturnsOriginalWhenModelMissing(t *testing.T) {
+	raw := json.RawMessage(`{"stream":true,"messages":[]}`)
+	got := replaceModelInRawBody(raw, "minimax-m3")
+
+	// Should return original raw bytes since there's no "model" key
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(got, &parsed); err != nil {
+		t.Fatalf("result is invalid JSON: %v", err)
+	}
+	if _, ok := parsed["model"]; ok {
+		t.Fatalf("model key should not be present in result when absent from input")
+	}
+}
+
+func TestReplaceModelInRawBody_ReturnsOriginalOnInvalidJSON(t *testing.T) {
+	raw := json.RawMessage(`{invalid}`)
+	got := replaceModelInRawBody(raw, "minimax-m3")
+
+	if string(got) != `{invalid}` {
+		t.Fatalf("expected original body on invalid JSON, got: %s", got)
+	}
+}
+
+func TestReplaceModelInRawBody_HandlesNestedObjects(t *testing.T) {
+	raw := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"messages": [{"role":"user","content":"hello"}],
+		"tools": [{"name":"Bash","input_schema":{"type":"object","properties":{"cmd":{"type":"string"}}}}],
+		"stream": true
+	}`)
+	got := string(replaceModelInRawBody(raw, "minimax-m3"))
+
+	if !strings.Contains(got, `"minimax-m3"`) {
+		t.Fatalf("expected model replaced to minimax-m3 in complex body, got: %s", got)
+	}
+	if !strings.Contains(got, `"Bash"`) {
+		t.Fatalf("expected tool name Bash preserved, got: %s", got)
+	}
+	if !strings.Contains(got, `"input_schema"`) {
+		t.Fatalf("expected input_schema preserved, got: %s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 regression tests: handleStreaming Go Anthropic-native branch
+// ---------------------------------------------------------------------------
+
+func TestHandleStreaming_GoAnthropicModel_SendsRawAnthropicBody(t *testing.T) {
+	// Spin up a fake upstream that records the request body
+	var capturedBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Logf("upstream read body error: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	handler := newStreamingTestHandler(t, upstream.URL)
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}],
+		"tools": [{"name":"Bash","description":"Run a command","input_schema":{"type":"object","properties":{"cmd":{"type":"string"}}}}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal rawBody: %v", err)
+	}
+
+	// Call handleStreaming with minimax-m3 (Go Anthropic-native)
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "minimax-m3"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	// context is tied to the request lifetime; handleStreaming waits on it
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+
+	// Verify the upstream received raw Anthropic format (not OpenAI-transformed)
+	if len(capturedBody) == 0 {
+		t.Fatal("upstream received no body")
+	}
+
+	var captured map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &captured); err != nil {
+		t.Fatalf("captured body is not valid JSON: %v\nbody: %s", err, capturedBody)
+	}
+
+	// Must have model = minimax-m3
+	if got, ok := captured["model"]; !ok || got != "minimax-m3" {
+		t.Fatalf("captured model = %v, want minimax-m3", got)
+	}
+
+	// Must have tools with input_schema (Anthropic format), NOT function (OpenAI format)
+	toolsRaw, ok := captured["tools"]
+	if !ok {
+		t.Fatal("captured body missing tools field")
+	}
+	tools, ok := toolsRaw.([]interface{})
+	if !ok || len(tools) == 0 {
+		t.Fatal("captured body tools is empty or not an array")
+	}
+	tool0, ok := tools[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("tool[0] is not an object")
+	}
+	if _, ok := tool0["function"]; ok {
+		t.Fatalf("captured tool has 'function' field (OpenAI format leak): %s", capturedBody)
+	}
+	if _, ok := tool0["input_schema"]; !ok {
+		t.Fatalf("captured tool missing 'input_schema' (Anthropic format): %s", capturedBody)
+	}
+	if got, ok := tool0["name"]; !ok || got != "Bash" {
+		t.Fatalf("captured tool name = %v, want Bash", got)
+	}
+}
+
+// TestHandleStreaming_GoAnthropicModel_FallsThroughOnError verifies that
+// when the Go Anthropic-native model fails, the streaming handler falls
+// through to the next model in the chain.
+func TestHandleStreaming_GoAnthropicModel_FallsThroughOnError(t *testing.T) {
+	// Single upstream: fails on first request, succeeds on second.
+	// Both models in the chain use the same base URL.
+	callCount := int32(0)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&callCount, 1)
+		if count == 1 {
+			// First call (minimax-m3) fails
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// Second call (qwen3.5-plus) succeeds
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: upstream.URL,
+			BaseURL:          upstream.URL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+
+	handler := &MessagesHandler{
+		client:              ocClient,
+		logger:              slog.Default(),
+		metrics:             metrics.New(),
+		streamHandler:       transformer.NewStreamHandler(),
+		requestTransformer:  transformer.NewRequestTransformer(),
+		responseTransformer: transformer.NewResponseTransformer(),
+	}
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal rawBody: %v", err)
+	}
+
+	// Chain: minimax-m3 fails (first call → 500), qwen3.5-plus succeeds (second call)
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "minimax-m3"},
+		{Provider: "opencode-go", ModelID: "qwen3.5-plus"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+
+	// Both models tried: minimax got 500, qwen3.5-plus got 200
+	finalCount := atomic.LoadInt32(&callCount)
+	if finalCount != 2 {
+		t.Fatalf("expected 2 upstream calls (1 fail + 1 success), got %d", finalCount)
+	}
+}
+
+// newStreamingTestHandler creates a MessagesHandler for streaming tests,
+// pointing both Go Anthropic and OpenAI endpoints at the given test server URL.
+func newStreamingTestHandler(t *testing.T, upstreamURL string) *MessagesHandler {
+	t.Helper()
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: upstreamURL,
+			BaseURL:          upstreamURL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+
+	return &MessagesHandler{
+		client:              ocClient,
+		logger:              slog.Default(),
+		metrics:             metrics.New(),
+		streamHandler:       transformer.NewStreamHandler(),
+		requestTransformer:  transformer.NewRequestTransformer(),
+		responseTransformer: transformer.NewResponseTransformer(),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end test: HandleMessages → routing → handleStreaming → upstream
+// ---------------------------------------------------------------------------
+
+// TestHandleMessages_StreamingMinimaxM3_UsesAnthropicEndpoint verifies the
+// full public API path: HandleMessages receives a streaming request for
+// minimax-m3, routing selects it (via ModelOverrides), and the upstream
+// receives the raw Anthropic body (NOT OpenAI-transformed).
+func TestHandleMessages_StreamingMinimaxM3_UsesAnthropicEndpoint(t *testing.T) {
+	// 1. Set up fake upstream that records the request body.
+	var capturedBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Logf("upstream read body error: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	// 2. Build config that forces routing to minimax-m3.
+	//    ModelOverrides takes highest precedence in buildModelChain.
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+			"fast":    {Provider: "opencode-go", ModelID: "qwen3.6-plus"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+			"fast":    {{Provider: "opencode-go", ModelID: "qwen3.5-plus"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"minimax-m3": {
+				Provider: "opencode-go",
+				ModelID:  "minimax-m3",
+			},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: upstream.URL,
+			BaseURL:          upstream.URL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+
+	// 3. Build the full MessagesHandler with all real dependencies.
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+	modelRouter := router.NewModelRouter(atomicCfg)
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+
+	handler := NewMessagesHandler(
+		ocClient,
+		modelRouter,
+		nil, // fallbackHandler — not used in streaming path
+		tokenCounter,
+		metrics.New(),
+	)
+	handler.logger = slog.Default()
+
+	// 4. Build the streaming request body requesting minimax-m3 with tools.
+	requestBody := `{
+		"model": "minimax-m3",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role": "user", "content": "Say hello"}],
+		"tools": [{
+			"name": "Bash",
+			"description": "Run a command",
+			"input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}}
+		}]
+	}`
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	// 5. Call HandleMessages — the full public entry point.
+	handler.HandleMessages(recorder, req)
+
+	// 6. Verify upstream received raw Anthropic body.
+	if len(capturedBody) == 0 {
+		t.Fatal("upstream received no body — routing or streaming may have failed silently")
+	}
+
+	var captured map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &captured); err != nil {
+		t.Fatalf("captured body is not valid JSON: %v\nbody: %s", err, capturedBody)
+	}
+
+	// Model must be minimax-m3
+	if got, ok := captured["model"]; !ok || got != "minimax-m3" {
+		t.Fatalf("captured model = %v, want minimax-m3", got)
+	}
+
+	// Tools must be Anthropic format (input_schema), NOT OpenAI format (function)
+	toolsRaw, ok := captured["tools"]
+	if !ok {
+		t.Fatal("captured body missing tools field")
+	}
+	tools, ok := toolsRaw.([]interface{})
+	if !ok || len(tools) == 0 {
+		t.Fatal("captured body tools is empty or not an array")
+	}
+	tool0, ok := tools[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("tool[0] is not an object")
+	}
+	if _, ok := tool0["function"]; ok {
+		t.Fatalf("captured tool has 'function' field (OpenAI format leak — TransformRequest was called): %s", capturedBody)
+	}
+	if _, ok := tool0["input_schema"]; !ok {
+		t.Fatalf("captured tool missing 'input_schema' (Anthropic format): %s", capturedBody)
+	}
+	if got, ok := tool0["name"]; !ok || got != "Bash" {
+		t.Fatalf("captured tool name = %v, want Bash", got)
+	}
+
+	t.Logf("end-to-end test PASSED: upstream received raw Anthropic body with model=minimax-m3 and input_schema")
+}
+
+// ---------------------------------------------------------------------------
+// Non-streaming regression tests: handleNonStreaming model replacement
+// ---------------------------------------------------------------------------
+
+// TestHandleNonStreaming_GoAnthropicModel_ReplacesModelInBody verifies that
+// the non-streaming path replaces the model in the request body for Go
+// Anthropic-native models (minimax-m3) before forwarding to upstream.
+// Without this fix, upstream would receive "claude-haiku-4-5-20251001" and
+// reject it with "Model is not supported".
+func TestHandleNonStreaming_GoAnthropicModel_ReplacesModelInBody(t *testing.T) {
+	var capturedBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Logf("upstream read body error: %v", err)
+		}
+		// Non-streaming: return a valid JSON response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": "msg_1",
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "text", "text": "hello"}],
+			"model": "minimax-m3",
+			"stop_reason": "end_turn",
+			"usage": {"input_tokens": 10, "output_tokens": 5}
+		}`))
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-haiku-4-5-20251001": {
+				Provider: "opencode-go",
+				ModelID:  "minimax-m3",
+			},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: upstream.URL,
+			BaseURL:          upstream.URL,
+			TimeoutMs:        5000,
+		},
+	}
+
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+	modelRouter := router.NewModelRouter(atomicCfg)
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+
+	handler := NewMessagesHandler(
+		ocClient,
+		modelRouter,
+		router.NewFallbackHandler(slog.Default(), 3, 30),
+		tokenCounter,
+		metrics.New(),
+	)
+	handler.logger = slog.Default()
+
+	// Use a different client model to verify the model is replaced to
+	// minimax-m3 before sending upstream.
+	requestBody := `{
+		"model": "claude-haiku-4-5-20251001",
+		"max_tokens": 256,
+		"messages": [{"role": "user", "content": "Say hello"}],
+		"tools": [{
+			"name": "Bash",
+			"description": "Run a command",
+			"input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}}
+		}]
+	}`
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	handler.HandleMessages(recorder, req)
+
+	// Verify upstream received the request body with model replaced
+	if len(capturedBody) == 0 {
+		t.Fatal("upstream received no body")
+	}
+
+	var captured map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &captured); err != nil {
+		t.Fatalf("captured body is not valid JSON: %v\nbody: %s", err, capturedBody)
+	}
+
+	// Must have model = minimax-m3
+	if got, ok := captured["model"]; !ok || got != "minimax-m3" {
+		t.Fatalf("captured model = %v, want minimax-m3", got)
+	}
+
+	// Must have tools with input_schema (Anthropic format), NOT function (OpenAI)
+	toolsRaw, ok := captured["tools"]
+	if !ok {
+		t.Fatal("captured body missing tools field")
+	}
+	tools, ok := toolsRaw.([]interface{})
+	if !ok || len(tools) == 0 {
+		t.Fatal("captured body tools is empty or not an array")
+	}
+	tool0, ok := tools[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("tool[0] is not an object")
+	}
+	if _, ok := tool0["function"]; ok {
+		t.Fatalf("captured tool has 'function' field (OpenAI format leak): %s", capturedBody)
+	}
+	if _, ok := tool0["input_schema"]; !ok {
+		t.Fatalf("captured tool missing 'input_schema' (Anthropic format): %s", capturedBody)
+	}
+	if got, ok := tool0["name"]; !ok || got != "Bash" {
+		t.Fatalf("captured tool name = %v, want Bash", got)
+	}
+
+	t.Logf("non-streaming Go Anthropic-native test PASSED: upstream received model=minimax-m3 with Anthropic tool format")
+}
+
+// TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody verifies that
+// the non-streaming path replaces the model in the request body for Zen
+// Anthropic-native models (claude-* via opencode-zen) before forwarding upstream.
+func TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody(t *testing.T) {
+	var capturedBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Logf("upstream read body error: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": "msg_1",
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "text", "text": "hello"}],
+			"model": "claude-sonnet-4.5",
+			"stop_reason": "end_turn",
+			"usage": {"input_tokens": 10, "output_tokens": 5}
+		}`))
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-haiku-4-5-20251001": {
+				Provider: "opencode-zen",
+				ModelID:  "claude-sonnet-4.5",
+			},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: upstream.URL,
+			BaseURL:          upstream.URL,
+			TimeoutMs:        5000,
+		},
+		OpenCodeZen: config.OpenCodeZenConfig{
+			AnthropicBaseURL: upstream.URL,
+			TimeoutMs:        5000,
+		},
+	}
+
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+	modelRouter := router.NewModelRouter(atomicCfg)
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+
+	handler := NewMessagesHandler(
+		ocClient,
+		modelRouter,
+		router.NewFallbackHandler(slog.Default(), 3, 30),
+		tokenCounter,
+		metrics.New(),
+	)
+	handler.logger = slog.Default()
+
+	// Use a different client model to verify the model is replaced to
+	// claude-sonnet-4.5 before sending upstream.
+	requestBody := `{
+		"model": "claude-haiku-4-5-20251001",
+		"max_tokens": 256,
+		"messages": [{"role": "user", "content": "Say hello"}],
+		"tools": [{
+			"name": "Bash",
+			"description": "Run a command",
+			"input_schema": {"type": "object", "properties": {"cmd": {"type": "string"}}}
+		}]
+	}`
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	handler.HandleMessages(recorder, req)
+
+	if len(capturedBody) == 0 {
+		t.Fatal("upstream received no body")
+	}
+
+	var captured map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &captured); err != nil {
+		t.Fatalf("captured body is not valid JSON: %v\nbody: %s", err, capturedBody)
+	}
+
+	// Must have model = claude-sonnet-4.5 (replaced from claude-haiku-4-5-20251001)
+	if got, ok := captured["model"]; !ok || got != "claude-sonnet-4.5" {
+		t.Fatalf("captured model = %v, want claude-sonnet-4.5", got)
+	}
+
+	// Must have tools with input_schema (Anthropic format), NOT function (OpenAI)
+	toolsRaw, ok := captured["tools"]
+	if !ok {
+		t.Fatal("captured body missing tools field")
+	}
+	tools, ok := toolsRaw.([]interface{})
+	if !ok || len(tools) == 0 {
+		t.Fatal("captured body tools is empty or not an array")
+	}
+	tool0, ok := tools[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("tool[0] is not an object")
+	}
+	if _, ok := tool0["function"]; ok {
+		t.Fatalf("captured tool has 'function' field (OpenAI format leak): %s", capturedBody)
+	}
+	if _, ok := tool0["input_schema"]; !ok {
+		t.Fatalf("captured tool missing 'input_schema' (Anthropic format): %s", capturedBody)
+	}
+
+	t.Logf("non-streaming Zen Anthropic test PASSED: upstream received model=claude-sonnet-4.5 with Anthropic tool format")
 }

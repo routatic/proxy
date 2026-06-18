@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -393,6 +392,29 @@ func (h *MessagesHandler) handleStreaming(
 			default:
 				// Fall through to OpenAI-compatible handling
 			}
+		} else if client.IsAnthropicModel(model.ModelID) {
+			// Go provider Anthropic-native models (MiniMax, Qwen) in streaming.
+			// This branch is only reached after client.IsZen(model) is false.
+			// Mirror the non-streaming path at handleNonStreaming which sends
+			// the raw Anthropic body. TransformRequest would otherwise convert
+			// tools to OpenAI format and trigger upstream 400
+			// "function name or parameters is empty (2013)" on the
+			// /v1/messages Anthropic endpoint.
+			modelBody := replaceModelInRawBody(rawBody, model.ModelID)
+			if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID, model); err != nil {
+				cancel()
+				if clientCtx.Err() == context.Canceled {
+					h.logger.Info("client disconnected during anthropic stream")
+					return
+				}
+				h.logger.Warn("anthropic streaming failed", "model", model.ModelID, "error", err)
+				continue
+			}
+			cancel()
+			latency := time.Since(streamStart)
+			h.metrics.RecordSuccess(model.ModelID, latency)
+			h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+			return
 		}
 
 		// OpenAI-compatible models (both Go and Zen)
@@ -500,25 +522,52 @@ func (h *MessagesHandler) handleGeminiStreaming(
 }
 
 // replaceModelInRawBody replaces the model field in raw JSON body with the actual model ID.
+// Uses JSON-based replacement to handle whitespace variants (e.g. "model":"x"
+// vs "model": "x"). Falls back to returning rawBody when unmarshal/marshal
+// fails or the model key is absent.
 func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMessage {
-	bodyStr := string(rawBody)
-
-	if idx := strings.Index(bodyStr, `"model":"`); idx != -1 {
-		start := idx + len(`"model":"`)
-		if end := strings.Index(bodyStr[start:], `"`); end != -1 {
-			oldModel := bodyStr[start : start+end]
-			newBody := bodyStr[:start] + modelID + bodyStr[start+end:]
-			slog.Debug("replaced model in request body",
-				"old_model", oldModel,
-				"new_model", modelID,
-				"success", true)
-			return json.RawMessage(newBody)
-		}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(rawBody, &obj); err != nil {
+		slog.Warn("replaceModelInRawBody: unmarshal failed, using original body",
+			"error", err,
+			"body_preview", string(rawBody)[:min(len(rawBody), 200)])
+		return rawBody
 	}
 
-	slog.Warn("could not find model field in request body, using original",
-		"body_preview", bodyStr[:min(len(bodyStr), 200)])
-	return rawBody
+	oldModelRaw, ok := obj["model"]
+	if !ok {
+		slog.Warn("replaceModelInRawBody: model key not found, using original body",
+			"body_preview", string(rawBody)[:min(len(rawBody), 200)])
+		return rawBody
+	}
+
+	var oldModel string
+	if err := json.Unmarshal(oldModelRaw, &oldModel); err != nil {
+		slog.Warn("replaceModelInRawBody: model value not a string, using original body",
+			"error", err)
+		return rawBody
+	}
+
+	modelJSON, err := json.Marshal(modelID)
+	if err != nil {
+		slog.Warn("replaceModelInRawBody: marshal modelID failed, using original body",
+			"error", err)
+		return rawBody
+	}
+	obj["model"] = modelJSON
+
+	newBody, err := json.Marshal(obj)
+	if err != nil {
+		slog.Warn("replaceModelInRawBody: remarshal failed, using original body",
+			"error", err)
+		return rawBody
+	}
+
+	slog.Debug("replaced model in request body",
+		"old_model", oldModel,
+		"new_model", modelID,
+		"success", true)
+	return json.RawMessage(newBody)
 }
 
 // handleAnthropicStreaming sends a raw Anthropic request to the Anthropic endpoint.
@@ -590,7 +639,8 @@ func (h *MessagesHandler) handleNonStreaming(
 				endpointType := client.ClassifyEndpoint(model.ModelID)
 				switch endpointType {
 				case client.EndpointAnthropic:
-					return h.executeAnthropicRequest(ctx, rawBody, model)
+					modelBody := replaceModelInRawBody(rawBody, model.ModelID)
+					return h.executeAnthropicRequest(ctx, modelBody, model)
 				case client.EndpointResponses:
 					return h.executeResponsesRequest(ctx, anthropicReq, model)
 				case client.EndpointGemini:
@@ -600,7 +650,8 @@ func (h *MessagesHandler) handleNonStreaming(
 				}
 			} else if client.IsAnthropicModel(model.ModelID) {
 				// Go provider Anthropic-native models (MiniMax, Qwen)
-				return h.executeAnthropicRequest(ctx, rawBody, model)
+				modelBody := replaceModelInRawBody(rawBody, model.ModelID)
+				return h.executeAnthropicRequest(ctx, modelBody, model)
 			}
 
 			// OpenAI-compatible models (both Go and Zen)
