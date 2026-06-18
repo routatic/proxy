@@ -341,7 +341,6 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-
 func TestSanitizeAnthropicBody_RemovesToolTypeField(t *testing.T) {
 	rawBody := json.RawMessage(`{
 		"model": "minimax-m3",

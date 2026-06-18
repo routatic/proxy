@@ -465,11 +465,11 @@ func TestNextAPIKey_ConcurrentSafety(t *testing.T) {
 
 func TestStreamIdleTimeout(t *testing.T) {
 	tests := []struct {
-		name      string
-		goMs      int
-		zenMs     int
-		provider  string
-		wantDur   time.Duration
+		name     string
+		goMs     int
+		zenMs    int
+		provider string
+		wantDur  time.Duration
 	}{
 		{
 			name:     "Go provider uses OpenCodeGo.StreamTimeoutMs",

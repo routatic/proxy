@@ -1525,7 +1525,6 @@ func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
 	}
 }
 
-
 func TestConstrainTemperature(t *testing.T) {
 	tests := []struct {
 		modelID string
