@@ -42,6 +42,10 @@ make docker-up
 cp .env.example .env
 docker build -t oc-go-cc .
 docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 oc-go-cc
+
+# Docker from GitHub Container Registry
+docker pull ghcr.io/samueltuyizere/oc-go-cc:latest
+docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 ghcr.io/samueltuyizere/oc-go-cc:latest
 ```
 
 Or see [INSTALLATION.md](INSTALLATION.md) for more options.
