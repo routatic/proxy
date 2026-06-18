@@ -588,12 +588,24 @@ func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef 
 			if err := json.Unmarshal(schema, &schemaObj); err != nil {
 				schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
 			} else {
-				if _, ok := schemaObj["type"]; !ok {
+				// Validate type field is "object" — otherwise OpenAI rejects the
+				// tool. A schema like {"type":"string"} passes unmarshal but
+				// produces a 400 from the upstream OpenAI-compatible endpoint.
+				schemaType, _ := schemaObj["type"].(string)
+				if schemaType != "object" {
 					schemaObj["type"] = "object"
 				}
-				if _, ok := schemaObj["properties"]; !ok {
+
+				// Validate properties is an object — wrong shapes like arrays
+				// or primitives also produce 400 errors upstream.
+				if props, ok := schemaObj["properties"]; ok {
+					if _, valid := props.(map[string]interface{}); !valid {
+						schemaObj["properties"] = map[string]interface{}{}
+					}
+				} else {
 					schemaObj["properties"] = map[string]interface{}{}
 				}
+
 				if fixed, err := json.Marshal(schemaObj); err == nil {
 					schema = fixed
 				}

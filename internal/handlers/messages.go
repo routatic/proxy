@@ -48,6 +48,8 @@ type responseWriter struct {
 }
 
 func (w *responseWriter) WriteHeader(code int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if !w.wroteHeader {
 		w.wroteHeader = true
 		w.ResponseWriter.WriteHeader(code)
@@ -64,11 +66,35 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// HasWrittenHeader returns true if the response header has been written.
+func (w *responseWriter) HasWrittenHeader() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.wroteHeader
+}
+
 // Flush implements http.Flusher for SSE streaming support.
 func (w *responseWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// flushWriter wraps an http.ResponseWriter and calls Flush after every Write,
+// ensuring that SSE data from raw passthrough streams is not buffered in the
+// net/http bufio.Writer where it would appear hung until the buffer fills.
+type flushWriter struct {
+	http.ResponseWriter
+}
+
+func (w *flushWriter) Write(b []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(b)
+	if err == nil {
+		if f, ok := w.ResponseWriter.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+	return n, err
 }
 
 // NewMessagesHandler creates a new messages handler.
@@ -322,9 +348,7 @@ func (h *MessagesHandler) handleStreaming(
 			switch endpointType {
 			case client.EndpointAnthropic:
 				modelBody := replaceModelInRawBody(rawBody, model.ModelID)
-				heartbeatPaused.Store(1)
-				err := h.handleAnthropicStreaming(attemptCtx, rw, modelBody, model.ModelID, model)
-				heartbeatPaused.Store(0)
+				err := h.handleAnthropicStreaming(attemptCtx, rw, modelBody, model.ModelID, model, heartbeatPaused)
 				if err != nil {
 					cancel()
 					if clientCtx.Err() != nil {
@@ -376,9 +400,7 @@ func (h *MessagesHandler) handleStreaming(
 			}
 		} else if client.IsAnthropicModel(model.ModelID) {
 			modelBody := replaceModelInRawBody(rawBody, model.ModelID)
-			heartbeatPaused.Store(1)
-			err := h.handleAnthropicStreaming(attemptCtx, rw, modelBody, model.ModelID, model)
-			heartbeatPaused.Store(0)
+			err := h.handleAnthropicStreaming(attemptCtx, rw, modelBody, model.ModelID, model, heartbeatPaused)
 			if err != nil {
 				cancel()
 				if clientCtx.Err() != nil {
@@ -437,7 +459,7 @@ func (h *MessagesHandler) handleStreaming(
 	}
 
 	h.metrics.RecordFailure()
-	if !rw.wroteHeader {
+	if !rw.HasWrittenHeader() {
 		h.sendError(w, http.StatusBadGateway, "all streaming models failed", nil)
 	} else {
 		h.sendStreamError(rw, "all upstream models failed")
@@ -544,14 +566,20 @@ func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMess
 	return json.RawMessage(newBody)
 }
 
-// handleAnthropicStreaming sends a raw Anthropic request to the Anthropic endpoint.
+// handleAnthropicStreaming sends a raw Anthropic request to the Anthropic endpoint,
+// pausing the heartbeat for the duration of the raw SSE copy so synthetic keepalive
+// events are not interleaved with upstream events.
 func (h *MessagesHandler) handleAnthropicStreaming(
 	ctx context.Context,
 	w http.ResponseWriter,
 	rawBody json.RawMessage,
 	modelID string,
 	model config.ModelConfig,
+	heartbeatPaused *atomic.Int32,
 ) error {
+	heartbeatPaused.Store(1)
+	defer heartbeatPaused.Store(0)
+
 	h.logger.Debug("sending anthropic streaming request",
 		"model_id", modelID,
 		"body_preview", string(rawBody)[:min(len(rawBody), 200)])
@@ -562,7 +590,8 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	_, err = io.Copy(w, resp.Body)
+	fw := &flushWriter{ResponseWriter: w}
+	_, err = io.Copy(fw, resp.Body)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			return transformer.ErrClientDisconnected
@@ -779,7 +808,7 @@ func (h *MessagesHandler) sendError(w http.ResponseWriter, statusCode int, messa
 		"error", err,
 	)
 
-	if rw, ok := w.(*responseWriter); ok && rw.wroteHeader {
+	if rw, ok := w.(*responseWriter); ok && rw.HasWrittenHeader() {
 		return
 	}
 
