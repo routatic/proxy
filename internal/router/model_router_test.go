@@ -203,7 +203,10 @@ func TestRouteForStreaming_RespectRequestedModel_False_UsesScenarioRouting(t *te
 		{Role: "user", Content: "Hello"},
 	}
 
-	result := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	result, err := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	// Should use streaming scenario routing, not the requested model
 	if result.Primary.ModelID != "qwen3.6-plus" {
 		t.Errorf("expected streaming model qwen3.6-plus, got %s", result.Primary.ModelID)
