@@ -34,8 +34,6 @@ func StartIdleWatchdog(ctx context.Context, cancel context.CancelFunc, idleTimeo
 	}
 
 	var mu sync.Mutex
-	lastRead := time.Now()
-
 	timer := time.NewTimer(idleTimeout)
 
 	go func() {
@@ -45,21 +43,24 @@ func StartIdleWatchdog(ctx context.Context, cancel context.CancelFunc, idleTimeo
 			case <-ctx.Done():
 				return
 			case <-timer.C:
-				mu.Lock()
-				elapsed := time.Since(lastRead)
-				mu.Unlock()
-				if elapsed >= idleTimeout {
-					cancel()
-					return
-				}
-				timer.Reset(idleTimeout)
+				cancel()
+				return
 			}
 		}
 	}()
 
 	return func() {
 		mu.Lock()
-		lastRead = time.Now()
+		// Reset the timer on every ping so the deadline is always idleTimeout
+		// from the most recent byte, not from the last timer fire.
+		if !timer.Stop() {
+			// Timer already fired; drain the channel to avoid a spurious wake.
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(idleTimeout)
 		mu.Unlock()
 	}
 }
