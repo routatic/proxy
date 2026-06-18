@@ -258,13 +258,15 @@ func IsRetryableError(err error) bool {
 		return false
 	}
 
-	// Retry on network errors, timeouts, rate limits, server errors
+	// Retry on network errors, timeouts, rate limits (from non-4xx paths),
+	// and server errors (5xx). 4xx client errors are already excluded by
+	// the "API error 4" check above — 429 is correctly non-retryable, so
+	// the circuit breaker doesn't open for rate limits.
 	retryable := []string{
 		"timeout",
 		"connection refused",
 		"connection reset",
 		"rate limit",
-		"429",
 		"503",
 		"502",
 		"500",

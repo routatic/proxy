@@ -585,10 +585,12 @@ func (h *MessagesHandler) handleGeminiStreaming(
 	return nil
 }
 
-// sanitizeAnthropicBody removes Anthropic-specific tool fields that some upstream
-// models don't understand (e.g., "type":"custom" server-tool shorthands used by
-// Claude Code for MCP tools). Returns the original body unchanged if no tools
-// array is present or if no tool has a type field.
+// sanitizeAnthropicBody removes the "type" field from tools whose value is
+// "custom" (server-tool shorthands used by Claude Code for MCP tools that some
+// upstream models don't understand). The upstream treats the tool as absent
+// when type is missing rather than rejecting type:"custom".
+// Returns the original body unchanged if no tools array is present or if no
+// tool has type:"custom".
 func sanitizeAnthropicBody(rawBody json.RawMessage) json.RawMessage {
 	var body map[string]any
 	if err := json.Unmarshal(rawBody, &body); err != nil {
@@ -630,15 +632,21 @@ func sanitizeAnthropicBody(rawBody json.RawMessage) json.RawMessage {
 func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMessage {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(rawBody, &obj); err != nil {
-		slog.Warn("could not parse request body for model replacement, using original",
+		slog.Error("could not parse request body for model replacement, using original",
 			"error", err)
 		return rawBody
 	}
-	encoded, _ := json.Marshal(modelID)
+	encoded, err := json.Marshal(modelID)
+	if err != nil {
+		// json.Marshal on a string should never fail, but guard anyway.
+		slog.Error("failed to marshal model ID for body replacement",
+			"error", err, "model_id", modelID)
+		return rawBody
+	}
 	obj["model"] = encoded
 	result, err := json.Marshal(obj)
 	if err != nil {
-		slog.Warn("could not marshal request body after model replacement, using original",
+		slog.Error("could not marshal request body after model replacement, using original",
 			"error", err)
 		return rawBody
 	}
@@ -731,7 +739,9 @@ func (h *MessagesHandler) sendStreamError(w http.ResponseWriter, message string)
 	}
 
 	data, _ := json.Marshal(errorEvent)
-	_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", string(data))
+	if _, err := fmt.Fprintf(w, "event: error\ndata: %s\n\n", string(data)); err != nil {
+		h.logger.Debug("failed to write stream error event", "error", err, "message", message)
+	}
 
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()

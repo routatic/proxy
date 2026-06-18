@@ -168,6 +168,14 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 			primary = cfg.Models["default"]
 		}
 	}
+	// If all fallbacks missed (no configured scenario/fast/default), return
+	// an empty result. The caller (routeOnce) returns nil error for streaming
+	// routes, so we can't surface a typed error here.
+	if primary.ModelID == "" {
+		return RouteResult{
+			Scenario: result.Scenario,
+		}
+	}
 
 	// Get fallbacks for scenario
 	fallbacks := cfg.Fallbacks[string(result.Scenario)]
