@@ -81,15 +81,13 @@ func (w *responseWriter) headerWritten() bool {
 }
 
 // Flush implements http.Flusher for SSE streaming support.
-// The mutex is released before calling Flush to prevent a slow TCP consumer
-// from blocking writes (and thus stalling the heartbeat goroutine). SSE
-// frame ordering at the TCP level is unaffected because the Go runtime only
-// flushes bytes that have already been written via Write.
+// The mutex is held across the flush call to ensure Write, WriteHeader, and
+// Flush remain serialized. Without this, a concurrent Flush and Write on the
+// underlying http.ResponseWriter's *bufio.Writer would be a data race.
 func (w *responseWriter) Flush() {
 	w.mu.Lock()
-	f, ok := w.ResponseWriter.(http.Flusher)
-	w.mu.Unlock()
-	if ok {
+	defer w.mu.Unlock()
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
 }
