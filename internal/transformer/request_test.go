@@ -1524,10 +1524,6 @@ func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Phase 3 regression tests: transformTools hardening
-// ---------------------------------------------------------------------------
-
 func TestTransformTools_SkipsEmptyName(t *testing.T) {
 	transformer := NewRequestTransformer()
 	tools := []types.Tool{

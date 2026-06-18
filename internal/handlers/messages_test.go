@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"oc-go-cc/internal/client"
 	"oc-go-cc/internal/config"
@@ -994,4 +996,594 @@ func TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody(t *testing.T) 
 	}
 
 	t.Logf("non-streaming Zen Anthropic test PASSED: upstream received model=claude-sonnet-4.5 with Anthropic tool format")
+}
+
+func TestHandleStreaming_ConfigurableTimeout(t *testing.T) {
+	callCount := int32(0)
+	handlerCtx, handlerCancel := context.WithCancel(context.Background())
+	defer handlerCancel()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&callCount, 1)
+		<-handlerCtx.Done()
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL:            upstream.URL,
+			AnthropicBaseURL:   upstream.URL,
+			TimeoutMs:          5000,
+			StreamingTimeoutMs: 100,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+
+	handler := &MessagesHandler{
+		client:              ocClient,
+		logger:              slog.Default(),
+		metrics:             metrics.New(),
+		streamHandler:       transformer.NewStreamHandler(),
+		requestTransformer:  transformer.NewRequestTransformer(),
+		responseTransformer: transformer.NewResponseTransformer(),
+	}
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal rawBody: %v", err)
+	}
+
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "kimi-k2.6"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	start := time.Now()
+	handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+	elapsed := time.Since(start)
+
+	handlerCancel()
+
+	if elapsed > 10*time.Second {
+		t.Errorf("streaming attempt took %v, expected much less than 2 minutes", elapsed)
+	}
+
+	finalCount := atomic.LoadInt32(&callCount)
+	if finalCount != 1 {
+		t.Errorf("expected 1 upstream call (single model in chain), got %d", finalCount)
+	}
+}
+
+func TestHandleStreaming_ClientContextCanceled_StopsFallback(t *testing.T) {
+	callCount := int32(0)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&callCount, 1)
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL:          upstream.URL,
+			AnthropicBaseURL: upstream.URL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+
+	handler := &MessagesHandler{
+		client:              ocClient,
+		logger:              slog.Default(),
+		metrics:             metrics.New(),
+		streamHandler:       transformer.NewStreamHandler(),
+		requestTransformer:  transformer.NewRequestTransformer(),
+		responseTransformer: transformer.NewResponseTransformer(),
+	}
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal rawBody: %v", err)
+	}
+
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		{Provider: "opencode-go", ModelID: "glm-5"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	cancel()
+
+	handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+
+	time.Sleep(50 * time.Millisecond)
+
+	finalCount := atomic.LoadInt32(&callCount)
+	if finalCount != 0 {
+		t.Errorf("expected 0 upstream calls (client canceled), got %d", finalCount)
+	}
+
+	body := recorder.Body.String()
+	if strings.Contains(body, "all upstream models failed") {
+		t.Errorf("should not send 'all upstream models failed' event for client disconnect, got: %s", body)
+	}
+}
+
+func TestHandleStreaming_ClientDisconnectsDuringStream_StopsFallback(t *testing.T) {
+	callCount := int32(0)
+	handlerCtx, handlerCancel := context.WithCancel(context.Background())
+	defer handlerCancel()
+	firstModelReady := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&callCount, 1)
+		if count == 1 {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			close(firstModelReady)
+			<-handlerCtx.Done()
+			return
+		}
+		t.Error("second model should not be attempted after client disconnect")
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL:          upstream.URL,
+			AnthropicBaseURL: upstream.URL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+
+	handler := &MessagesHandler{
+		client:              ocClient,
+		logger:              slog.Default(),
+		metrics:             metrics.New(),
+		streamHandler:       transformer.NewStreamHandler(),
+		requestTransformer:  transformer.NewRequestTransformer(),
+		responseTransformer: transformer.NewResponseTransformer(),
+	}
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal rawBody: %v", err)
+	}
+
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		{Provider: "opencode-go", ModelID: "glm-5"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+	}()
+
+	select {
+	case <-firstModelReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first model did not start within 5s")
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handleStreaming did not return after client disconnect")
+	}
+
+	handlerCancel()
+
+	finalCount := atomic.LoadInt32(&callCount)
+	if finalCount != 1 {
+		t.Errorf("expected 1 upstream call, got %d", finalCount)
+	}
+
+	body := recorder.Body.String()
+	if strings.Contains(body, "all upstream models failed") {
+		t.Errorf("should not send 'all upstream models failed' event for client disconnect, got: %s", body)
+	}
+}
+
+func TestHandleStreaming_PerModelTimeoutFallback(t *testing.T) {
+	callCount := int32(0)
+	handlerCtx, handlerCancel := context.WithCancel(context.Background())
+	defer handlerCancel()
+	firstModelReady := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := atomic.AddInt32(&callCount, 1)
+		if count == 1 {
+			close(firstModelReady)
+			<-handlerCtx.Done()
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")
+		_, _ = fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n")
+		_, _ = fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL:            upstream.URL,
+			AnthropicBaseURL:   upstream.URL,
+			TimeoutMs:          5000,
+			StreamingTimeoutMs: 200,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+
+	handler := &MessagesHandler{
+		client:              ocClient,
+		logger:              slog.Default(),
+		metrics:             metrics.New(),
+		streamHandler:       transformer.NewStreamHandler(),
+		requestTransformer:  transformer.NewRequestTransformer(),
+		responseTransformer: transformer.NewResponseTransformer(),
+	}
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal rawBody: %v", err)
+	}
+
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		{Provider: "opencode-go", ModelID: "glm-5"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+		cancel()
+	}()
+
+	select {
+	case <-firstModelReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first model did not start within 5s")
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	handlerCancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handleStreaming did not complete within 5s")
+	}
+
+	finalCount := atomic.LoadInt32(&callCount)
+	if finalCount != 2 {
+		t.Errorf("expected 2 upstream calls (1 timeout + 1 success), got %d", finalCount)
+	}
+}
+
+func TestHandleNonStreaming_ParentContextCanceled_No502(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": "msg_1",
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "text", "text": "hello"}],
+			"model": "kimi-k2.6",
+			"stop_reason": "end_turn",
+			"usage": {"input_tokens": 10, "output_tokens": 5}
+		}`))
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL:   upstream.URL,
+			TimeoutMs: 5000,
+		},
+	}
+
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+	modelRouter := router.NewModelRouter(atomicCfg)
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+
+	m := metrics.New()
+	handler := NewMessagesHandler(
+		ocClient,
+		modelRouter,
+		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
+		tokenCounter,
+		m,
+	)
+	handler.logger = slog.Default()
+
+	requestBody := `{
+		"model": "claude-haiku-4-5-20251001",
+		"max_tokens": 256,
+		"messages": [{"role": "user", "content": "Say hello"}]
+	}`
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(ctx)
+
+	handler.HandleMessages(recorder, req)
+
+	if recorder.Code == http.StatusBadGateway {
+		t.Errorf("should not return 502 for canceled context, got status %d", recorder.Code)
+	}
+
+	snap := m.GetSnapshot()
+	if snap.RequestsFailed > 0 {
+		t.Errorf("failure count should be 0 for canceled context, got %d", snap.RequestsFailed)
+	}
+
+	body := recorder.Body.String()
+	if strings.Contains(body, "all models failed") {
+		t.Errorf("should not contain 'all models failed' for client cancellation, got: %s", body)
+	}
+}
+
+func TestHandleNonStreaming_ParentDeadlineExceeded_No502(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": "msg_1",
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "text", "text": "hello"}],
+			"model": "kimi-k2.6",
+			"stop_reason": "end_turn",
+			"usage": {"input_tokens": 10, "output_tokens": 5}
+		}`))
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL:   upstream.URL,
+			TimeoutMs: 5000,
+		},
+	}
+
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	ocClient := client.NewOpenCodeClient(atomicCfg)
+	modelRouter := router.NewModelRouter(atomicCfg)
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+
+	m := metrics.New()
+	handler := NewMessagesHandler(
+		ocClient,
+		modelRouter,
+		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
+		tokenCounter,
+		m,
+	)
+	handler.logger = slog.Default()
+
+	requestBody := `{
+		"model": "claude-haiku-4-5-20251001",
+		"max_tokens": 256,
+		"messages": [{"role": "user", "content": "Say hello"}]
+	}`
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+
+	ctx, cancel := context.WithDeadline(req.Context(), time.Now().Add(-1*time.Second))
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	handler.HandleMessages(recorder, req)
+
+	if recorder.Code == http.StatusBadGateway {
+		t.Errorf("should not return 502 for deadline exceeded, got status %d", recorder.Code)
+	}
+	snap := m.GetSnapshot()
+	if snap.RequestsFailed > 0 {
+		t.Errorf("failure count should be 0 for deadline exceeded, got %d", snap.RequestsFailed)
+	}
+
+	body := recorder.Body.String()
+	if strings.Contains(body, "all models failed") {
+		t.Errorf("should not contain 'all models failed' for deadline exceeded, got: %s", body)
+	}
+}
+
+// TestResponseWriter_ConcurrentWrites verifies the mutex serializes writes,
+// preventing data races when heartbeat and stream copy write concurrently.
+func TestResponseWriter_ConcurrentWrites(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	rw := &responseWriter{ResponseWriter: recorder}
+
+	var wg sync.WaitGroup
+	const goroutines = 10
+	const writesPerGoroutine = 100
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < writesPerGoroutine; j++ {
+				rw.Write([]byte(fmt.Sprintf("goroutine-%d-write-%d\n", id, j)))
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	output := recorder.Body.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	expectedLines := goroutines * writesPerGoroutine
+	if len(lines) != expectedLines {
+		t.Errorf("got %d lines, want %d (possible data loss from unsynchronized writes)", len(lines), expectedLines)
+	}
+}
+
+// TestHandleStreaming_AnthropicRaw_NoKeepaliveInjection verifies that the
+// heartbeat is disabled during Anthropic raw passthrough. The upstream sends
+// SSE data slowly (blocking for > heartbeat interval) and the proxy must
+// not inject keepalive comments into the raw stream.
+func TestHandleStreaming_AnthropicRaw_NoKeepaliveInjection(t *testing.T) {
+	blockCh := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {\"type\":\"message_start\"}\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		select {
+		case <-blockCh:
+		case <-time.After(10 * time.Second):
+		}
+		_, _ = fmt.Fprintf(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\"}\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer upstream.Close()
+
+	handler := newStreamingTestHandler(t, upstream.URL)
+
+	rawBody := json.RawMessage(`{
+		"model": "claude-opus-4-8",
+		"stream": true,
+		"max_tokens": 256,
+		"messages": [{"role":"user","content":"hello"}]
+	}`)
+
+	var anthropicReq types.MessageRequest
+	if err := json.Unmarshal(rawBody, &anthropicReq); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	chain := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "minimax-m3"},
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.handleStreaming(recorder, req.WithContext(ctx), &anthropicReq, chain, rawBody)
+	}()
+
+	time.Sleep(3500 * time.Millisecond)
+	close(blockCh)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handleStreaming did not return after unblocking upstream")
+	}
+
+	body := recorder.Body.String()
+
+	if !strings.Contains(body, "message_start") {
+		t.Error("output missing message_start event")
+	}
+	if !strings.Contains(body, "content_block_delta") {
+		t.Error("output missing content_block_delta event")
+	}
+
+	if strings.Contains(body, ":keepalive") {
+		t.Errorf("keepalive comment leaked into Anthropic raw stream output (concurrent write bug):\n%s", body)
+	}
 }

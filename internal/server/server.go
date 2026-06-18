@@ -69,13 +69,13 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	mux.HandleFunc("/v1/messages/count_tokens", healthHandler.HandleCountTokens)
 	mux.HandleFunc("/health", healthHandler.HandleHealth)
 
-	// Create HTTP server.
+	// WriteTimeout stays disabled so long SSE streams are not cut off locally.
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	httpSrv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,
+		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
 	}
 

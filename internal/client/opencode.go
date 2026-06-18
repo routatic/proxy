@@ -40,14 +40,8 @@ func (c *OpenCodeClient) nextAPIKey(keys []string) string {
 	return keys[(old-1)%n]
 }
 
-// NewOpenCodeClient creates a new OpenCode client.
+// NewOpenCodeClient creates a client that relies on request contexts for timeouts.
 func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
-	cfg := atomic.Get()
-	timeout := time.Duration(cfg.OpenCodeGo.TimeoutMs) * time.Millisecond
-	if timeout == 0 {
-		timeout = 5 * time.Minute
-	}
-
 	transport := &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 20,
@@ -60,10 +54,46 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 	return &OpenCodeClient{
 		atomic: atomic,
 		httpClient: &http.Client{
-			Timeout:   timeout,
+			Timeout:   0,
 			Transport: transport,
 		},
 	}
+}
+
+// RequestTimeout returns the provider timeout for a non-streaming attempt.
+func (c *OpenCodeClient) RequestTimeout(model config.ModelConfig) time.Duration {
+	cfg := c.atomic.Get()
+	var timeoutMs int
+	if IsZen(model) {
+		timeoutMs = cfg.OpenCodeZen.TimeoutMs
+	} else {
+		timeoutMs = cfg.OpenCodeGo.TimeoutMs
+	}
+	if timeoutMs > 0 {
+		return time.Duration(timeoutMs) * time.Millisecond
+	}
+	return 5 * time.Minute
+}
+
+// StreamingTimeout returns the provider timeout for a streaming attempt.
+func (c *OpenCodeClient) StreamingTimeout(model config.ModelConfig) time.Duration {
+	cfg := c.atomic.Get()
+	var timeoutMs int
+	if IsZen(model) {
+		timeoutMs = cfg.OpenCodeZen.StreamingTimeoutMs
+		if timeoutMs <= 0 {
+			timeoutMs = cfg.OpenCodeZen.TimeoutMs
+		}
+	} else {
+		timeoutMs = cfg.OpenCodeGo.StreamingTimeoutMs
+		if timeoutMs <= 0 {
+			timeoutMs = cfg.OpenCodeGo.TimeoutMs
+		}
+	}
+	if timeoutMs > 0 {
+		return time.Duration(timeoutMs) * time.Millisecond
+	}
+	return 5 * time.Minute
 }
 
 // IsAnthropicModel returns true if the model requires the Anthropic endpoint.

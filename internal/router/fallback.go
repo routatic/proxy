@@ -165,8 +165,7 @@ func (h *FallbackHandler) getCircuitBreaker(modelID string) *CircuitBreaker {
 	return cb
 }
 
-// ExecuteWithFallback tries models in sequence until one succeeds.
-// Respects circuit breaker state to skip models that are failing repeatedly.
+// ExecuteWithFallback tries models in order until one succeeds.
 func (h *FallbackHandler) ExecuteWithFallback(
 	ctx context.Context,
 	models []config.ModelConfig,
@@ -175,9 +174,15 @@ func (h *FallbackHandler) ExecuteWithFallback(
 	totalModels := len(models)
 
 	for i, model := range models {
+		if err := ctx.Err(); err != nil {
+			h.logger.Info("request context canceled, stopping fallback attempts",
+				"error", err,
+			)
+			return nil, nil, err
+		}
+
 		cb := h.getCircuitBreaker(model.ModelID)
 
-		// Skip models with open circuit breakers
 		if !cb.AllowRequest() {
 			h.logger.Info("circuit breaker open, skipping model",
 				"model", model.ModelID,
@@ -206,6 +211,14 @@ func (h *FallbackHandler) ExecuteWithFallback(
 				Attempted:   i + 1,
 				TotalModels: totalModels,
 			}, body, nil
+		}
+
+		if errCtx := ctx.Err(); errCtx != nil {
+			h.logger.Info("request context canceled after model attempt, stopping fallback",
+				"model", model.ModelID,
+				"error", errCtx,
+			)
+			return nil, nil, errCtx
 		}
 
 		cb.RecordFailure()

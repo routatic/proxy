@@ -406,11 +406,7 @@ func (h *StreamHandler) processSSELine(
 		flusher.Flush()
 	}
 
-	// Handle tool call deltas.
-	// OpenAI streams tool calls incrementally: the first chunk for a given
-	// tool call carries id + name (+ possibly empty arguments), subsequent
-	// chunks carry only incremental arguments.  We must create exactly one
-	// content_block_start per tool call, then stream deltas for it.
+	// Handle streamed tool calls.
 	if len(choice.Delta.ToolCalls) > 0 {
 		for _, tc := range choice.Delta.ToolCalls {
 			oi := tc.Index // OpenAI tool_calls array index
@@ -418,9 +414,7 @@ func (h *StreamHandler) processSSELine(
 			blockIdx, exists := startedToolCalls[oi]
 			if !exists {
 				if tc.Function.Name == "" {
-					// Ghost chunk: this index was closed and recycled, but
-					// has no name/id. Ignore — the real tool call was
-					// already fully processed.
+					// Ignore recycled chunks with no name/id.
 					continue
 				}
 				if *contentStarted || *reasoningStarted {
@@ -433,11 +427,10 @@ func (h *StreamHandler) processSSELine(
 					}
 					*contentStarted = false
 					*reasoningStarted = false
-					*contentIndex++ // advance past the block being closed
+					*contentIndex++
 				}
-				// First time seeing this logical tool call — start a new block.
 				blockIdx = *contentIndex
-				*contentIndex++ // reserve this index for the new tool_use block
+				*contentIndex++
 				*toolUseCount++
 				startedToolCalls[oi] = blockIdx
 
@@ -460,7 +453,6 @@ func (h *StreamHandler) processSSELine(
 				}
 			}
 
-			// Send argument delta (if any) — whether new or continuation.
 			if tc.Function.Arguments != "" {
 				delta := types.Delta{
 					Type:        "input_json_delta",

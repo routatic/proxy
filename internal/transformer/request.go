@@ -570,9 +570,6 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 }
 
 // transformTools converts Anthropic tools to OpenAI tool definitions.
-// Skips tools with empty names and normalizes input schemas so
-// upstream validators (MiniMax, Moonshot, etc.) never see empty or
-// malformed parameters objects.
 func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef {
 	var result []types.ToolDef
 
