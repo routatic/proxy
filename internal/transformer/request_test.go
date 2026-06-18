@@ -1320,6 +1320,180 @@ func TestTransformRequestNonVisionModelImageOnly(t *testing.T) {
 	}
 }
 
+func TestTransformRequestDeepSeekRewritesSystemRoleToUserMessage(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"task tools haven't been used recently"}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have 2 messages: user + rewritten system
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	// The system message should be rewritten to a user message with <system-reminder> tags
+	msg := openaiReq.Messages[1]
+	if msg.Role != "user" {
+		t.Fatalf("rewritten message role = %q, want %q", msg.Role, "user")
+	}
+	wantContent := "<system-reminder>\ntask tools haven't been used recently\n</system-reminder>"
+	if got := msg.ContentText(); got != wantContent {
+		t.Fatalf("rewritten content = %q, want %q", got, wantContent)
+	}
+}
+
+func TestTransformRequestNonDeepSeekIgnoresSystemRoleMessages(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "qwen3.6-plus",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"a system reminder"}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "qwen3.6-plus"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Non-DeepSeek models should pass system messages to transformMessage for normal handling.
+	// transformMessage's default case will produce a message with the original role.
+	lastMsg := openaiReq.Messages[len(openaiReq.Messages)-1]
+	if lastMsg.Role != "system" {
+		t.Fatalf("non-DeepSeek system message role = %q, want %q (should pass through unchanged)", lastMsg.Role, "system")
+	}
+}
+
+func TestTransformRequestDeepSeekDeduplicatesSystemMessage(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		System:    json.RawMessage(`"You are Claude. task tools haven't been used recently"`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			// This system message is a substring of the top-level system prompt — should be skipped
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"task tools haven't been used recently"}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have 2 messages: system (from top-level) + user
+	// The duplicate system message should be dropped
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	// First message should be the top-level system prompt
+	if openaiReq.Messages[0].Role != "system" {
+		t.Fatalf("first message role = %q, want %q", openaiReq.Messages[0].Role, "system")
+	}
+	// Second message should be the user message
+	if openaiReq.Messages[1].Role != "user" {
+		t.Fatalf("second message role = %q, want %q", openaiReq.Messages[1].Role, "user")
+	}
+	if got, want := openaiReq.Messages[1].ContentText(), "hello"; got != want {
+		t.Fatalf("second message content = %q, want %q", got, want)
+	}
+}
+
+func TestTransformRequestDeepSeekSkipsEmptySystemMessage(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			// Empty text blocks — should be skipped
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":""}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have exactly 1 message (just the user message)
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+}
+
+func TestTransformRequestDeepSeekRewritesMultipleSystemMessages(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"first reminder"}]`)},
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"second reminder"}]`)},
+			{Role: "assistant", Content: json.RawMessage(`"hi"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have 4 messages: 2 rewritten system + user + assistant
+	if got, want := len(openaiReq.Messages), 4; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	// Both system messages should be rewritten to user with <system-reminder> tags
+	for i, idx := range []int{0, 2} {
+		msg := openaiReq.Messages[idx]
+		if msg.Role != "user" {
+			t.Fatalf("Messages[%d] role = %q, want %q", idx, msg.Role, "user")
+		}
+		wantSuffix := []string{"first reminder", "second reminder"}[i]
+		got := msg.ContentText()
+		if !strings.Contains(got, wantSuffix) {
+			t.Fatalf("Messages[%d] content = %q, want it to contain %q", idx, got, wantSuffix)
+		}
+		if !strings.HasPrefix(got, "<system-reminder>") {
+			t.Fatalf("Messages[%d] content = %q, want <system-reminder> prefix", idx, got)
+		}
+	}
+
+	// The user and assistant messages should be in their original positions
+	if openaiReq.Messages[1].Role != "user" || openaiReq.Messages[1].ContentText() != "hello" {
+		t.Fatalf("Messages[1] expected user 'hello', got %q %q", openaiReq.Messages[1].Role, openaiReq.Messages[1].ContentText())
+	}
+	if openaiReq.Messages[3].Role != "assistant" || openaiReq.Messages[3].ContentText() != "hi" {
+		t.Fatalf("Messages[3] expected assistant 'hi', got %q %q", openaiReq.Messages[3].Role, openaiReq.Messages[3].ContentText())
+	}
+}
+
 func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
 	transformer := NewRequestTransformer()
 	stream := true
