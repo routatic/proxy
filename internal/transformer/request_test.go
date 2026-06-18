@@ -1523,3 +1523,188 @@ func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
 		t.Fatalf("expected Thinking to be nil for standard model, got %s", string(openaiReq.Thinking))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3 regression tests: transformTools hardening
+// ---------------------------------------------------------------------------
+
+func TestTransformTools_SkipsEmptyName(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "", Description: "empty name", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "Bash", Description: "valid tool", InputSchema: json.RawMessage(`{"type":"object"}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (empty-name tool should be skipped)", got, want)
+	}
+	if got, want := result[0].Function.Name, "Bash"; got != want {
+		t.Fatalf("result[0].Name = %q, want %q", got, want)
+	}
+}
+
+func TestTransformTools_SkipsWhitespaceOnlyName(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "   ", Description: "whitespace name", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "Bash", Description: "valid tool", InputSchema: json.RawMessage(`{"type":"object"}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (whitespace-name tool should be skipped)", got, want)
+	}
+}
+
+func TestTransformTools_FillsEmptySchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "no schema", InputSchema: nil},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("parameters missing type=object: %s", params)
+	}
+	if !strings.Contains(params, `"additionalProperties":false`) {
+		t.Fatalf("parameters missing additionalProperties=false: %s", params)
+	}
+}
+
+func TestTransformTools_FillsNullSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "null schema", InputSchema: json.RawMessage(`null`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("null schema should become type=object: %s", params)
+	}
+}
+
+func TestTransformTools_FillsEmptyObjectSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "empty object schema", InputSchema: json.RawMessage(`{}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("empty object schema should get type=object: %s", params)
+	}
+	if !strings.Contains(params, `"additionalProperties":false`) {
+		t.Fatalf("empty object schema should get additionalProperties=false: %s", params)
+	}
+}
+
+func TestTransformTools_FillsMissingType(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Search", Description: "schema without type", InputSchema: json.RawMessage(`{"properties":{"query":{"type":"string"}}}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("schema missing type should get type=object: %s", params)
+	}
+	if !strings.Contains(params, `"query"`) {
+		t.Fatalf("existing properties should be preserved: %s", params)
+	}
+}
+
+func TestTransformTools_FillsMissingProperties(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "NoOp", Description: "schema without properties", InputSchema: json.RawMessage(`{"type":"object"}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"properties"`) {
+		t.Fatalf("schema missing properties should get properties={}: %s", params)
+	}
+}
+
+func TestTransformTools_RecoversFromInvalidJSON(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "malformed JSON", InputSchema: json.RawMessage(`{invalid`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (malformed schema should be replaced, not skipped)", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("malformed schema should be replaced with valid schema: %s", params)
+	}
+}
+
+func TestTransformTools_PreservesValidSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	originalSchema := json.RawMessage(`{"type":"object","properties":{"cmd":{"type":"string","description":"The command"}},"required":["cmd"]}`)
+	tools := []types.Tool{
+		{Name: "Bash", Description: "run a command", InputSchema: originalSchema},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"cmd"`) {
+		t.Fatalf("valid schema properties should be preserved: %s", params)
+	}
+	if !strings.Contains(params, `"required"`) {
+		t.Fatalf("valid schema required should be preserved: %s", params)
+	}
+	if !strings.Contains(params, `"type":"string"`) {
+		t.Fatalf("valid schema nested type should be preserved: %s", params)
+	}
+}
+
+func TestTransformTools_PreservesAdditionalPropertiesWhenSet(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Flexible", Description: "allows extra props", InputSchema: json.RawMessage(`{"type":"object","properties":{"a":{"type":"string"}},"additionalProperties":true}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"additionalProperties":true`) {
+		t.Fatalf("existing additionalProperties should be preserved: %s", params)
+	}
+}

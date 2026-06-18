@@ -569,21 +569,44 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 	return []types.ChatMessage{msg}, nil
 }
 
-// transformTools converts Anthropic tools to OpenAI tools.
+// transformTools converts Anthropic tools to OpenAI tool definitions.
+// Skips tools with empty names and normalizes input schemas so
+// upstream validators (MiniMax, Moonshot, etc.) never see empty or
+// malformed parameters objects.
 func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef {
 	var result []types.ToolDef
 
 	for _, tool := range tools {
-		// InputSchema is already json.RawMessage, use it directly
+		name := strings.TrimSpace(tool.Name)
+		if name == "" {
+			continue
+		}
+
 		schema := tool.InputSchema
-		if len(schema) == 0 {
-			schema = []byte(`{"type":"object","properties":{}}`)
+		switch {
+		case len(schema) == 0, string(schema) == "null", string(schema) == "{}":
+			schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+		default:
+			var schemaObj map[string]interface{}
+			if err := json.Unmarshal(schema, &schemaObj); err != nil {
+				schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+			} else {
+				if _, ok := schemaObj["type"]; !ok {
+					schemaObj["type"] = "object"
+				}
+				if _, ok := schemaObj["properties"]; !ok {
+					schemaObj["properties"] = map[string]interface{}{}
+				}
+				if fixed, err := json.Marshal(schemaObj); err == nil {
+					schema = fixed
+				}
+			}
 		}
 
 		result = append(result, types.ToolDef{
 			Type: "function",
 			Function: types.FunctionDef{
-				Name:        tool.Name,
+				Name:        name,
 				Description: tool.Description,
 				Parameters:  json.RawMessage(schema),
 			},
