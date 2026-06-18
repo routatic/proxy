@@ -105,6 +105,7 @@ func (h *StreamHandler) ProxyStream(
 	stopSent := false
 	toolUseCount := 0
 	startedToolCalls := make(map[int]int) // maps OpenAI tool call index → Anthropic content block index
+	decodeErrors := 0                     // consecutive SSE decode failures
 
 	// Read in larger chunks for efficiency, then parse lines
 	readBuf := make([]byte, 4096)
@@ -137,7 +138,7 @@ func (h *StreamHandler) ProxyStream(
 					lineBuf.Reset()
 
 					// Process complete line
-					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel); err != nil {
+					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
 						return err
 					}
 				} else {
@@ -150,7 +151,7 @@ func (h *StreamHandler) ProxyStream(
 			// Process any remaining data in buffer
 			if lineBuf.Len() > 0 {
 				line := lineBuf.String()
-				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel); err != nil {
+				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
 					return err
 				}
 			}
@@ -250,6 +251,7 @@ func (h *StreamHandler) processSSELine(
 	toolUseCount *int,
 	startedToolCalls map[int]int,
 	originalModel string,
+	decodeErrors *int,
 ) error {
 	line = strings.TrimSpace(line)
 
@@ -347,9 +349,16 @@ func (h *StreamHandler) processSSELine(
 	// For tool calls and other complex cases, fall back to full JSON parsing
 	var chunk types.ChatCompletionChunk
 	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-		// Skip malformed chunks - don't fail the whole stream
+		// Track consecutive decode failures. A transient glitch is tolerated,
+		// but persistent corruption terminates the stream rather than silently
+		// dropping content.
+		*decodeErrors++
+		if *decodeErrors > 3 {
+			return fmt.Errorf("too many consecutive SSE decode failures (%d)", *decodeErrors)
+		}
 		return nil
 	}
+	*decodeErrors = 0
 
 	if len(chunk.Choices) == 0 {
 		if chunk.Usage != nil {

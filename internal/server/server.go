@@ -76,9 +76,11 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 		Handler:      mux,
 		ReadTimeout:  120 * time.Second,
 		// WriteTimeout is disabled (zero). Long-running SSE streams must not be
-		// killed mid-flight. IdleTimeout handles stuck connections, and the
-		// per-stream idle deadline (set via http.ResponseController in the
-		// handler) handles stale upstream reads.
+		// killed mid-flight. Stuck upstream connections are handled by the
+		// per-stream idle watchdog (transformer/idle.go) which cancels the
+		// upstream context when no bytes arrive within the model's idle timeout.
+		// IdleTimeout here governs keep-alive between separate HTTP requests on
+		// the same TCP connection; it does NOT affect in-stream byte gaps.
 		WriteTimeout: 0,
 		IdleTimeout:  300 * time.Second,
 	}

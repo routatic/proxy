@@ -72,11 +72,24 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// Flush implements http.Flusher for SSE streaming support.
-func (w *responseWriter) Flush() {
+// headerWritten returns true if headers have been written to the response.
+// Safe for concurrent use.
+func (w *responseWriter) headerWritten() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+	return w.wroteHeader
+}
+
+// Flush implements http.Flusher for SSE streaming support.
+// The mutex is released before calling Flush to prevent a slow TCP consumer
+// from blocking writes (and thus stalling the heartbeat goroutine). SSE
+// frame ordering at the TCP level is unaffected because the Go runtime only
+// flushes bytes that have already been written via Write.
+func (w *responseWriter) Flush() {
+	w.mu.Lock()
+	f, ok := w.ResponseWriter.(http.Flusher)
+	w.mu.Unlock()
+	if ok {
 		f.Flush()
 	}
 }
@@ -659,8 +672,9 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer cancel()
 
-	// Stream the body byte-by-byte with an idle watchdog. The stream lives
+	// Stream the body chunk-by-chunk with an idle watchdog. The stream lives
 	// as long as data keeps flowing and is aborted when no byte arrives
 	// within idleTimeout.
 	buf := make([]byte, 4096)
@@ -912,7 +926,7 @@ func (h *MessagesHandler) sendError(w http.ResponseWriter, statusCode int, messa
 		"error", err,
 	)
 
-	if rw, ok := w.(*responseWriter); ok && rw.wroteHeader {
+	if rw, ok := w.(*responseWriter); ok && rw.headerWritten() {
 		return
 	}
 

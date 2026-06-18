@@ -11,14 +11,17 @@ import (
 // returned ping function occurs within idleTimeout. The caller must invoke ping()
 // after every successful byte read from the upstream stream.
 //
-// The watchdog stops when ctx is done (e.g., the stream completed or the caller
-// cancelled the context).  Pass idleTimeout <= 0 to disable the watchdog (the
-// returned ping is a no-op).
+// The watchdog goroutine exits when ctx is done (e.g., the stream completed or
+// the caller cancelled the context). The caller MUST cancel ctx when the stream
+// is finished to avoid leaking the goroutine.
+//
+// Pass idleTimeout <= 0 to disable the watchdog (the returned ping is a no-op).
 //
 // Typical usage:
 //
+//	ctx, cancel := context.WithCancel(context.Background())
+//	defer cancel()
 //	ping := StartIdleWatchdog(ctx, cancel, idleTimeout)
-//	defer func() { cancel(); watchdogStop() }()   // no watchdogStop needed
 //	// In the read loop:
 //	n, err := body.Read(buf)
 //	if n > 0 {
@@ -33,12 +36,15 @@ func StartIdleWatchdog(ctx context.Context, cancel context.CancelFunc, idleTimeo
 	var mu sync.Mutex
 	lastRead := time.Now()
 
+	timer := time.NewTimer(idleTimeout)
+
 	go func() {
+		defer timer.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(idleTimeout):
+			case <-timer.C:
 				mu.Lock()
 				elapsed := time.Since(lastRead)
 				mu.Unlock()
@@ -46,6 +52,7 @@ func StartIdleWatchdog(ctx context.Context, cancel context.CancelFunc, idleTimeo
 					cancel()
 					return
 				}
+				timer.Reset(idleTimeout)
 			}
 		}
 	}()
