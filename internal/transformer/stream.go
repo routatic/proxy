@@ -341,6 +341,10 @@ func (h *StreamHandler) processSSELine(
 					}
 					flusher.Flush()
 				}
+				// Valid SSE line accepted via fast path — reset the
+				// consecutive decode failure counter so interleaved valid
+				// chunks don't accumulate spurious "too many failures".
+				*decodeErrors = 0
 				return nil
 			}
 		}
