@@ -64,7 +64,10 @@ fi
 # --- Start proxy ---
 echo "=== Starting proxy on ${HOST}:${PORT} ==="
 cleanup
-./bin/oc-go-cc serve -b --port "$PORT" > /tmp/oc-go-cc-e2e.log 2>&1 &
+# Run server in foreground but background it with & so we can capture the PID.
+# Do NOT use -b (daemonize) because that forks and exits the parent, making $!
+# capture the wrong PID.
+./bin/oc-go-cc serve --port "$PORT" > /tmp/oc-go-cc-e2e.log 2>&1 &
 PROXY_PID=$!
 echo "Server PID: ${PROXY_PID}"
 
