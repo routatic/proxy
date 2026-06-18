@@ -283,7 +283,7 @@ func (h *MessagesHandler) routeOnce(
 ) (router.RouteResult, error) {
 	if isStreaming && !h.modelRouter.IsStreamingScenarioRoutingEnabled() {
 		// Streaming: use faster models to minimize TTFT (time-to-first-token)
-		return h.modelRouter.RouteForStreaming(routerMessages, tokenCount, requestedModel), nil
+		return h.modelRouter.RouteForStreaming(routerMessages, tokenCount, requestedModel)
 	}
 	return h.modelRouter.Route(routerMessages, tokenCount, requestedModel)
 }

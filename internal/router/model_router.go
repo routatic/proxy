@@ -148,11 +148,11 @@ func (rr *RouteResult) GetModelChain() []config.ModelConfig {
 // RouteForStreaming determines which model to use for streaming requests.
 // Prioritizes fast TTFT (time-to-first-token) over capability.
 // If respect_requested_model is enabled and requestedModel is provided, it overrides scenario-based routing.
-func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount int, requestedModel string) RouteResult {
+func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount int, requestedModel string) (RouteResult, error) {
 	cfg := r.atomic.Get()
 
 	if result, ok := r.resolveRequestedModel(cfg, requestedModel); ok {
-		return result
+		return result, nil
 	}
 
 	// Otherwise, use scenario-based routing for streaming
@@ -168,13 +168,8 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 			primary = cfg.Models["default"]
 		}
 	}
-	// If all fallbacks missed (no configured scenario/fast/default), return
-	// an empty result. The caller (routeOnce) returns nil error for streaming
-	// routes, so we can't surface a typed error here.
 	if primary.ModelID == "" {
-		return RouteResult{
-			Scenario: result.Scenario,
-		}
+		return RouteResult{}, fmt.Errorf("no model configured for streaming; neither scenario %q, \"fast\", nor \"default\" exist in models map", result.Scenario)
 	}
 
 	// Get fallbacks for scenario
@@ -188,5 +183,5 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 		Primary:   primary,
 		Fallbacks: fallbacks,
 		Scenario:  result.Scenario,
-	}
+	}, nil
 }

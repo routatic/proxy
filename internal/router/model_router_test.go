@@ -174,7 +174,10 @@ func TestRouteForStreaming_RespectRequestedModel_BypassesScenarioRouting(t *test
 		{Role: "user", Content: "Hello"},
 	}
 
-	result := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	result, err := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result.Primary.ModelID != "kimi-k2.6" {
 		t.Errorf("expected model kimi-k2.6, got %s", result.Primary.ModelID)
 	}
