@@ -593,9 +593,9 @@ func TestProxyStream_SingleToolCall(t *testing.T) {
 
 	events := parseSSEEvents(t, w.buf.String())
 
-	// Expected: message_start, tool_start(idx=1), 2x input_json_delta (3rd arg arrives
+	// Expected: message_start, tool_start(idx=0), 2x input_json_delta (3rd arg arrives
 	// with finish_reason in same chunk, fast path returns before processing delta),
-	// tool_stop(idx=1), message_delta, message_stop = 7
+	// tool_stop(idx=0), message_delta, message_stop = 7
 	if len(events) != 7 {
 		t.Fatalf("expected 7 events, got %d: %+v", len(events), events)
 	}
@@ -941,9 +941,9 @@ func TestProxyStream_ToolCallAndFinishReasonInSameChunk(t *testing.T) {
 
 	// Expected events:
 	// 0: message_start
-	// 1: content_block_start (index 1, type tool_use)
-	// 2: content_block_delta (index 1, partial_json "{\"loc\":\"Beijing\"}")
-	// 3: content_block_stop (index 1)
+	// 1: content_block_start (index 0, type tool_use)
+	// 2: content_block_delta (index 0, partial_json "{\"loc\":\"Beijing\"}")
+	// 3: content_block_stop (index 0)
 	// 4: message_delta (stop_reason: tool_use)
 	// 5: message_stop
 	if len(events) != 6 {
@@ -956,8 +956,8 @@ func TestProxyStream_ToolCallAndFinishReasonInSameChunk(t *testing.T) {
 	if events[2].Type != "content_block_delta" || events[2].Delta == nil || events[2].Delta.PartialJSON != `{"loc":"Beijing"}` {
 		t.Errorf("event[2] = %+v, want content_block_delta", events[2])
 	}
-	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 1 {
-		t.Errorf("event[3] = %+v, want content_block_stop(1)", events[3])
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 0 {
+		t.Errorf("event[3] = %+v, want content_block_stop(0)", events[3])
 	}
 	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
 		t.Errorf("event[4] = %+v, want message_delta(tool_use)", events[4])
@@ -1064,6 +1064,55 @@ func TestProxyStream_EOFFallbackStopReasonToolUse(t *testing.T) {
 	}
 	if msgDelta.Delta == nil || msgDelta.Delta.StopReason != "tool_use" {
 		t.Errorf("stop_reason = %q, want tool_use (stream ended mid-tool-call)", msgDelta.Delta.StopReason)
+	}
+}
+
+// TestProxyStream_ToolUseFirstContentBlock verifies that when the first
+// assistant output is a direct tool call (no preceding text or reasoning),
+// the tool_use block is emitted at index 0 per Anthropic SSE spec.
+func TestProxyStream_ToolUseFirstContentBlock(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_abc","type":"function","function":{"name":"read_file","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"/tmp/x\"}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// 0: message_start
+	// 1: content_block_start (index 0, type tool_use) — first content block
+	// 2: content_block_delta (index 0)
+	// 3: content_block_stop (index 0)
+	// 4: message_delta
+	// 5: message_stop
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].Type != "content_block_start" {
+		t.Fatalf("event[1].Type = %q, want content_block_start", events[1].Type)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Fatalf("event[1].ContentBlock = %+v, want tool_use", events[1].ContentBlock)
+	}
+	if events[1].Index == nil || *events[1].Index != 0 {
+		t.Fatalf("tool_use content_block_start index = %v, want 0", events[1].Index)
+	}
+
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 0 {
+		t.Fatalf("tool_use content_block_stop index = %v, want 0", events[3].Index)
+	}
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
+		t.Errorf("event[4] = %+v, want message_delta(tool_use)", events[4])
 	}
 }
 

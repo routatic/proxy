@@ -433,11 +433,12 @@ func (h *StreamHandler) processSSELine(
 					}
 					*contentStarted = false
 					*reasoningStarted = false
+					*contentIndex++ // advance past the block being closed
 				}
 				// First time seeing this logical tool call — start a new block.
-				*contentIndex++
-				*toolUseCount++
 				blockIdx = *contentIndex
+				*contentIndex++ // reserve this index for the new tool_use block
+				*toolUseCount++
 				startedToolCalls[oi] = blockIdx
 
 				toolID := tc.ID
