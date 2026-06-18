@@ -641,7 +641,7 @@ func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMess
 			"error", err, "model_id", modelID)
 		return rawBody
 	}
-	obj["model"] = encoded
+		if toolType, ok := toolMap["type"].(string); ok && toolType == "custom" {
 	result, err := json.Marshal(obj)
 	if err != nil {
 		slog.Error("could not marshal request body after model replacement, using original",
