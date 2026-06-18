@@ -367,6 +367,39 @@ func (h *MessagesHandler) handleStreaming(
 		}()
 		idleTimeout := h.client.StreamIdleTimeout(model)
 
+		// recordStreamSuccess records a successful stream completion and
+		// marks the model attempt as done.
+		recordStreamSuccess := func(model config.ModelConfig) {
+			cancel()
+			latency := time.Since(streamStart)
+			h.metrics.RecordSuccess(model.ModelID, latency)
+			h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+		}
+
+		// handleStreamError checks the error from a streaming attempt and
+		// decides whether to retry the next model or abort. It returns true
+		// if the caller should continue (fallback to next model), or false
+		// if it should return.
+		handleStreamError := func(err error, model config.ModelConfig, action string) bool {
+			cancel()
+			if clientCtx.Err() == context.Canceled {
+				h.logger.Debug("client disconnected during " + action + " stream")
+				return false // abort
+			}
+			if err == transformer.ErrStreamIdle {
+				h.logger.Warn("upstream "+action+" stream idle, trying next model",
+					"model", model.ModelID, "idle_timeout", idleTimeout)
+				if rw.ssePayloadWritten {
+					h.sendStreamError(rw, "stream idle after SSE payload started")
+					h.metrics.RecordFailure()
+					return false // abort
+				}
+				return true // continue to next model
+			}
+			h.logger.Warn(action+" streaming failed", "model", model.ModelID, "error", err)
+			return true // continue to next model
+		}
+
 		// Zen models use their own endpoint classification
 		if client.IsZen(model) {
 			endpointType := client.ClassifyEndpoint(model.ModelID)
@@ -377,78 +410,33 @@ func (h *MessagesHandler) handleStreaming(
 				} else {
 					modelBody := replaceModelInRawBody(rawBody, model.ModelID)
 					if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID, model, idleTimeout, cancel, clientCtx); err != nil {
-						cancel()
-						if clientCtx.Err() == context.Canceled {
-							h.logger.Debug("client disconnected during anthropic stream")
+						if !handleStreamError(err, model, "anthropic") {
 							return
 						}
-						if err == transformer.ErrStreamIdle {
-							h.logger.Warn("upstream anthropic stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
-							if rw.ssePayloadWritten {
-								h.sendStreamError(rw, "stream idle after SSE payload started")
-								h.metrics.RecordFailure()
-								return
-							}
-							continue
-						}
-						h.logger.Warn("anthropic streaming failed", "model", model.ModelID, "error", err)
 						continue
 					}
-					cancel()
-					latency := time.Since(streamStart)
-					h.metrics.RecordSuccess(model.ModelID, latency)
-					h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+					recordStreamSuccess(model)
 					return
 				}
 
 			case client.EndpointResponses:
 				if err := h.handleResponsesStreaming(ctx, rw, anthropicReq, model, clientCtx, idleTimeout, cancel); err != nil {
-					cancel()
-					if clientCtx.Err() == context.Canceled {
-						h.logger.Debug("client disconnected during responses stream")
+					if !handleStreamError(err, model, "responses") {
 						return
 					}
-					if err == transformer.ErrStreamIdle {
-						h.logger.Warn("upstream responses stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
-						if rw.ssePayloadWritten {
-							h.sendStreamError(rw, "stream idle after SSE payload started")
-							h.metrics.RecordFailure()
-							return
-						}
-						continue
-					}
-					h.logger.Warn("responses streaming failed", "model", model.ModelID, "error", err)
 					continue
 				}
-				cancel()
-				latency := time.Since(streamStart)
-				h.metrics.RecordSuccess(model.ModelID, latency)
-				h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+				recordStreamSuccess(model)
 				return
 
 			case client.EndpointGemini:
 				if err := h.handleGeminiStreaming(ctx, rw, anthropicReq, model, clientCtx, idleTimeout, cancel); err != nil {
-					cancel()
-					if clientCtx.Err() == context.Canceled {
-						h.logger.Debug("client disconnected during gemini stream")
+					if !handleStreamError(err, model, "gemini") {
 						return
 					}
-					if err == transformer.ErrStreamIdle {
-						h.logger.Warn("upstream gemini stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
-						if rw.ssePayloadWritten {
-							h.sendStreamError(rw, "stream idle after SSE payload started")
-							h.metrics.RecordFailure()
-							return
-						}
-						continue
-					}
-					h.logger.Warn("gemini streaming failed", "model", model.ModelID, "error", err)
 					continue
 				}
-				cancel()
-				latency := time.Since(streamStart)
-				h.metrics.RecordSuccess(model.ModelID, latency)
-				h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+				recordStreamSuccess(model)
 				return
 
 			default:
@@ -461,32 +449,19 @@ func (h *MessagesHandler) handleStreaming(
 		if !client.IsZen(model) && client.IsAnthropicModel(model.ModelID) {
 			modelBody := replaceModelInRawBody(rawBody, model.ModelID)
 			if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID, model, idleTimeout, cancel, clientCtx); err != nil {
-				cancel()
-				if clientCtx.Err() == context.Canceled {
-					h.logger.Debug("client disconnected during anthropic stream")
+				if !handleStreamError(err, model, "anthropic") {
 					return
 				}
-				if err == transformer.ErrStreamIdle {
-					h.logger.Warn("upstream anthropic stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
-					if rw.ssePayloadWritten {
-						h.sendStreamError(rw, "upstream stream idle after SSE payload started")
-						h.metrics.RecordFailure()
-						return
-					}
-					continue
-				}
-				h.logger.Warn("anthropic streaming failed", "model", model.ModelID, "error", err)
-				if rw.ssePayloadWritten {
+				// For non-idle errors after SSE payload started, send a more
+				// specific error message since this is the last attempt.
+				if err != transformer.ErrStreamIdle && rw.ssePayloadWritten {
 					h.sendStreamError(rw, fmt.Sprintf("all upstream models failed after SSE payload started: %v", err))
 					h.metrics.RecordFailure()
 					return
 				}
 				continue
 			}
-			cancel()
-			latency := time.Since(streamStart)
-			h.metrics.RecordSuccess(model.ModelID, latency)
-			h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+			recordStreamSuccess(model)
 			return
 		}
 
@@ -511,33 +486,18 @@ func (h *MessagesHandler) handleStreaming(
 
 		if err := h.streamHandler.ProxyStream(rw, streamBody, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
 			_ = streamBody.Close()
-			cancel()
 			if err == transformer.ErrClientDisconnected {
 				h.logger.Debug("client disconnected during stream")
 				return
 			}
-			if clientCtx.Err() == context.Canceled {
-				h.logger.Debug("client disconnected during stream (context canceled)")
+			if !handleStreamError(err, model, "openai") {
 				return
 			}
-			if err == transformer.ErrStreamIdle {
-				h.logger.Warn("upstream stream idle, trying next model", "model", model.ModelID, "idle_timeout", idleTimeout)
-				if rw.ssePayloadWritten {
-					h.sendStreamError(rw, "stream idle after SSE payload started")
-					h.metrics.RecordFailure()
-					return
-				}
-				continue
-			}
-			h.logger.Warn("stream proxy failed", "model", model.ModelID, "error", err)
 			continue
 		}
 
 		_ = streamBody.Close()
-		cancel()
-		latency := time.Since(streamStart)
-		h.metrics.RecordSuccess(model.ModelID, latency)
-		h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+		recordStreamSuccess(model)
 		return
 	}
 

@@ -42,12 +42,6 @@ func (c *OpenCodeClient) nextAPIKey(keys []string) string {
 
 // NewOpenCodeClient creates a new OpenCode client.
 func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
-	cfg := atomic.Get()
-	timeout := time.Duration(cfg.OpenCodeGo.TimeoutMs) * time.Millisecond
-	if timeout == 0 {
-		timeout = 5 * time.Minute
-	}
-
 	transport := &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 20,
@@ -57,11 +51,6 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 		Proxy:               http.ProxyFromEnvironment,
 	}
 
-	// http.Client.Timeout is intentionally NOT set on streaming requests — it
-	// caps the *entire* request lifecycle, which kills long-running SSE streams
-	// even when bytes are still flowing. Per-stream idle deadlines are applied
-	// later via http.ResponseController.SetReadDeadline in the handler.
-	_ = timeout // retained for potential non-streaming future use
 	return &OpenCodeClient{
 		atomic: atomic,
 		httpClient: &http.Client{

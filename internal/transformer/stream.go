@@ -41,12 +41,6 @@ func IsIdleTimeout(err error) bool {
 	return false
 }
 
-// isIdleTimeoutErr returns true if err is a network read-timeout (deadline
-// exceeded on an otherwise alive stream).
-func isIdleTimeoutErr(err error) bool {
-	return IsIdleTimeout(err)
-}
-
 // StreamHandler handles streaming SSE transformation from OpenAI to Anthropic format.
 type StreamHandler struct {
 	responseTransformer *ResponseTransformer
@@ -163,7 +157,7 @@ func (h *StreamHandler) ProxyStream(
 			break
 		}
 		if err != nil {
-			if isIdleTimeoutErr(err) {
+			if IsIdleTimeout(err) {
 				return ErrStreamIdle
 			}
 			// When the idle watchdog fires, it cancels the upstream context
@@ -204,12 +198,7 @@ func (h *StreamHandler) ProxyStream(
 			return entries[i].blockIdx < entries[j].blockIdx
 		})
 		for _, e := range entries {
-			idx := e.blockIdx
-			stopEvent := types.MessageEvent{
-				Type:  "content_block_stop",
-				Index: &idx,
-			}
-			if err := writeSSEEvent(w, stopEvent); err != nil {
+			if err := writeContentBlockStop(w, e.blockIdx); err != nil {
 				return ErrClientDisconnected
 			}
 		}
@@ -317,11 +306,7 @@ func (h *StreamHandler) processSSELine(
 					if !*contentStarted {
 						// If reasoning was already started, close it first
 						if *reasoningStarted {
-							stopEvent := types.MessageEvent{
-								Type:  "content_block_stop",
-								Index: contentIndex,
-							}
-							if err := writeSSEEvent(w, stopEvent); err != nil {
+							if err := writeContentBlockStop(w, *contentIndex); err != nil {
 								return ErrClientDisconnected
 							}
 							*contentIndex++
@@ -655,6 +640,14 @@ func usageInfoToAnthropic(usage *types.UsageInfo) *types.Usage {
 	}
 }
 
+// writeContentBlockStop writes a content_block_stop SSE event at the given index.
+func writeContentBlockStop(w http.ResponseWriter, index int) error {
+	return writeSSEEvent(w, types.MessageEvent{
+		Type:  "content_block_stop",
+		Index: &index,
+	})
+}
+
 // writeSSEEvent writes a single SSE event to the HTTP response writer.
 // Format: "event: <type>\ndata: <json>\n\n"
 func writeSSEEvent(w http.ResponseWriter, event types.MessageEvent) error {
@@ -744,7 +737,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 			break
 		}
 		if err != nil {
-			if isIdleTimeoutErr(err) {
+			if IsIdleTimeout(err) {
 				return ErrStreamIdle
 			}
 			if errors.Is(err, context.Canceled) && clientCtx.Err() == nil {
@@ -933,7 +926,7 @@ func (h *StreamHandler) ProxyGeminiStream(
 			break
 		}
 		if err != nil {
-			if isIdleTimeoutErr(err) {
+			if IsIdleTimeout(err) {
 				return ErrStreamIdle
 			}
 			if errors.Is(err, context.Canceled) && clientCtx.Err() == nil {
