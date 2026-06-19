@@ -248,6 +248,12 @@ jobs:
             type=semver,pattern={{major}},value=${{ needs.release.outputs.tag }}
             type=raw,value=latest
 
+      - name: Strip v prefix from version
+        id: version
+        env:
+          TAG: ${{ needs.release.outputs.tag }}
+        run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -255,7 +261,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ needs.release.outputs.tag | trimPrefix 'v' }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

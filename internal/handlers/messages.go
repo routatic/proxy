@@ -333,6 +333,7 @@ func (h *MessagesHandler) handleStreaming(
 	w http.ResponseWriter,
 	r *http.Request,
 	anthropicReq *types.MessageRequest,
+	normalizedReq *core.NormalizedRequest,
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
 ) {
@@ -436,9 +437,6 @@ func (h *MessagesHandler) handleStreaming(
 
 		// Try new provider-based dispatch first.
 		if prov, ok := h.providerRegistry.Get(model.Provider); ok {
-			normalizedReq := core.NormalizeRequest(anthropicReq)
-			normalizedReq.Stream = true
-
 			caps, ok := prov.ModelCapabilities(model.ModelID)
 			if !ok || !caps.SupportsStreaming {
 				h.logger.Warn("model does not support streaming", "model", model.ModelID, "provider", model.Provider)
@@ -818,6 +816,7 @@ func (h *MessagesHandler) handleNonStreaming(
 	w http.ResponseWriter,
 	r *http.Request,
 	anthropicReq *types.MessageRequest,
+	normalizedReq *core.NormalizedRequest,
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
 ) {
@@ -830,8 +829,6 @@ func (h *MessagesHandler) handleNonStreaming(
 		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
 			// Try new provider-based dispatch first.
 			if prov, ok := h.providerRegistry.Get(model.Provider); ok {
-				normalizedReq := core.NormalizeRequest(anthropicReq)
-				normalizedReq.Stream = false
 				execResult, execErr := prov.Execute(ctx, normalizedReq, model)
 				if execErr != nil {
 					return nil, execErr
