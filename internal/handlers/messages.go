@@ -92,6 +92,18 @@ func (w *responseWriter) Flush() {
 	}
 }
 
+// WriteKeepalive writes a keepalive comment frame (":keepalive\n\n") to the
+// response. Unlike Write, it does NOT set ssePayloadWritten — keepalives are
+// not real SSE events and should not block fallback logic on idle timeout.
+func (w *responseWriter) WriteKeepalive() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, _ = fmt.Fprintf(w.ResponseWriter, ":keepalive\n\n")
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // NewMessagesHandler creates a new messages handler.
 func NewMessagesHandler(
 	openCodeClient *client.OpenCodeClient,
@@ -342,8 +354,7 @@ func (h *MessagesHandler) handleStreaming(
 				if atomic.LoadInt32(&finished) == 1 {
 					return
 				}
-				_, _ = fmt.Fprintf(rw, ":keepalive\n\n")
-				rw.Flush()
+				rw.WriteKeepalive()
 			case <-heartbeatDone:
 				return
 			case <-clientCtx.Done():
@@ -641,7 +652,7 @@ func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMess
 			"error", err, "model_id", modelID)
 		return rawBody
 	}
-		if toolType, ok := toolMap["type"].(string); ok && toolType == "custom" {
+	obj["model"] = encoded
 	result, err := json.Marshal(obj)
 	if err != nil {
 		slog.Error("could not marshal request body after model replacement, using original",
