@@ -15,6 +15,7 @@ import (
 
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/middleware"
 	"github.com/routatic/proxy/internal/router"
@@ -25,18 +26,20 @@ import (
 
 // MessagesHandler handles /v1/messages requests.
 type MessagesHandler struct {
-	client              *client.OpenCodeClient
-	modelRouter         *router.ModelRouter
-	fallbackHandler     *router.FallbackHandler
+	client            *client.OpenCodeClient   // kept for backward compat during migration
+	providerRegistry  *core.ProviderRegistry   // new: provider dispatch
+	modelRouter       *router.ModelRouter
+	fallbackHandler   *router.FallbackHandler
+	streamProxy       *StreamProxy             // new: SSE proxy by wire format
 	requestTransformer  *transformer.RequestTransformer
 	responseTransformer *transformer.ResponseTransformer
 	streamHandler       *transformer.StreamHandler
-	tokenCounter        *token.Counter
-	logger              *slog.Logger
-	rateLimiter         *middleware.RateLimiter
-	requestDedup        *middleware.RequestDeduplicator
-	requestIDGen        *middleware.RequestIDGenerator
-	metrics             *metrics.Metrics
+	tokenCounter      *token.Counter
+	logger            *slog.Logger
+	rateLimiter       *middleware.RateLimiter
+	requestDedup      *middleware.RequestDeduplicator
+	requestIDGen      *middleware.RequestIDGenerator
+	metrics           *metrics.Metrics
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -107,6 +110,7 @@ func (w *responseWriter) WriteKeepalive() {
 // NewMessagesHandler creates a new messages handler.
 func NewMessagesHandler(
 	openCodeClient *client.OpenCodeClient,
+	providerRegistry *core.ProviderRegistry,
 	modelRouter *router.ModelRouter,
 	fallbackHandler *router.FallbackHandler,
 	tokenCounter *token.Counter,
@@ -114,8 +118,10 @@ func NewMessagesHandler(
 ) *MessagesHandler {
 	return &MessagesHandler{
 		client:              openCodeClient,
+		providerRegistry:    providerRegistry,
 		modelRouter:         modelRouter,
 		fallbackHandler:     fallbackHandler,
+		streamProxy:         NewStreamProxy(),
 		requestTransformer:  transformer.NewRequestTransformer(),
 		responseTransformer: transformer.NewResponseTransformer(),
 		streamHandler:       transformer.NewStreamHandler(),
@@ -240,12 +246,13 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		"tokens", tokenCount,
 	)
 
+	normalizedReq := core.NormalizeRequest(&anthropicReq)
+	normalizedReq.Stream = isStreaming
+
 	if isStreaming {
-		// Streaming: use ProxyStream for real-time SSE transformation
-		h.handleStreaming(w, r, &anthropicReq, modelChain, rawBody)
+		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody)
 	} else {
-		// Non-streaming: execute with fallback and return full response
-		h.handleNonStreaming(w, r, &anthropicReq, modelChain, rawBody)
+		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody)
 	}
 }
 
@@ -427,6 +434,52 @@ func (h *MessagesHandler) handleStreaming(
 			return true // continue to next model
 		}
 
+		// Try new provider-based dispatch first.
+		if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+			normalizedReq := core.NormalizeRequest(anthropicReq)
+			normalizedReq.Stream = true
+
+			caps, ok := prov.ModelCapabilities(model.ModelID)
+			if !ok || !caps.SupportsStreaming {
+				h.logger.Warn("model does not support streaming", "model", model.ModelID, "provider", model.Provider)
+				cancel()
+				continue
+			}
+
+			streamBody, err := prov.Stream(ctx, normalizedReq, model)
+			if err != nil {
+				cancel()
+				if clientCtx.Err() == context.Canceled {
+					h.logger.Debug("client disconnected during upstream request")
+					return
+				}
+				h.logger.Warn("streaming request failed via provider", "model", model.ModelID, "provider", model.Provider, "error", err)
+				continue
+			}
+
+			wireFormat := prov.WireFormat(model.ModelID)
+			if err := h.streamProxy.ProxyStream(rw, streamBody, wireFormat, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
+				_ = streamBody.Close()
+				if err == transformer.ErrClientDisconnected {
+					h.logger.Debug("client disconnected during stream")
+					return
+				}
+				if !handleStreamError(err, model, wireFormat.String()) {
+					return
+				}
+				continue
+			}
+
+			_ = streamBody.Close()
+			recordStreamSuccess(model)
+			return
+		}
+
+		// Legacy path for backward compatibility while old client is still in
+		// use. Falls through to the old endpoint-classification logic.
+		h.logger.Warn("provider not found in registry, falling back to old client",
+			"provider", model.Provider, "model", model.ModelID)
+
 		// Zen models use their own endpoint classification
 		if client.IsZen(model) {
 			endpointType := client.ClassifyEndpoint(model.ModelID)
@@ -479,8 +532,6 @@ func (h *MessagesHandler) handleStreaming(
 				if !handleStreamError(err, model, "anthropic") {
 					return
 				}
-				// For non-idle errors after SSE payload started, send a more
-				// specific error message since this is the last attempt.
 				if err != transformer.ErrStreamIdle && rw.ssePayloadWritten {
 					h.sendStreamError(rw, fmt.Sprintf("all upstream models failed after SSE payload started: %v", err))
 					h.metrics.RecordFailure()
@@ -777,7 +828,21 @@ func (h *MessagesHandler) handleNonStreaming(
 		ctx,
 		modelChain,
 		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
-			// Zen models use their own endpoint classification
+			// Try new provider-based dispatch first.
+			if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+				normalizedReq := core.NormalizeRequest(anthropicReq)
+				normalizedReq.Stream = false
+				execResult, execErr := prov.Execute(ctx, normalizedReq, model)
+				if execErr != nil {
+					return nil, execErr
+				}
+				return execResult.Body, nil
+			}
+
+			h.logger.Warn("provider not found in registry, falling back to old client",
+				"provider", model.Provider, "model", model.ModelID)
+
+			// Legacy path: Zen models use their own endpoint classification
 			if client.IsZen(model) {
 				endpointType := client.ClassifyEndpoint(model.ModelID)
 				switch endpointType {

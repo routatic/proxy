@@ -13,8 +13,10 @@ import (
 
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/handlers"
 	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/provider"
 	"github.com/routatic/proxy/internal/router"
 	"github.com/routatic/proxy/internal/token"
 )
@@ -51,9 +53,15 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	modelRouter := router.NewModelRouter(atomic)
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
 
+	// Register providers.
+	providerRegistry := core.NewProviderRegistry()
+	_ = providerRegistry.Register(provider.NewOpenCodeGoProvider(atomic))
+	_ = providerRegistry.Register(provider.NewOpenCodeZenProvider(atomic))
+
 	// Create handlers.
 	messagesHandler := handlers.NewMessagesHandler(
 		openCodeClient,
+		providerRegistry,
 		modelRouter,
 		fallbackHandler,
 		tokenCounter,
