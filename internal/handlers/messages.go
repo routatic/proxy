@@ -419,6 +419,11 @@ func (h *MessagesHandler) handleStreaming(
 				return true // continue to next model
 			}
 			h.logger.Warn(action+" streaming failed", "model", model.ModelID, "error", err)
+			if rw.ssePayloadWritten {
+				h.sendStreamError(rw, fmt.Sprintf("all upstream models failed after SSE payload started: %v", err))
+				h.metrics.RecordFailure()
+				return false // abort — cannot fallback after SSE payload started
+			}
 			return true // continue to next model
 		}
 
