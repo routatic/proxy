@@ -9,10 +9,10 @@ import (
 
 // EvaluationContext carries all information needed to evaluate routing policies.
 type EvaluationContext struct {
-	Request        *core.NormalizedRequest
-	TokenCount     int
+	Request         *core.NormalizedRequest
+	TokenCount      int
 	AvailableModels []config.ModelConfig
-	History        []RouteDecision
+	History         []RouteDecision
 }
 
 // RouteDecision records a routing decision for observability.

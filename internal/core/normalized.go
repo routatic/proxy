@@ -4,11 +4,11 @@ package core
 // All wire formats (Anthropic, OpenAI, Responses, Gemini) map to and from
 // this representation.
 type NormalizedMessage struct {
-	Role       string              // "user", "assistant", "system", "tool"
-	Content    string              // Concatenated text content
+	Role       string               // "user", "assistant", "system", "tool"
+	Content    string               // Concatenated text content
 	ToolCalls  []NormalizedToolCall // Present on assistant messages
-	ToolCallID string              // Present on tool-result messages
-	Thinking   string              // Reasoning/thinking content (assistant only)
+	ToolCallID string               // Present on tool-result messages
+	Thinking   string               // Reasoning/thinking content (assistant only)
 }
 
 // NormalizedToolCall represents a tool invocation in the internal format.

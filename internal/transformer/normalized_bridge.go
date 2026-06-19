@@ -24,9 +24,9 @@ func TransformRequestFromNormalized(req *core.NormalizedRequest, model config.Mo
 		stream := req.Stream
 		maxTokens := req.MaxTokens
 		return &types.ChatCompletionRequest{
-			Model:    model.ModelID,
-			Messages: []types.ChatMessage{{Role: "user", Content: types.TextContent(req.SystemPrompt + "\n" + joinMessageText(req.Messages))}},
-			Stream:   &stream,
+			Model:     model.ModelID,
+			Messages:  []types.ChatMessage{{Role: "user", Content: types.TextContent(req.SystemPrompt + "\n" + joinMessageText(req.Messages))}},
+			Stream:    &stream,
 			MaxTokens: &maxTokens,
 		}
 	}

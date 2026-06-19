@@ -4,12 +4,12 @@ import "errors"
 
 // Sentinel errors for common provider and routing failures.
 var (
-	ErrModelNotFound          = errors.New("model not found")
-	ErrProviderNotFound       = errors.New("provider not found")
-	ErrUnsupportedCapability  = errors.New("capability not supported by model")
-	ErrRateLimited            = errors.New("rate limited by provider")
-	ErrStreamIdle             = errors.New("upstream stream idle")
-	ErrClientDisconnected     = errors.New("client disconnected")
+	ErrModelNotFound         = errors.New("model not found")
+	ErrProviderNotFound      = errors.New("provider not found")
+	ErrUnsupportedCapability = errors.New("capability not supported by model")
+	ErrRateLimited           = errors.New("rate limited by provider")
+	ErrStreamIdle            = errors.New("upstream stream idle")
+	ErrClientDisconnected    = errors.New("client disconnected")
 )
 
 // NormalizedError wraps a provider error with structured context.

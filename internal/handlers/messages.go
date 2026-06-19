@@ -26,20 +26,20 @@ import (
 
 // MessagesHandler handles /v1/messages requests.
 type MessagesHandler struct {
-	client            *client.OpenCodeClient   // kept for backward compat during migration
-	providerRegistry  *core.ProviderRegistry   // new: provider dispatch
-	modelRouter       *router.ModelRouter
-	fallbackHandler   *router.FallbackHandler
-	streamProxy       *StreamProxy             // new: SSE proxy by wire format
+	client              *client.OpenCodeClient // kept for backward compat during migration
+	providerRegistry    *core.ProviderRegistry // new: provider dispatch
+	modelRouter         *router.ModelRouter
+	fallbackHandler     *router.FallbackHandler
+	streamProxy         *StreamProxy // new: SSE proxy by wire format
 	requestTransformer  *transformer.RequestTransformer
 	responseTransformer *transformer.ResponseTransformer
 	streamHandler       *transformer.StreamHandler
-	tokenCounter      *token.Counter
-	logger            *slog.Logger
-	rateLimiter       *middleware.RateLimiter
-	requestDedup      *middleware.RequestDeduplicator
-	requestIDGen      *middleware.RequestIDGenerator
-	metrics           *metrics.Metrics
+	tokenCounter        *token.Counter
+	logger              *slog.Logger
+	rateLimiter         *middleware.RateLimiter
+	requestDedup        *middleware.RequestDeduplicator
+	requestIDGen        *middleware.RequestIDGenerator
+	metrics             *metrics.Metrics
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.

@@ -89,8 +89,8 @@ func DenormalizeResponse(nr *NormalizedResponse) *types.MessageResponse {
 		Type:  "message",
 		Model: nr.Model,
 		Usage: types.Usage{
-			InputTokens:         nr.Usage.InputTokens,
-			OutputTokens:        nr.Usage.OutputTokens,
+			InputTokens:              nr.Usage.InputTokens,
+			OutputTokens:             nr.Usage.OutputTokens,
 			CacheCreationInputTokens: nr.Usage.CacheCreationTokens,
 			CacheReadInputTokens:     nr.Usage.CacheReadTokens,
 		},
