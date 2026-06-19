@@ -32,7 +32,8 @@ func NewStreamHandler() *StreamHandler {
 
 // ProxyStream takes an OpenAI streaming response and writes Anthropic-format SSE to the writer.
 // It reads OpenAI ChatCompletionChunk SSE events and transforms them into Anthropic MessageEvent SSE events.
-// The clientCtx is used to detect client disconnection and abort early.
+// The streamCtx is the per-model attempt context (carries streaming_timeout_ms); the caller
+// should wrap openaiResp with NewCtxReadCloser so the body read also respects the deadline.
 //
 // CRITICAL: This function reads directly from resp.Body without buffering to minimize latency.
 // Per deep research: "Don't use bufio.Scanner or bufio.Reader on the response body - it adds buffering"
@@ -40,7 +41,7 @@ func (h *StreamHandler) ProxyStream(
 	w http.ResponseWriter,
 	openaiResp io.ReadCloser,
 	originalModel string,
-	clientCtx context.Context,
+	streamCtx context.Context,
 ) error {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -80,9 +81,11 @@ func (h *StreamHandler) ProxyStream(
 	readBuf := make([]byte, 4096)
 
 	for {
-		// Check if client disconnected
+		// Check if stream context is done (client disconnect or per-model
+		// streaming_timeout_ms deadline). Body read is also wrapped with
+		// NewCtxReadCloser at the call site so this returns promptly.
 		select {
-		case <-clientCtx.Done():
+		case <-streamCtx.Done():
 			return ErrClientDisconnected
 		default:
 		}
@@ -587,11 +590,13 @@ func generateID() string {
 }
 
 // ProxyResponsesStream takes an OpenAI Responses streaming response and writes Anthropic-format SSE.
+// streamCtx is the per-model attempt context (carries streaming_timeout_ms); the caller should
+// wrap responsesResp with NewCtxReadCloser so the body read also respects the deadline.
 func (h *StreamHandler) ProxyResponsesStream(
 	w http.ResponseWriter,
 	responsesResp io.ReadCloser,
 	originalModel string,
-	clientCtx context.Context,
+	streamCtx context.Context,
 ) error {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -622,7 +627,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 
 	for {
 		select {
-		case <-clientCtx.Done():
+		case <-streamCtx.Done():
 			return ErrClientDisconnected
 		default:
 		}
@@ -765,11 +770,13 @@ func (h *StreamHandler) processResponsesSSELine(
 }
 
 // ProxyGeminiStream takes a Gemini streaming response and writes Anthropic-format SSE.
+// streamCtx is the per-model attempt context (carries streaming_timeout_ms); the caller should
+// wrap geminiResp with NewCtxReadCloser so the body read also respects the deadline.
 func (h *StreamHandler) ProxyGeminiStream(
 	w http.ResponseWriter,
 	geminiResp io.ReadCloser,
 	originalModel string,
-	clientCtx context.Context,
+	streamCtx context.Context,
 ) error {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -800,7 +807,7 @@ func (h *StreamHandler) ProxyGeminiStream(
 
 	for {
 		select {
-		case <-clientCtx.Done():
+		case <-streamCtx.Done():
 			return ErrClientDisconnected
 		default:
 		}

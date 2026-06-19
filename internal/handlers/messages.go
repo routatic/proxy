@@ -435,7 +435,10 @@ func (h *MessagesHandler) handleStreaming(
 			continue
 		}
 
-		if err := h.streamHandler.ProxyStream(rw, streamBody, model.ModelID, clientCtx); err != nil {
+		// Bind body read to attemptCtx so streaming_timeout_ms aborts mid-stream.
+		streamReader := transformer.NewCtxReadCloser(attemptCtx, streamBody)
+
+		if err := h.streamHandler.ProxyStream(rw, streamReader, model.ModelID, attemptCtx); err != nil {
 			_ = streamBody.Close()
 			cancel()
 			if err == transformer.ErrClientDisconnected {
@@ -467,6 +470,8 @@ func (h *MessagesHandler) handleStreaming(
 }
 
 // handleResponsesStreaming handles streaming for OpenAI Responses endpoint.
+// ctx is the per-attempt context (carries streaming_timeout_ms); clientCtx is the
+// broader request context used only for client-disconnect signaling.
 func (h *MessagesHandler) handleResponsesStreaming(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -484,7 +489,10 @@ func (h *MessagesHandler) handleResponsesStreaming(
 		return err
 	}
 
-	if err := h.streamHandler.ProxyResponsesStream(w, streamBody, model.ModelID, clientCtx); err != nil {
+	// Bind body read to ctx so streaming_timeout_ms aborts mid-stream.
+	streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
+
+	if err := h.streamHandler.ProxyResponsesStream(w, streamReader, model.ModelID, ctx); err != nil {
 		_ = streamBody.Close()
 		return err
 	}
@@ -494,6 +502,8 @@ func (h *MessagesHandler) handleResponsesStreaming(
 }
 
 // handleGeminiStreaming handles streaming for Gemini endpoint.
+// ctx is the per-attempt context (carries streaming_timeout_ms); clientCtx is the
+// broader request context used only for client-disconnect signaling.
 func (h *MessagesHandler) handleGeminiStreaming(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -511,7 +521,10 @@ func (h *MessagesHandler) handleGeminiStreaming(
 		return err
 	}
 
-	if err := h.streamHandler.ProxyGeminiStream(w, streamBody, model.ModelID, clientCtx); err != nil {
+	// Bind body read to ctx so streaming_timeout_ms aborts mid-stream.
+	streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
+
+	if err := h.streamHandler.ProxyGeminiStream(w, streamReader, model.ModelID, ctx); err != nil {
 		_ = streamBody.Close()
 		return err
 	}
@@ -590,10 +603,16 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Bind body read to ctx so streaming_timeout_ms aborts mid-stream.
+	// io.Copy does not honor ctx, so wrap the upstream body explicitly.
+	bodyReader := transformer.NewCtxReader(ctx, resp.Body)
 	fw := &flushWriter{ResponseWriter: w}
-	_, err = io.Copy(fw, resp.Body)
+	_, err = io.Copy(fw, bodyReader)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
+			return transformer.ErrClientDisconnected
+		}
+		if errors.Is(err, transformer.ErrStreamReadCanceled) {
 			return transformer.ErrClientDisconnected
 		}
 		return fmt.Errorf("failed to copy response: %w", err)
