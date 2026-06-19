@@ -25,7 +25,7 @@ func buildAutostartArgs(configPath string, port int) string {
 	return args
 }
 
-// EnableAutostart adds a registry Run key so oc-go-cc starts on login.
+// EnableAutostart adds a registry Run key so routatic-proxy starts on login.
 func EnableAutostart(configPath string, port int) error {
 	paths, err := DefaultPaths()
 	if err != nil {

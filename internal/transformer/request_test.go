@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"oc-go-cc/internal/config"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // TestTransformRequestRoundTripReasoning verifies that a DeepSeek response with

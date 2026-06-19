@@ -30,7 +30,7 @@ func ForkIntoBackground(opts BackgroundOpts) error {
 		_ = os.Remove(paths.PIDFile)
 	}
 
-	// Build args for the child process: oc-go-cc serve --_daemonize [--config X] [--port N]
+	// Build args for the child process: routatic-proxy serve --_daemonize [--config X] [--port N]
 	args := []string{"serve", "--_daemonize"}
 	if opts.ConfigPath != "" {
 		configPath, err := filepath.Abs(opts.ConfigPath)

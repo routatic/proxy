@@ -5,7 +5,7 @@ package router
 import (
 	"fmt"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 // ModelRouter handles model selection based on scenarios.

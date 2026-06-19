@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"oc-go-cc/internal/config"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // TransformToGemini converts an Anthropic MessageRequest to GeminiRequest.

@@ -1,4 +1,4 @@
-// Package main is the CLI entry point for the oc-go-cc proxy server.
+// Package main is the CLI entry point for the Routatic proxy server.
 package main
 
 import (
@@ -10,15 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/daemon"
+	"github.com/routatic/proxy/internal/server"
 	"github.com/spf13/cobra"
-	"oc-go-cc/internal/config"
-	"oc-go-cc/internal/daemon"
-	"oc-go-cc/internal/server"
 )
 
 const (
-	appName     = "oc-go-cc"
-	pidFileName = "oc-go-cc.pid"
+	appName     = "routatic-proxy"
+	pidFileName = "routatic-proxy.pid"
 )
 
 // Version is set at build time via -ldflags "-X main.version=...".
@@ -26,13 +26,15 @@ var version = "dev"
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   appName,
-		Short: "Proxy Claude Code requests to OpenCode Go API",
-		Long: `oc-go-cc is a CLI proxy tool that allows you to use your OpenCode Go
+		Use:     appName,
+		Aliases: []string{"oc-go-cc"},
+		Short:   "Proxy Claude Code requests to OpenCode Go API",
+		Long: `routatic-proxy is a CLI proxy tool that allows you to use your OpenCode Go
 subscription with Claude Code. It intercepts Claude Code's Anthropic API requests,
 transforms them to OpenAI format, and forwards them to OpenCode Go.
 
-Configuration is stored at ~/.config/oc-go-cc/config.json`,
+Configuration is stored at ~/.config/routatic-proxy/config.json.
+Legacy ~/.config/oc-go-cc/config.json and OC_GO_CC_* environment variables are still supported.`,
 		Version: version,
 	}
 
@@ -73,7 +75,7 @@ func serveCmd() *cobra.Command {
 
 			// Override config path if provided.
 			if configPath != "" {
-				_ = os.Setenv("OC_GO_CC_CONFIG", configPath)
+				_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
 			}
 
 			cfg, err := config.Load()
@@ -257,7 +259,7 @@ func validateCmd() *cobra.Command {
 		Short: "Validate configuration file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if configPath != "" {
-				_ = os.Setenv("OC_GO_CC_CONFIG", configPath)
+				_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
 			}
 
 			cfg, err := config.Load()
@@ -294,7 +296,7 @@ func checkCmd() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if configPath != "" {
-				_ = os.Setenv("OC_GO_CC_CONFIG", configPath)
+				_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
 			}
 
 			cfg, err := config.Load()
@@ -463,7 +465,7 @@ func modelsCmd() *cobra.Command {
 // getConfigDir returns the default configuration directory path.
 func getConfigDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "oc-go-cc")
+	return filepath.Join(home, ".config", "routatic-proxy")
 }
 
 // autostartCmd returns the command to manage autostart on login.
@@ -533,7 +535,7 @@ func maskString(s string, visible int) string {
 // Optimized for cost-efficiency: uses cheaper models by default, expensive ones only when needed.
 func getDefaultConfig() string {
 	return `{
-  "api_key": "${OC_GO_CC_API_KEY}",
+  "api_key": "${ROUTATIC_PROXY_API_KEY}",
   "host": "127.0.0.1",
   "port": 3456,
   "hot_reload": false,

@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"oc-go-cc/internal/client"
-	"oc-go-cc/internal/config"
-	"oc-go-cc/internal/handlers"
-	"oc-go-cc/internal/metrics"
-	"oc-go-cc/internal/router"
-	"oc-go-cc/internal/token"
+	"github.com/routatic/proxy/internal/client"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/handlers"
+	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/router"
+	"github.com/routatic/proxy/internal/token"
 )
 
 // Server represents the proxy server.
@@ -104,7 +104,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 // Start starts the server with graceful shutdown.
 func (s *Server) Start() error {
 	cfg := s.atomic.Get()
-	s.logger.Info("starting oc-go-cc proxy",
+	s.logger.Info("starting routatic-proxy",
 		"host", cfg.Host,
 		"port", cfg.Port,
 		"base_url", cfg.OpenCodeGo.BaseURL,

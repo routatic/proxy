@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 func boolPtr(b bool) *bool { return &b }

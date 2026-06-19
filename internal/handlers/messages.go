@@ -13,14 +13,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"oc-go-cc/internal/client"
-	"oc-go-cc/internal/config"
-	"oc-go-cc/internal/metrics"
-	"oc-go-cc/internal/middleware"
-	"oc-go-cc/internal/router"
-	"oc-go-cc/internal/token"
-	"oc-go-cc/internal/transformer"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/client"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/middleware"
+	"github.com/routatic/proxy/internal/router"
+	"github.com/routatic/proxy/internal/token"
+	"github.com/routatic/proxy/internal/transformer"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // MessagesHandler handles /v1/messages requests.

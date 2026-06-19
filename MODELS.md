@@ -37,7 +37,7 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 
 ## Important: API Endpoints
 
-⚠️ **Critical:** Not all models use the same API endpoint! oc-go-cc handles this automatically, but you should know:
+⚠️ **Critical:** Not all models use the same API endpoint! routatic-proxy handles this automatically, but you should know:
 
 ### OpenCode Go Endpoints
 
@@ -55,7 +55,7 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 | **GPT models** (gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.3-codex, gpt-5.3-codex-spark, gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini, gpt-5, gpt-5-codex, gpt-5-nano) | `https://opencode.ai/zen/v1/responses`       | **OpenAI Responses**     |
 | **Gemini models** (gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash)             | `https://opencode.ai/zen/v1/models/{id}`     | **Google Gemini**        |
 
-**Why this matters:** On the Go provider, MiniMax and Qwen models use Anthropic format natively. On Zen, only Claude and Qwen use the Anthropic endpoint — MiniMax uses chat completions. oc-go-cc handles all routing automatically.
+**Why this matters:** On the Go provider, MiniMax and Qwen models use Anthropic format natively. On Zen, only Claude and Qwen use the Anthropic endpoint — MiniMax uses chat completions. routatic-proxy handles all routing automatically.
 
 ## Using OpenCode Zen
 
@@ -83,7 +83,7 @@ All OpenCode Go models are also available on Zen. Zen additionally offers:
 - **Gemini Models (Gemini endpoint):** gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash
 - **Free Tier (chat completions):** deepseek-v4-pro, deepseek-v4-flash-free, grok-build-0.1, big-pickle, mimo-v2.5-free, north-mini-code-free, nemotron-3-ultra-free
 
-DeepSeek V4 Pro and Flash are OpenAI-compatible on both Go and Zen providers. On Zen, DeepSeek V4 Pro is available as a free-tier model. oc-go-cc transforms Claude Code's Anthropic request into OpenAI Chat Completions format, including tools, tool results, thinking history, `reasoning_effort`, and `thinking`.
+DeepSeek V4 Pro and Flash are OpenAI-compatible on both Go and Zen providers. On Zen, DeepSeek V4 Pro is available as a free-tier model. routatic-proxy transforms Claude Code's Anthropic request into OpenAI Chat Completions format, including tools, tool results, thinking history, `reasoning_effort`, and `thinking`.
 
 For Claude Code and OpenCode-style agent workflows, DeepSeek V4 supports max thinking mode with:
 
@@ -217,7 +217,7 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
   - Long conversations
   - Multi-file context
 - **When to Use:** When you need 1M context but want to minimize cost
-- **Note:** Uses Anthropic endpoint on Go but chat completions on Zen - oc-go-cc handles this automatically
+- **Note:** Uses Anthropic endpoint on Go but chat completions on Zen - routatic-proxy handles this automatically
 
 #### MiniMax M3 — Latest MiniMax, 1M Context
 
@@ -484,5 +484,5 @@ Critical review → GLM-5.1 (rarely)
 ## See Also
 
 - [OpenCode Go Documentation](https://opencode.ai/docs/go/)
-- [oc-go-cc Configuration](../configs/config.example.json)
+- [routatic-proxy Configuration](../configs/config.example.json)
 - [README.md](../README.md) for setup instructions

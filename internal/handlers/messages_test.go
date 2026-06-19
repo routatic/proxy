@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"oc-go-cc/internal/config"
-	"oc-go-cc/internal/router"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/router"
 )
 
 func boolPtr(b bool) *bool { return &b }

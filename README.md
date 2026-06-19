@@ -1,8 +1,10 @@
-# oc-go-cc
+# routatic-proxy
 
 A Go CLI proxy that lets you use your [OpenCode Go](https://opencode.ai/docs/go/) or [OpenCode Zen](https://opencode.ai/docs/zen/) subscription with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-`oc-go-cc` sits between Claude Code and OpenCode, intercepting Anthropic API requests, transforming them to the appropriate format (OpenAI, Responses, or Gemini), and forwarding them to OpenCode's endpoints. Claude Code thinks it's talking to Anthropic — but your requests go to affordable open models instead.
+`routatic-proxy` sits between Claude Code and OpenCode, intercepting Anthropic API requests, transforming them to the appropriate format (OpenAI, Responses, or Gemini), and forwarding them to OpenCode's endpoints. Claude Code thinks it's talking to Anthropic — but your requests go to affordable open models instead.
+
+`oc-go-cc` remains available as a compatibility alias, and existing `OC_GO_CC_*` environment variables and `~/.config/oc-go-cc/config.json` files are still recognized.
 
 ## Why?
 
@@ -29,10 +31,10 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 
 ```bash
 # macOS / Linux
-brew tap samueltuyizere/tap && brew install oc-go-cc
+brew tap routatic/tap && brew install routatic-proxy
 
 # Windows
-scoop bucket add oc-go-cc https://github.com/samueltuyizere/scoop-bucket && scoop install oc-go-cc
+scoop bucket add routatic https://github.com/routatic/scoop-bucket && scoop install routatic-proxy
 
 # Docker (with Makefile)
 cp .env.example .env                    # then put your API key in .env
@@ -40,12 +42,12 @@ make docker-up
 
 # Docker (manual)
 cp .env.example .env
-docker build -t oc-go-cc .
-docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 oc-go-cc
+docker build -t routatic-proxy .
+docker run -d --restart unless-stopped --name routatic-proxy --env-file .env -p 3456:3456 routatic-proxy
 
 # Docker from GitHub Container Registry
-docker pull ghcr.io/samueltuyizere/oc-go-cc:latest
-docker run -d --restart unless-stopped --name oc-go-cc --env-file .env -p 3456:3456 ghcr.io/samueltuyizere/oc-go-cc:latest
+docker pull ghcr.io/routatic/proxy:latest
+docker run -d --restart unless-stopped --name routatic-proxy --env-file .env -p 3456:3456 ghcr.io/routatic/proxy:latest
 ```
 
 Or see [INSTALLATION.md](INSTALLATION.md) for more options.
@@ -53,19 +55,19 @@ Or see [INSTALLATION.md](INSTALLATION.md) for more options.
 ### 2. Initialize Configuration
 
 ```bash
-oc-go-cc init
+routatic-proxy init
 ```
 
-Creates a default config at `~/.config/oc-go-cc/config.json`. Edit it to add your API key, or set the environment variable:
+Creates a default config at `~/.config/routatic-proxy/config.json`. Edit it to add your API key, or set the environment variable:
 
 ```bash
-export OC_GO_CC_API_KEY=sk-opencode-your-key-here
+export ROUTATIC_PROXY_API_KEY=sk-opencode-your-key-here
 ```
 
 ### 3. Start the Proxy
 
 ```bash
-oc-go-cc serve
+routatic-proxy serve
 ```
 
 Stop the Docker container (if using Docker):
@@ -90,18 +92,18 @@ claude
 ## CLI Commands
 
 ```
-oc-go-cc serve              Start the proxy server
-oc-go-cc serve -b           Start in background (detached from terminal)
-oc-go-cc serve --port 8080  Start on a custom port
-oc-go-cc stop               Stop the running proxy server
-oc-go-cc status             Check if the proxy is running
-oc-go-cc init               Create default configuration file
-oc-go-cc validate           Validate configuration file
-oc-go-cc models             List all available models (Go + Zen)
-oc-go-cc autostart enable   Enable auto-start on login
-oc-go-cc autostart disable  Disable auto-start on login
-oc-go-cc autostart status   Check autostart status
-oc-go-cc --version          Show version
+routatic-proxy serve              Start the proxy server
+routatic-proxy serve -b           Start in background (detached from terminal)
+routatic-proxy serve --port 8080  Start on a custom port
+routatic-proxy stop               Stop the running proxy server
+routatic-proxy status             Check if the proxy is running
+routatic-proxy init               Create default configuration file
+routatic-proxy validate           Validate configuration file
+routatic-proxy models             List all available models (Go + Zen)
+routatic-proxy autostart enable   Enable auto-start on login
+routatic-proxy autostart disable  Disable auto-start on login
+routatic-proxy autostart status   Check autostart status
+routatic-proxy --version          Show version
 ```
 
 ## Documentation

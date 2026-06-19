@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // ErrClientDisconnected is returned when the client disconnects during streaming.

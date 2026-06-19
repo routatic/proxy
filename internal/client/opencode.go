@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"oc-go-cc/internal/config"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 const (

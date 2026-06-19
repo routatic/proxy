@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-make build   # Build binary to bin/oc-go-cc
+make build   # Build binary to bin/routatic-proxy
 make run     # Run without building
 make test    # Run tests with race detector
 make lint    # go vet + test
@@ -18,9 +18,9 @@ Run a single test: `go test ./internal/router/ -v`
 
 ## Architecture
 
-**Purpose:** oc-go-cc is a proxy server that sits between Claude Code and OpenCode Go. It intercepts Anthropic API requests, transforms them to OpenAI Chat Completions format, forwards them to OpenCode Go, and transforms responses back to Anthropic SSE.
+**Purpose:** routatic-proxy is a proxy server that sits between Claude Code and OpenCode Go. It intercepts Anthropic API requests, transforms them to OpenAI Chat Completions format, forwards them to OpenCode Go, and transforms responses back to Anthropic SSE.
 
-**Model routing is config-driven, not code-driven.** All models are defined in `~/.config/oc-go-cc/config.json` — adding a new model requires no code changes. Go provider models are transformed to OpenAI Chat Completions format automatically. Zen models use endpoint classification via `ClassifyEndpoint()`. The router in `internal/router/` selects models by matching request content against scenario patterns defined in `scenarios.go`.
+**Model routing is config-driven, not code-driven.** All models are defined in `~/.config/routatic-proxy/config.json` — adding a new model requires no code changes. Go provider models are transformed to OpenAI Chat Completions format automatically. Zen models use endpoint classification via `ClassifyEndpoint()`. The router in `internal/router/` selects models by matching request content against scenario patterns defined in `scenarios.go`.
 
 If a model's upstream doesn't support Anthropic tool format (`type: "custom"` server-tool shorthands), set `"anthropic_tools_disabled": true` in the model config to force it through the Chat Completions transform path instead of the raw Anthropic endpoint.
 
@@ -47,7 +47,7 @@ For streaming, the router downgrades to fast models (Qwen3.6 Plus) for better TT
 
 ## Key Files
 
-- `cmd/oc-go-cc/main.go` — CLI entry point (cobra). Default config template is generated here.
+- `cmd/routatic-proxy/main.go` — CLI entry point (cobra). Default config template is generated here.
 - `internal/config/` — Config types and JSON loader with `${VAR}` env interpolation.
 - `internal/transformer/` — Request/response format conversion (Anthropic ↔ OpenAI).
 - `internal/router/fallback.go` — Circuit breaker per model (3 failures = 30s skip).

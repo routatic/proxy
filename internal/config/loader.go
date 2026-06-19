@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	defaultConfigPath       = "~/.config/oc-go-cc/config.json"
+	defaultConfigPath       = "~/.config/routatic-proxy/config.json"
+	legacyConfigPath        = "~/.config/oc-go-cc/config.json"
 	defaultHost             = "127.0.0.1"
 	defaultPort             = 3456
 	defaultBaseURL          = "https://opencode.ai/zen/go/v1/chat/completions"
@@ -28,10 +29,22 @@ const (
 // envVarPattern matches ${ENV_VAR} placeholders in config values.
 var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z0-9_]+)\}`)
 
+var legacyEnvNames = map[string]string{
+	"ROUTATIC_PROXY_CONFIG":           "OC_GO_CC_CONFIG",
+	"ROUTATIC_PROXY_API_KEY":          "OC_GO_CC_API_KEY",
+	"ROUTATIC_PROXY_HOST":             "OC_GO_CC_HOST",
+	"ROUTATIC_PROXY_PORT":             "OC_GO_CC_PORT",
+	"ROUTATIC_PROXY_OPENCODE_URL":     "OC_GO_CC_OPENCODE_URL",
+	"ROUTATIC_PROXY_OPENCODE_ZEN_URL": "OC_GO_CC_OPENCODE_ZEN_URL",
+	"ROUTATIC_PROXY_LOG_LEVEL":        "OC_GO_CC_LOG_LEVEL",
+}
+
 // Load reads configuration from a JSON file and applies environment variable overrides.
 // Config path resolution:
-//  1. OC_GO_CC_CONFIG env var (explicit override)
-//  2. ~/.config/oc-go-cc/config.json (default)
+//  1. ROUTATIC_PROXY_CONFIG env var (explicit override)
+//  2. OC_GO_CC_CONFIG env var (legacy explicit override)
+//  3. ~/.config/routatic-proxy/config.json (default)
+//  4. ~/.config/oc-go-cc/config.json (legacy fallback when the new path is absent)
 func Load() (*Config, error) {
 	return LoadFromPath(ResolveConfigPath())
 }
@@ -55,10 +68,18 @@ func LoadFromPath(path string) (*Config, error) {
 
 // ResolveConfigPath determines which config file to load.
 func ResolveConfigPath() string {
-	if path := os.Getenv("OC_GO_CC_CONFIG"); path != "" {
+	if path := envValue("ROUTATIC_PROXY_CONFIG"); path != "" {
 		return path
 	}
-	return expandHome(defaultConfigPath)
+	path := expandHome(defaultConfigPath)
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	legacyPath := expandHome(legacyConfigPath)
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath
+	}
+	return path
 }
 
 // expandHome replaces a leading ~ with the user's home directory.
@@ -96,7 +117,7 @@ func interpolateEnvVars(s string) string {
 	return envVarPattern.ReplaceAllStringFunc(s, func(match string) string {
 		// Extract variable name from ${VAR}
 		varName := match[2 : len(match)-1]
-		if val := os.Getenv(varName); val != "" {
+		if val := envValue(varName); val != "" {
 			return val
 		}
 		// Leave unchanged if env var is not set
@@ -106,27 +127,42 @@ func interpolateEnvVars(s string) string {
 
 // applyEnvOverrides applies environment variable overrides to the config.
 func applyEnvOverrides(cfg *Config) {
-	if v := os.Getenv("OC_GO_CC_API_KEY"); v != "" {
+	if v := envValue("ROUTATIC_PROXY_API_KEY"); v != "" {
 		cfg.APIKey = v
 		cfg.APIKeys = nil // env var overrides both api_key and api_keys
 	}
-	if v := os.Getenv("OC_GO_CC_HOST"); v != "" {
+	if v := envValue("ROUTATIC_PROXY_HOST"); v != "" {
 		cfg.Host = v
 	}
-	if v := os.Getenv("OC_GO_CC_PORT"); v != "" {
+	if v := envValue("ROUTATIC_PROXY_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil {
 			cfg.Port = port
 		}
 	}
-	if v := os.Getenv("OC_GO_CC_OPENCODE_URL"); v != "" {
+	if v := envValue("ROUTATIC_PROXY_OPENCODE_URL"); v != "" {
 		cfg.OpenCodeGo.BaseURL = v
 	}
-	if v := os.Getenv("OC_GO_CC_OPENCODE_ZEN_URL"); v != "" {
+	if v := envValue("ROUTATIC_PROXY_OPENCODE_ZEN_URL"); v != "" {
 		cfg.OpenCodeZen.BaseURL = v
 	}
-	if v := os.Getenv("OC_GO_CC_LOG_LEVEL"); v != "" {
+	if v := envValue("ROUTATIC_PROXY_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v
 	}
+}
+
+func envValue(name string) string {
+	if val := os.Getenv(name); val != "" {
+		return val
+	}
+	if legacyName, ok := legacyEnvNames[name]; ok {
+		return os.Getenv(legacyName)
+	}
+	for canonicalName, legacyName := range legacyEnvNames {
+		if name == legacyName {
+			return os.Getenv(canonicalName)
+		}
+	}
+	return ""
 }
 
 // applyDefaults fills in missing configuration values with sensible defaults.
@@ -181,7 +217,7 @@ func applyDefaults(cfg *Config) {
 // validate checks that all required configuration fields are present.
 func validate(cfg *Config) error {
 	if cfg.APIKey == "" && len(cfg.APIKeys) == 0 {
-		return fmt.Errorf("api_key or api_keys is required (set via config file or OC_GO_CC_API_KEY env var)")
+		return fmt.Errorf("api_key or api_keys is required (set via config file or ROUTATIC_PROXY_API_KEY env var; OC_GO_CC_API_KEY is still supported)")
 	}
 
 	if err := validateAPIKeys(cfg.APIKeys); err != nil {

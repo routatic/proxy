@@ -31,14 +31,14 @@ Run a single test: `go test ./internal/router/ -v`
 
 ```
 ┌─────────────┐     Anthropic API      ┌─────────────┐     OpenAI/Gemini/Responses  ┌─────────────┐
-│  Claude Code ├──────────────────────►│  oc-go-cc    ├─────────────────────────────►│  OpenCode   │
+│  Claude Code ├──────────────────────►│  routatic-proxy    ├─────────────────────────────►│  OpenCode   │
 │  (CLI)       │  POST /v1/messages   │  (Proxy)     │  Multiple endpoint formats   │  (Upstream) │
 │              │◄──────────────────────┤              │◄─────────────────────────────┤              │
 └─────────────┘   Anthropic SSE        └─────────────┘   Format-appropriate SSE      └─────────────┘
 ```
 
 1. Claude Code sends a request in [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) format
-2. oc-go-cc parses the request, counts tokens, and selects a model via routing rules
+2. routatic-proxy parses the request, counts tokens, and selects a model via routing rules
 3. Based on the model's provider and endpoint type, the request is transformed to the appropriate format:
    - **OpenAI Chat Completions** — for most OpenCode Go and Zen models
    - **Anthropic Messages** — for MiniMax models (sent directly without transformation)
@@ -79,7 +79,7 @@ For Claude Code and other agentic coding workflows, configure DeepSeek V4 models
 }
 ```
 
-`oc-go-cc` forwards these fields to OpenCode Go as OpenAI Chat Completions parameters:
+`routatic-proxy` forwards these fields to OpenCode Go as OpenAI Chat Completions parameters:
 
 - `reasoning_effort`: controls DeepSeek V4 thinking effort (`high` or `max`)
 - `thinking`: enables or disables DeepSeek V4 thinking mode
@@ -89,7 +89,7 @@ DeepSeek V4 thinking responses are returned as OpenAI `reasoning_content` and tr
 ## Architecture
 
 ```
-cmd/oc-go-cc/main.go           CLI entry point (cobra commands)
+cmd/routatic-proxy/main.go           CLI entry point (cobra commands)
 internal/
 ├── config/
 │   ├── config.go               Config types (OpenCodeGoConfig, OpenCodeZenConfig)
@@ -130,7 +130,7 @@ configs/
 - **Polymorphic field handling**: Anthropic's `system` and `content` fields accept both strings and arrays. We use `json.RawMessage` with accessor methods (`SystemText()`, `ContentBlocks()`) to handle both formats correctly.
 - **Real-time stream proxying**: SSE events are transformed in-flight, not buffered. This means Claude Code sees responses as they arrive from upstream.
 - **Circuit breaker per model**: Each model gets its own circuit breaker. After 3 consecutive failures, the model is skipped for 30 seconds, then tested again.
-- **Environment variable interpolation**: Config values like `"${OC_GO_CC_API_KEY}"` are resolved at load time, so you never need to put secrets in the config file.
+- **Environment variable interpolation**: Config values like `"${ROUTATIC_PROXY_API_KEY}"` are resolved at load time, so you never need to put secrets in the config file.
 - **Provider-aware routing**: The `provider` field in model config determines which upstream service to use (Go or Zen). Zen models are further classified by endpoint type (Chat Completions, Anthropic, Responses, Gemini).
 
 ## API Endpoints

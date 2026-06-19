@@ -26,7 +26,7 @@ func TestDefaultCacheDir(t *testing.T) {
 		},
 		{
 			name: "falls back to home cache",
-			want: filepath.Join(mustHome(), ".cache", "oc-go-cc", "tiktoken"),
+			want: filepath.Join(mustHome(), ".cache", "routatic-proxy", "tiktoken"),
 		},
 	}
 

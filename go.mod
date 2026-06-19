@@ -1,4 +1,4 @@
-module oc-go-cc
+module github.com/routatic/proxy
 
 go 1.25
 

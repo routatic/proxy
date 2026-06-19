@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {

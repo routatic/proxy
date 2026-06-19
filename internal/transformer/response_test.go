@@ -3,7 +3,7 @@ package transformer
 import (
 	"testing"
 
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 func TestTransformResponsePreservesReasoningContent(t *testing.T) {

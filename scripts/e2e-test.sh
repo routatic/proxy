@@ -14,8 +14,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # --- Config ---
-PORT="${OC_GO_CC_PORT:-3457}"
-HOST="${OC_GO_CC_HOST:-127.0.0.1}"
+PORT="${ROUTATIC_PROXY_PORT:-${OC_GO_CC_PORT:-3457}}"
+HOST="${ROUTATIC_PROXY_HOST:-${OC_GO_CC_HOST:-127.0.0.1}}"
 BASE_URL="http://${HOST}:${PORT}"
 TIMEOUT_SEC=60
 pass=0
@@ -33,9 +33,9 @@ cleanup() {
 		kill "${PROXY_PID}" 2>/dev/null || true
 		wait "${PROXY_PID}" 2>/dev/null || true
 	fi
-	./bin/oc-go-cc stop 2>/dev/null || true
+	./bin/routatic-proxy stop 2>/dev/null || true
 	sleep 1
-	rm -f ~/.config/oc-go-cc/oc-go-cc.pid
+	rm -f ~/.config/routatic-proxy/routatic-proxy.pid
 }
 trap cleanup EXIT
 
@@ -43,7 +43,7 @@ trap cleanup EXIT
 if [ "${1:-}" = "--skip-build" ]; then
 	echo -e "${YELLOW}Skipping build...${NC}"
 else
-	echo "=== Building oc-go-cc ==="
+	echo "=== Building routatic-proxy ==="
 	make build
 	echo ""
 fi
@@ -56,8 +56,9 @@ if [ -f .env ]; then
 	set +a
 fi
 
-if [ -z "${OC_GO_CC_API_KEY:-}" ]; then
-	echo -e "${RED}Error: OC_GO_CC_API_KEY not set. Create a .env file or export it.${NC}"
+API_KEY="${ROUTATIC_PROXY_API_KEY:-${OC_GO_CC_API_KEY:-}}"
+if [ -z "$API_KEY" ]; then
+	echo -e "${RED}Error: ROUTATIC_PROXY_API_KEY not set. OC_GO_CC_API_KEY is also accepted for compatibility.${NC}"
 	exit 1
 fi
 
@@ -67,7 +68,7 @@ cleanup
 # Run server in foreground but background it with & so we can capture the PID.
 # Do NOT use -b (daemonize) because that forks and exits the parent, making $!
 # capture the wrong PID.
-./bin/oc-go-cc serve --port "$PORT" > /tmp/oc-go-cc-e2e.log 2>&1 &
+./bin/routatic-proxy serve --port "$PORT" > /tmp/routatic-proxy-e2e.log 2>&1 &
 PROXY_PID=$!
 echo "Server PID: ${PROXY_PID}"
 
@@ -82,7 +83,7 @@ for i in $(seq 1 10); do
 done
 if [ "${HEALTH_OK}" != "true" ]; then
 	echo -e "${RED}Proxy failed to start${NC}"
-	cat /tmp/oc-go-cc-e2e.log 2>/dev/null || true
+	cat /tmp/routatic-proxy-e2e.log 2>/dev/null || true
 	exit 1
 fi
 echo -e "${GREEN}Proxy is running${NC}"
@@ -126,10 +127,10 @@ JSON
 )
 	REQUEST_BODY="${REQUEST_BODY//MODEL_PLACEHOLDER/$model}"
 
-	HTTP_CODE=$(curl -s -o /tmp/oc-go-cc-e2e-response.json -w '%{http_code}' \
+	HTTP_CODE=$(curl -s -o /tmp/routatic-proxy-e2e-response.json -w '%{http_code}' \
 		-X POST "${BASE_URL}/v1/messages" \
 		-H "Content-Type: application/json" \
-		-H "x-api-key: ${OC_GO_CC_API_KEY}" \
+		-H "x-api-key: $API_KEY" \
 		-d "$REQUEST_BODY" \
 		--max-time "$TIMEOUT_SEC")
 
@@ -137,7 +138,7 @@ JSON
 		# Extract the text response for verification
 		TEXT=$(python3 -c "
 import json
-with open('/tmp/oc-go-cc-e2e-response.json') as f:
+with open('/tmp/routatic-proxy-e2e-response.json') as f:
     d = json.load(f)
 blocks = d.get('content', [])
 for b in blocks:
@@ -147,7 +148,7 @@ for b in blocks:
 		echo -e "${GREEN}PASS${NC} (200, response: \"${TEXT}\")"
 		pass=$((pass + 1))
 	else
-		ERROR_MSG=$(head -c 300 /tmp/oc-go-cc-e2e-response.json 2>/dev/null || echo "")
+		ERROR_MSG=$(head -c 300 /tmp/routatic-proxy-e2e-response.json 2>/dev/null || echo "")
 		echo -e "${RED}FAIL${NC} (HTTP ${HTTP_CODE})"
 		echo "    Response: ${ERROR_MSG}"
 		fail=$((fail + 1))
@@ -192,26 +193,26 @@ JSON
 )
 	REQUEST_BODY="${REQUEST_BODY//MODEL_PLACEHOLDER/$model}"
 
-	HTTP_CODE=$(curl -s -o /tmp/oc-go-cc-e2e-stream-response.txt -w '%{http_code}' \
+	HTTP_CODE=$(curl -s -o /tmp/routatic-proxy-e2e-stream-response.txt -w '%{http_code}' \
 		-X POST "${BASE_URL}/v1/messages" \
 		-H "Content-Type: application/json" \
-		-H "x-api-key: ${OC_GO_CC_API_KEY}" \
+		-H "x-api-key: $API_KEY" \
 		-d "$REQUEST_BODY" \
 		--max-time "$TIMEOUT_SEC")
 
 	if [ "$HTTP_CODE" = 200 ]; then
 		# Verify it's a valid SSE stream: must have message_start and message_stop
-		if grep -q "event: message_start" /tmp/oc-go-cc-e2e-stream-response.txt && \
-		   grep -q "event: message_stop" /tmp/oc-go-cc-e2e-stream-response.txt; then
+		if grep -q "event: message_start" /tmp/routatic-proxy-e2e-stream-response.txt && \
+		   grep -q "event: message_stop" /tmp/routatic-proxy-e2e-stream-response.txt; then
 			echo -e "${GREEN}PASS${NC} (200, valid SSE stream)"
 			pass=$((pass + 1))
 		else
 			echo -e "${RED}FAIL${NC} (200 but missing message_start/message_stop — corrupted SSE)"
-			head -c 400 /tmp/oc-go-cc-e2e-stream-response.txt
+			head -c 400 /tmp/routatic-proxy-e2e-stream-response.txt
 			fail=$((fail + 1))
 		fi
 	else
-		ERROR_MSG=$(head -c 300 /tmp/oc-go-cc-e2e-stream-response.txt 2>/dev/null || echo "")
+		ERROR_MSG=$(head -c 300 /tmp/routatic-proxy-e2e-stream-response.txt 2>/dev/null || echo "")
 		echo -e "${RED}FAIL${NC} (HTTP ${HTTP_CODE})"
 		echo "    Response: ${ERROR_MSG}"
 		fail=$((fail + 1))
@@ -243,26 +244,26 @@ JSON
 )
 	REQUEST_BODY="${REQUEST_BODY//MODEL_PLACEHOLDER/$model}"
 
-	HTTP_CODE=$(curl -s -o /tmp/oc-go-cc-e2e-stream-long.txt -w '%{http_code}' \
+	HTTP_CODE=$(curl -s -o /tmp/routatic-proxy-e2e-stream-long.txt -w '%{http_code}' \
 		-X POST "${BASE_URL}/v1/messages" \
 		-H "Content-Type: application/json" \
-		-H "x-api-key: ${OC_GO_CC_API_KEY}" \
+		-H "x-api-key: $API_KEY" \
 		-d "$REQUEST_BODY" \
 		--max-time 120)
 
 	if [ "$HTTP_CODE" = 200 ]; then
-		if grep -q "event: message_start" /tmp/oc-go-cc-e2e-stream-long.txt && \
-		   grep -q "event: message_stop" /tmp/oc-go-cc-e2e-stream-long.txt; then
-			DELTA_COUNT=$(grep -c "event: content_block_delta" /tmp/oc-go-cc-e2e-stream-long.txt 2>/dev/null || echo 0)
+		if grep -q "event: message_start" /tmp/routatic-proxy-e2e-stream-long.txt && \
+		   grep -q "event: message_stop" /tmp/routatic-proxy-e2e-stream-long.txt; then
+			DELTA_COUNT=$(grep -c "event: content_block_delta" /tmp/routatic-proxy-e2e-stream-long.txt 2>/dev/null || echo 0)
 			echo -e "${GREEN}PASS${NC} (200, ${DELTA_COUNT} content deltas, valid SSE)"
 			pass=$((pass + 1))
 		else
 			echo -e "${RED}FAIL${NC} (200 but invalid SSE — missing start/stop)"
-			head -c 400 /tmp/oc-go-cc-e2e-stream-long.txt
+			head -c 400 /tmp/routatic-proxy-e2e-stream-long.txt
 			fail=$((fail + 1))
 		fi
 	else
-		ERROR_MSG=$(head -c 300 /tmp/oc-go-cc-e2e-stream-long.txt 2>/dev/null || echo "")
+		ERROR_MSG=$(head -c 300 /tmp/routatic-proxy-e2e-stream-long.txt 2>/dev/null || echo "")
 		echo -e "${RED}FAIL${NC} (HTTP ${HTTP_CODE})"
 		echo "    Response: ${ERROR_MSG}"
 		fail=$((fail + 1))

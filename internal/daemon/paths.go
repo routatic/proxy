@@ -10,17 +10,18 @@ import (
 )
 
 const (
-	AppName     = "oc-go-cc"
-	ConfigDir   = ".config/oc-go-cc"
-	LaunchAgent = "com.opencode.oc-go-cc"
+	AppName       = "routatic-proxy"
+	LegacyAppName = "oc-go-cc"
+	ConfigDir     = ".config/routatic-proxy"
+	LaunchAgent   = "com.routatic.proxy"
 )
 
 // Paths holds well-known directories and files for the app.
 type Paths struct {
-	ConfigDir  string // ~/.config/oc-go-cc
-	PIDFile    string // ~/.config/oc-go-cc/oc-go-cc.pid
-	LogFile    string // ~/.config/oc-go-cc/oc-go-cc.log
-	PlistPath  string // ~/Library/LaunchAgents/com.opencode.oc-go-cc.plist
+	ConfigDir  string // ~/.config/routatic-proxy
+	PIDFile    string // ~/.config/routatic-proxy/routatic-proxy.pid
+	LogFile    string // ~/.config/routatic-proxy/routatic-proxy.log
+	PlistPath  string // ~/Library/LaunchAgents/com.routatic.proxy.plist
 	BinaryPath string // absolute path to the running executable
 }
 
@@ -50,7 +51,7 @@ func DefaultPaths() (*Paths, error) {
 	return paths, nil
 }
 
-// EnsureConfigDir creates ~/.config/oc-go-cc/ if it does not exist.
+// EnsureConfigDir creates ~/.config/routatic-proxy/ if it does not exist.
 func (p *Paths) EnsureConfigDir() error {
 	return os.MkdirAll(p.ConfigDir, 0755)
 }
@@ -74,7 +75,7 @@ func WritePID(pidPath string, pid int) error {
 	return os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", pid)), 0644)
 }
 
-// FindBinary returns the absolute path to the oc-go-cc binary.
+// FindBinary returns the absolute path to the routatic-proxy binary.
 func FindBinary() (string, error) {
 	// First try to use the current executable
 	execPath, err := os.Executable()
@@ -82,10 +83,13 @@ func FindBinary() (string, error) {
 		return resolveExecutablePath(execPath), nil
 	}
 
-	// Fallback: search PATH for oc-go-cc
+	// Fallback: search PATH for routatic-proxy, then the legacy oc-go-cc alias.
 	execPath, err = exec.LookPath(AppName)
 	if err != nil {
-		return "", fmt.Errorf("cannot find oc-go-cc binary: %w", err)
+		execPath, err = exec.LookPath(LegacyAppName)
+		if err != nil {
+			return "", fmt.Errorf("cannot find %s binary: %w", AppName, err)
+		}
 	}
 	return resolveExecutablePath(execPath), nil
 }

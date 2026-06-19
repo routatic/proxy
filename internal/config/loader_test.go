@@ -214,6 +214,69 @@ func TestEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestEnvOverrides_RoutaticProxyTakesPrecedenceOverLegacy(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	if err := os.WriteFile(cfgPath, []byte(`{"api_key": "file-key"}`), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Setenv("OC_GO_CC_CONFIG", filepath.Join(dir, "legacy.json"))
+	_ = os.Setenv("ROUTATIC_PROXY_API_KEY", "new-key")
+	_ = os.Setenv("OC_GO_CC_API_KEY", "legacy-key")
+	_ = os.Setenv("ROUTATIC_PROXY_HOST", "new-host")
+	_ = os.Setenv("OC_GO_CC_HOST", "legacy-host")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("OC_GO_CC_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_API_KEY")
+		_ = os.Unsetenv("OC_GO_CC_API_KEY")
+		_ = os.Unsetenv("ROUTATIC_PROXY_HOST")
+		_ = os.Unsetenv("OC_GO_CC_HOST")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.APIKey != "new-key" {
+		t.Errorf("APIKey = %q, want %q", cfg.APIKey, "new-key")
+	}
+	if cfg.Host != "new-host" {
+		t.Errorf("Host = %q, want %q", cfg.Host, "new-host")
+	}
+}
+
+func TestInterpolateEnvVars_NewPlaceholderAcceptsLegacyEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	if err := os.WriteFile(cfgPath, []byte(`{"api_key": "${ROUTATIC_PROXY_API_KEY}"}`), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Unsetenv("ROUTATIC_PROXY_API_KEY")
+	_ = os.Setenv("OC_GO_CC_API_KEY", "legacy-key")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_API_KEY")
+		_ = os.Unsetenv("OC_GO_CC_API_KEY")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.APIKey != "legacy-key" {
+		t.Errorf("APIKey = %q, want %q", cfg.APIKey, "legacy-key")
+	}
+}
+
 func TestEnvOverrides_OC_GO_CC_API_KEY_OverridesAPIKeys(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")

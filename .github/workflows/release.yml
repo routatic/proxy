@@ -29,7 +29,7 @@ jobs:
         run: go test ./... -v -race
 
       - name: Build (sanity check)
-        run: go build -o /dev/null ./cmd/oc-go-cc
+        run: go build -o /dev/null ./cmd/routatic-proxy
 
   # ── Stage 2: Create Release ──────────────────────────────────────
   release:
@@ -100,8 +100,8 @@ jobs:
             echo "Building ${NAME}..."
             CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
               go build -ldflags "$LDFLAGS -s -w" \
-                -o "dist/oc-go-cc_${NAME}${EXT}" \
-                ./cmd/oc-go-cc
+                -o "dist/routatic-proxy_${NAME}${EXT}" \
+                ./cmd/routatic-proxy
           done
 
           echo ""
@@ -111,7 +111,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum oc-go-cc_* > checksums.txt
+          sha256sum routatic-proxy_* > checksums.txt
           cat checksums.txt
 
       - name: Generate AI Changelog
@@ -140,7 +140,7 @@ jobs:
             COMMITS=$(git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"%H%n%s%n%b%n---COMMIT_SEP---")
             FILE_CHANGES=$(git diff --stat "${PREVIOUS_TAG}..HEAD")
 
-            PROMPT="You are a technical writer generating release notes for a Go proxy server project (oc-go-cc).
+            PROMPT="You are a technical writer generating release notes for a Go proxy server project (routatic-proxy).
 
             Analyze the provided git commits and file changes, then generate a well-structured
             changelog in Markdown format. Follow these guidelines:
@@ -213,7 +213,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            dist/oc-go-cc_*
+            dist/routatic-proxy_*
             dist/checksums.txt
 
   # ── Stage 3: Publish Docker Image ───────────────────────────────
@@ -223,7 +223,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    if: github.repository == 'samueltuyizere/oc-go-cc'
+    if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -263,7 +263,7 @@ jobs:
   homebrew:
     name: Update Homebrew Tap
     needs: release
-    if: github.repository == 'samueltuyizere/oc-go-cc'
+    if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -313,58 +313,59 @@ jobs:
           git clone "https://x-access-token:${PAT}@github.com/${TAP_REPO}.git" tap-repo
           cd tap-repo
 
-          mkdir -p Formula
+          mkdir -p Formula Aliases
 
-          cat > Formula/oc-go-cc.rb << RUBY
-          class OcGoCc < Formula
+          cat > Formula/routatic-proxy.rb << RUBY
+          class RoutaticProxy < Formula
             desc "Proxy Claude Code requests to OpenCode Go API"
             homepage "https://github.com/${REPO}"
             version "${VERSION}"
 
             on_macos do
               if Hardware::CPU.arm?
-                url "${BASE_URL}/oc-go-cc_darwin-arm64"
+                url "${BASE_URL}/routatic-proxy_darwin-arm64"
                 sha256 "${DARWIN_ARM64}"
               else
-                url "${BASE_URL}/oc-go-cc_darwin-amd64"
+                url "${BASE_URL}/routatic-proxy_darwin-amd64"
                 sha256 "${DARWIN_AMD64}"
               end
             end
 
             on_linux do
               if Hardware::CPU.intel?
-                url "${BASE_URL}/oc-go-cc_linux-amd64"
+                url "${BASE_URL}/routatic-proxy_linux-amd64"
                 sha256 "${LINUX_AMD64}"
               else
-                url "${BASE_URL}/oc-go-cc_linux-arm64"
+                url "${BASE_URL}/routatic-proxy_linux-arm64"
                 sha256 "${LINUX_ARM64}"
               end
             end
 
             def install
               if OS.mac? && Hardware::CPU.arm?
-                bin.install "oc-go-cc_darwin-arm64" => "oc-go-cc"
+                bin.install "routatic-proxy_darwin-arm64" => "routatic-proxy"
               elsif OS.mac?
-                bin.install "oc-go-cc_darwin-amd64" => "oc-go-cc"
+                bin.install "routatic-proxy_darwin-amd64" => "routatic-proxy"
               elsif OS.linux? && Hardware::CPU.intel?
-                bin.install "oc-go-cc_linux-amd64" => "oc-go-cc"
+                bin.install "routatic-proxy_linux-amd64" => "routatic-proxy"
               else
-                bin.install "oc-go-cc_linux-arm64" => "oc-go-cc"
+                bin.install "routatic-proxy_linux-arm64" => "routatic-proxy"
               end
+              bin.install_symlink bin/"routatic-proxy" => "oc-go-cc"
             end
 
             def caveats
               <<~EOS
-                To get started with oc-go-cc:
+                To get started with routatic-proxy:
 
                   1. Initialize configuration:
-                     oc-go-cc init
+                     routatic-proxy init
 
                   2. Set your OpenCode Go API key:
-                     export OC_GO_CC_API_KEY=sk-opencode-your-key
+                     export ROUTATIC_PROXY_API_KEY=sk-opencode-your-key
 
                   3. Start the proxy:
-                     oc-go-cc serve
+                     routatic-proxy serve
 
                   4. Configure Claude Code:
                      export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
@@ -376,22 +377,25 @@ jobs:
             end
 
             test do
+              system "#{bin}/routatic-proxy", "--version"
               system "#{bin}/oc-go-cc", "--version"
             end
           end
           RUBY
 
-          git add Formula/oc-go-cc.rb
+          ln -sf ../Formula/routatic-proxy.rb Aliases/oc-go-cc
+
+          git add Formula/routatic-proxy.rb Aliases/oc-go-cc
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update oc-go-cc to ${VERSION}" || echo "No changes to commit"
+          git commit -m "Update routatic-proxy to ${VERSION}" || echo "No changes to commit"
           git push
 
   # ── Stage 5: Update Scoop Bucket ──────────────────────────────────
   scoop:
     name: Update Scoop Bucket
     needs: release
-    if: github.repository == 'samueltuyizere/oc-go-cc'
+    if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -437,7 +441,7 @@ jobs:
 
           mkdir -p bucket
 
-          cat > bucket/oc-go-cc.json << JSON
+          cat > bucket/routatic-proxy.json << JSON
           {
               "version": "${VERSION}",
               "description": "Proxy Claude Code requests to OpenCode Go API",
@@ -445,34 +449,39 @@ jobs:
               "license": "AGPL-3.0-only",
               "architecture": {
                   "64bit": {
-                      "url": "${BASE_URL}/oc-go-cc_windows-amd64.exe",
+                      "url": "${BASE_URL}/routatic-proxy_windows-amd64.exe",
                       "hash": "${WINDOWS_AMD64}"
                   },
                   "arm64": {
-                      "url": "${BASE_URL}/oc-go-cc_windows-arm64.exe",
+                      "url": "${BASE_URL}/routatic-proxy_windows-arm64.exe",
                       "hash": "${WINDOWS_ARM64}"
                   }
               },
-              "bin": "oc-go-cc.exe",
-              "post_install": "Get-ChildItem \$dir\\\\oc-go-cc_windows-*.exe | Rename-Item -NewName oc-go-cc.exe",
+              "bin": [
+                  ["routatic-proxy.exe", "routatic-proxy"],
+                  ["routatic-proxy.exe", "oc-go-cc"]
+              ],
+              "post_install": "Get-ChildItem \$dir\\\\routatic-proxy_windows-*.exe | Rename-Item -NewName routatic-proxy.exe",
               "checkver": {
                   "github": "https://github.com/${REPO}"
               },
               "autoupdate": {
                   "architecture": {
                       "64bit": {
-                          "url": "https://github.com/${REPO}/releases/download/v\$version/oc-go-cc_windows-amd64.exe"
+                          "url": "https://github.com/${REPO}/releases/download/v\$version/routatic-proxy_windows-amd64.exe"
                       },
                       "arm64": {
-                          "url": "https://github.com/${REPO}/releases/download/v\$version/oc-go-cc_windows-arm64.exe"
+                          "url": "https://github.com/${REPO}/releases/download/v\$version/routatic-proxy_windows-arm64.exe"
                       }
                   }
               }
           }
           JSON
 
-          git add bucket/oc-go-cc.json
+          cp bucket/routatic-proxy.json bucket/oc-go-cc.json
+
+          git add bucket/routatic-proxy.json bucket/oc-go-cc.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "Update oc-go-cc to ${VERSION}" || echo "No changes to commit"
+          git commit -m "Update routatic-proxy to ${VERSION}" || echo "No changes to commit"
           git push

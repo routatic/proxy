@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // ResponseTransformer converts OpenAI responses to Anthropic format.

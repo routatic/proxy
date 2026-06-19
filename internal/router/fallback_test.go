@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 func TestIsRetryableError_ClientsErrorsNotRetryable(t *testing.T) {
