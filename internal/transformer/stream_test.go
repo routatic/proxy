@@ -234,6 +234,7 @@ func TestProxyStream_UsageOnlyChunk(t *testing.T) {
 	}
 	if usage == nil {
 		t.Fatalf("no usage event found in stream: %+v", events)
+		return
 	}
 	// Per Anthropic spec, input_tokens excludes cache reads AND cache
 	// creations. Upstream prompt_tokens=123 split as 100 hit + 23 miss

@@ -87,6 +87,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 	}
 	if assistantMsg == nil {
 		t.Fatal("assistant message not found in transformed request")
+		return
 	}
 
 	// Step 5: Verify reasoning_content is preserved.
@@ -968,6 +969,7 @@ func TestTransformRequestDeepSeekPlaceholderWithThinkingHistory(t *testing.T) {
 	}
 	if toolCallAssistant == nil {
 		t.Fatal("no assistant message with tool_calls found")
+		return
 	}
 	if toolCallAssistant.ReasoningContent == nil {
 		t.Fatal("ReasoningContent = nil, want non-nil placeholder for DeepSeek with thinking history")
@@ -1037,6 +1039,7 @@ func TestTransformRequestDeepSeekPlaceholderForTextOnlyAssistant(t *testing.T) {
 	}
 	if textOnlyAssistant == nil {
 		t.Fatal("expected two assistant messages in transformed request, found fewer")
+		return
 	}
 	if len(textOnlyAssistant.ToolCalls) != 0 {
 		t.Fatalf("text-only assistant message unexpectedly had tool_calls: %+v", textOnlyAssistant.ToolCalls)

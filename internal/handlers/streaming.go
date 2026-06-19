@@ -40,12 +40,12 @@ func (sp *StreamProxy) ProxyStream(
 	switch wireFormat {
 	case core.WireFormatAnthropic:
 		return sp.proxyAnthropicPassthroughStream(w, body, idleTimeout, clientCtx, cancel)
-	default:
-		return sp.proxyOpenAIStream(w, body, modelID, clientCtx, idleTimeout, cancel)
 	case core.WireFormatOpenAIResponses:
 		return sp.handler.ProxyResponsesStream(w, body, modelID, clientCtx, idleTimeout, cancel)
 	case core.WireFormatGemini:
 		return sp.handler.ProxyGeminiStream(w, body, modelID, clientCtx, idleTimeout, cancel)
+	default:
+		return sp.proxyOpenAIStream(w, body, modelID, clientCtx, idleTimeout, cancel)
 	}
 }
 
@@ -71,7 +71,7 @@ func (sp *StreamProxy) proxyAnthropicPassthroughStream(
 	clientCtx context.Context,
 	cancel context.CancelFunc,
 ) error {
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	defer cancel()
 
 	buf := make([]byte, 4096)
