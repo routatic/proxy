@@ -57,8 +57,10 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 					Arguments: string(block.Input),
 				})
 			case "tool_result":
-				nm.ToolCallID = block.ToolUseID
-				nm.Content += block.TextContent()
+				nm.ToolResults = append(nm.ToolResults, NormalizedToolResult{
+					ToolCallID: block.ToolUseID,
+					Content:    block.TextContent(),
+				})
 			case "thinking":
 				nm.Thinking += block.Thinking
 			case "image":

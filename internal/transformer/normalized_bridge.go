@@ -332,7 +332,16 @@ func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageReque
 				Input: []byte(tc.Arguments),
 			})
 		}
-		if nm.ToolCallID != "" {
+		if len(nm.ToolResults) > 0 {
+			for _, tr := range nm.ToolResults {
+				content, _ := json.Marshal(tr.Content)
+				blocks = append(blocks, types.ContentBlock{
+					Type:      "tool_result",
+					ToolUseID: tr.ToolCallID,
+					Content:   content,
+				})
+			}
+		} else if nm.ToolCallID != "" {
 			content, _ := json.Marshal(nm.Content)
 			blocks = append(blocks, types.ContentBlock{
 				Type:      "tool_result",
