@@ -281,6 +281,7 @@ func TestProxyStream_PartialCacheTokensStreaming(t *testing.T) {
 	}
 	if usage == nil {
 		t.Fatalf("no usage event found in stream: %+v", events)
+		return
 	}
 	// 100 - 60 - 30 = 10 tokens are neither cached nor newly cached.
 	if got, want := usage.InputTokens, 10; got != want {
@@ -337,6 +338,7 @@ func TestProxyStream_NoDuplicateMessageDelta(t *testing.T) {
 	}
 	if totalUsage == nil {
 		t.Fatalf("no usage found in stream: %+v", events)
+		return
 	}
 	if got, want := totalUsage.InputTokens, 100; got != want {
 		t.Errorf("InputTokens = %d, want %d", got, want)
@@ -990,10 +992,12 @@ func TestProxyStream_NoUsageFallback(t *testing.T) {
 
 	if messageDeltaEvent == nil {
 		t.Fatalf("expected message_delta event, got none: %+v", events)
+		return
 	}
 
 	if messageDeltaEvent.Usage == nil {
 		t.Fatal("expected message_delta event to have non-nil Usage, but it was nil")
+		return
 	}
 
 	if messageDeltaEvent.Usage.InputTokens != 0 || messageDeltaEvent.Usage.OutputTokens != 0 {
@@ -1061,6 +1065,7 @@ func TestProxyStream_EOFFallbackStopReasonToolUse(t *testing.T) {
 	}
 	if msgDelta == nil {
 		t.Fatalf("expected message_delta event, got none: %+v", events)
+		return
 	}
 	if msgDelta.Delta == nil || msgDelta.Delta.StopReason != "tool_use" {
 		t.Errorf("stop_reason = %q, want tool_use (stream ended mid-tool-call)", msgDelta.Delta.StopReason)

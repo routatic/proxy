@@ -1171,6 +1171,7 @@ func TestTransformRequestExtractsThinkingFromToolUseBlock(t *testing.T) {
 	}
 	if assistantMsg == nil {
 		t.Fatal("no assistant message in transformed request")
+		return
 	}
 	if assistantMsg.ReasoningContent == nil {
 		t.Fatal("ReasoningContent = nil, want non-nil (thinking on tool_use must round-trip)")
