@@ -1,4 +1,4 @@
-# routatic-proxy
+# routatic-proxy (prev OC-GO-CC)
 
 A Go CLI proxy that lets you use your [OpenCode Go](https://opencode.ai/docs/go/) or [OpenCode Zen](https://opencode.ai/docs/zen/) subscription with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
@@ -108,13 +108,13 @@ routatic-proxy --version          Show version
 
 ## Documentation
 
-| Document | Description |
-| -------- | ----------- |
-| [INSTALLATION.md](INSTALLATION.md) | Homebrew, Scoop, build from source, release binaries |
-| [CONFIGURATION.md](CONFIGURATION.md) | Config file reference, env vars, model routing, fallback chains |
-| [MODELS.md](MODELS.md) | Model capabilities, costs, and routing recommendations |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, architecture, how it works |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and debug mode |
+| Document                                 | Description                                                     |
+| ---------------------------------------- | --------------------------------------------------------------- |
+| [INSTALLATION.md](INSTALLATION.md)       | Homebrew, Scoop, build from source, release binaries            |
+| [CONFIGURATION.md](CONFIGURATION.md)     | Config file reference, env vars, model routing, fallback chains |
+| [MODELS.md](MODELS.md)                   | Model capabilities, costs, and routing recommendations          |
+| [CONTRIBUTING.md](CONTRIBUTING.md)       | Development setup, architecture, how it works                   |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and debug mode                                    |
 
 ## License
 

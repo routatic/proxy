@@ -59,7 +59,7 @@ Homebrew and Scoop installs also provide `oc-go-cc` as an alias for `routatic-pr
 
 ```bash
 cp .env.example .env
-# Edit .env and put your OpenCode Go API key
+# Edit .env and put your API key
 make docker-up
 ```
 

@@ -61,6 +61,6 @@ ROUTATIC_PROXY_LOG_LEVEL=debug routatic-proxy serve
 This logs:
 
 - Raw Anthropic request body from Claude Code
-- Transformed OpenAI request sent to OpenCode Go
-- Raw OpenAI response received
+- Transformed request sent to upstream (OpenCode Go/Zen)
+- Upstream response received
 - SSE stream events during streaming
