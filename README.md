@@ -15,6 +15,7 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 - **Transparent Proxy** — Claude Code sends Anthropic-format requests, proxy transforms to OpenAI/Responses/Gemini format and back
 - **Dual Provider Support** — Route models through OpenCode Go or OpenCode Zen based on your needs
 - **Model Routing** — Automatically routes to different models based on context (default, thinking, long context, background)
+- **Streaming Scenario Routing** — Configurable routing for streaming requests; enables proper scenario selection for Claude Code multi-agent and review workflows (see [CONFIGURATION.md](CONFIGURATION.md#streaming-scenario-routing))
 - **Fallback Chains** — If a model fails, automatically tries the next one in your configured chain
 - **Circuit Breaker** — Tracks model health and skips failing models to avoid latency spikes
 - **Real-time Streaming** — Full SSE streaming with live format transformation

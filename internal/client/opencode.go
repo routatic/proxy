@@ -86,6 +86,48 @@ func (c *OpenCodeClient) StreamIdleTimeout(modelConfig config.ModelConfig) time.
 	return time.Duration(ms) * time.Millisecond
 }
 
+// RequestTimeout returns the provider timeout for a non-streaming attempt.
+func (c *OpenCodeClient) RequestTimeout(model config.ModelConfig) time.Duration {
+	if c == nil || c.atomic == nil {
+		return 5 * time.Minute
+	}
+	cfg := c.atomic.Get()
+	var timeoutMs int
+	if IsZen(model) {
+		timeoutMs = cfg.OpenCodeZen.TimeoutMs
+	} else {
+		timeoutMs = cfg.OpenCodeGo.TimeoutMs
+	}
+	if timeoutMs > 0 {
+		return time.Duration(timeoutMs) * time.Millisecond
+	}
+	return 5 * time.Minute
+}
+
+// StreamingTimeout returns the provider timeout for a streaming attempt.
+func (c *OpenCodeClient) StreamingTimeout(model config.ModelConfig) time.Duration {
+	if c == nil || c.atomic == nil {
+		return 5 * time.Minute
+	}
+	cfg := c.atomic.Get()
+	var timeoutMs int
+	if IsZen(model) {
+		timeoutMs = cfg.OpenCodeZen.StreamingTimeoutMs
+		if timeoutMs <= 0 {
+			timeoutMs = cfg.OpenCodeZen.TimeoutMs
+		}
+	} else {
+		timeoutMs = cfg.OpenCodeGo.StreamingTimeoutMs
+		if timeoutMs <= 0 {
+			timeoutMs = cfg.OpenCodeGo.TimeoutMs
+		}
+	}
+	if timeoutMs > 0 {
+		return time.Duration(timeoutMs) * time.Millisecond
+	}
+	return 5 * time.Minute
+}
+
 // IsAnthropicModel returns true if the model requires the Anthropic endpoint.
 // Most Go provider models use the Chat Completions transform path for broader
 // compatibility (tool format, message roles, etc.). Exceptions are models whose
@@ -95,7 +137,8 @@ func (c *OpenCodeClient) StreamIdleTimeout(modelConfig config.ModelConfig) time.
 // Only Zen models use the raw Anthropic endpoint via ClassifyEndpoint.
 func IsAnthropicModel(modelID string) bool {
 	switch modelID {
-	case "qwen3.7-max": // OpenCode Go backend doesn't support oa-compat for this model
+	case "minimax-m2.5", "minimax-m2.7", "minimax-m3",
+		"qwen3.5-plus", "qwen3.6-plus", "qwen3.7-plus", "qwen3.7-max":
 		return true
 	default:
 		return false

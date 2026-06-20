@@ -351,6 +351,7 @@ func (h *MessagesHandler) handleStreaming(
 
 	// Start heartbeat
 	var finished int32
+	var heartbeatPaused int32
 	heartbeatDone := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(3 * time.Second)
@@ -362,7 +363,9 @@ func (h *MessagesHandler) handleStreaming(
 				if atomic.LoadInt32(&finished) == 1 {
 					return
 				}
-				rw.WriteKeepalive()
+				if atomic.LoadInt32(&heartbeatPaused) == 0 {
+					rw.WriteKeepalive()
+				}
 			case <-heartbeatDone:
 				return
 			case <-clientCtx.Done():
@@ -387,20 +390,15 @@ func (h *MessagesHandler) handleStreaming(
 
 		h.logger.Info("attempting streaming model", "model", model.ModelID, "provider", model.Provider)
 
-		// Upstream context: no total deadline. The stream lives as long as
-		// data keeps flowing. Per-Read idle deadline is enforced in stream.go
-		// via http.ResponseController, so a stuck stream is still caught.
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			<-clientCtx.Done()
-			cancel()
-		}()
+		// Upstream context carries the streaming timeout configured for the model.
+		timeout := h.client.StreamingTimeout(model)
+		attemptCtx, cancelAttempt := context.WithTimeout(clientCtx, timeout)
 		idleTimeout := h.client.StreamIdleTimeout(model)
 
 		// recordStreamSuccess records a successful stream completion and
 		// marks the model attempt as done.
 		recordStreamSuccess := func(model config.ModelConfig) {
-			cancel()
+			cancelAttempt()
 			latency := time.Since(streamStart)
 			h.metrics.RecordSuccess(model.ModelID, latency)
 			h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
@@ -411,8 +409,8 @@ func (h *MessagesHandler) handleStreaming(
 		// if the caller should continue (fallback to next model), or false
 		// if it should return.
 		handleStreamError := func(err error, model config.ModelConfig, action string) bool {
-			cancel()
-			if clientCtx.Err() == context.Canceled {
+			cancelAttempt()
+			if clientCtx.Err() != nil {
 				h.logger.Debug("client disconnected during " + action + " stream")
 				return false // abort
 			}
@@ -436,44 +434,56 @@ func (h *MessagesHandler) handleStreaming(
 		}
 
 		// Try new provider-based dispatch first.
-		if prov, ok := h.providerRegistry.Get(model.Provider); ok {
-			caps, ok := prov.ModelCapabilities(model.ModelID)
-			if !ok || !caps.SupportsStreaming {
-				h.logger.Warn("model does not support streaming", "model", model.ModelID, "provider", model.Provider)
-				cancel()
-				continue
-			}
-
-			streamBody, err := prov.Stream(ctx, normalizedReq, model)
-			if err != nil {
-				cancel()
-				if clientCtx.Err() == context.Canceled {
-					h.logger.Debug("client disconnected during upstream request")
-					return
+		if h.providerRegistry != nil {
+			if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+				caps, ok := prov.ModelCapabilities(model.ModelID)
+				if !ok || !caps.SupportsStreaming {
+					h.logger.Warn("model does not support streaming", "model", model.ModelID, "provider", model.Provider)
+					cancelAttempt()
+					continue
 				}
-				h.logger.Warn("streaming request failed via provider", "model", model.ModelID, "provider", model.Provider, "error", err)
-				continue
-			}
 
-			// Bind body read to ctx so streaming_timeout_ms aborts mid-stream.
-			streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
+				streamBody, err := prov.Stream(attemptCtx, normalizedReq, model)
+				if err != nil {
+					cancelAttempt()
+					if clientCtx.Err() != nil {
+						h.logger.Debug("client disconnected during upstream request")
+						return
+					}
+					h.logger.Warn("streaming request failed via provider", "model", model.ModelID, "provider", model.Provider, "error", err)
+					continue
+				}
 
-			wireFormat := prov.WireFormat(model.ModelID)
-			if err := h.streamProxy.ProxyStream(rw, streamReader, wireFormat, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
+				// Bind body read to attemptCtx so streaming_timeout_ms aborts mid-stream.
+				streamReader := transformer.NewCtxReadCloser(attemptCtx, streamBody)
+
+				wireFormat := prov.WireFormat(model.ModelID)
+				if wireFormat == core.WireFormatAnthropic {
+					atomic.StoreInt32(&heartbeatPaused, 1)
+				}
+				errProxy := h.streamProxy.ProxyStream(rw, streamReader, wireFormat, model.ModelID, attemptCtx, idleTimeout, cancelAttempt)
+				if wireFormat == core.WireFormatAnthropic {
+					atomic.StoreInt32(&heartbeatPaused, 0)
+				}
+				if errProxy != nil {
+					_ = streamBody.Close()
+					if errProxy == transformer.ErrClientDisconnected {
+						if clientCtx.Err() != nil {
+							h.logger.Debug("client disconnected during stream")
+							return
+						}
+						errProxy = fmt.Errorf("streaming timeout (%v) exceeded", timeout)
+					}
+					if !handleStreamError(errProxy, model, wireFormat.String()) {
+						return
+					}
+					continue
+				}
+
 				_ = streamBody.Close()
-				if err == transformer.ErrClientDisconnected {
-					h.logger.Debug("client disconnected during stream")
-					return
-				}
-				if !handleStreamError(err, model, wireFormat.String()) {
-					return
-				}
-				continue
+				recordStreamSuccess(model)
+				return
 			}
-
-			_ = streamBody.Close()
-			recordStreamSuccess(model)
-			return
 		}
 
 		// Legacy path for backward compatibility while old client is still in
@@ -490,7 +500,7 @@ func (h *MessagesHandler) handleStreaming(
 					// Fall through to OpenAI-compatible transform path below.
 				} else {
 					modelBody := replaceModelInRawBody(rawBody, model.ModelID)
-					if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID, model, idleTimeout, cancel, clientCtx); err != nil {
+					if err := h.handleAnthropicStreaming(attemptCtx, rw, modelBody, model.ModelID, model, idleTimeout, cancelAttempt, clientCtx, &heartbeatPaused); err != nil {
 						if !handleStreamError(err, model, "anthropic") {
 							return
 						}
@@ -501,7 +511,14 @@ func (h *MessagesHandler) handleStreaming(
 				}
 
 			case client.EndpointResponses:
-				if err := h.handleResponsesStreaming(ctx, rw, anthropicReq, model, clientCtx, idleTimeout, cancel); err != nil {
+				if err := h.handleResponsesStreaming(attemptCtx, rw, anthropicReq, model, clientCtx, idleTimeout, cancelAttempt); err != nil {
+					if err == transformer.ErrClientDisconnected {
+						if clientCtx.Err() != nil {
+							h.logger.Debug("client disconnected during responses stream")
+							return
+						}
+						err = fmt.Errorf("streaming timeout (%v) exceeded", timeout)
+					}
 					if !handleStreamError(err, model, "responses") {
 						return
 					}
@@ -511,7 +528,14 @@ func (h *MessagesHandler) handleStreaming(
 				return
 
 			case client.EndpointGemini:
-				if err := h.handleGeminiStreaming(ctx, rw, anthropicReq, model, clientCtx, idleTimeout, cancel); err != nil {
+				if err := h.handleGeminiStreaming(attemptCtx, rw, anthropicReq, model, clientCtx, idleTimeout, cancelAttempt); err != nil {
+					if err == transformer.ErrClientDisconnected {
+						if clientCtx.Err() != nil {
+							h.logger.Debug("client disconnected during gemini stream")
+							return
+						}
+						err = fmt.Errorf("streaming timeout (%v) exceeded", timeout)
+					}
 					if !handleStreamError(err, model, "gemini") {
 						return
 					}
@@ -529,13 +553,8 @@ func (h *MessagesHandler) handleStreaming(
 		// Anthropic format rather than the OpenAI Chat Completions transform.
 		if !client.IsZen(model) && client.IsAnthropicModel(model.ModelID) {
 			modelBody := replaceModelInRawBody(rawBody, model.ModelID)
-			if err := h.handleAnthropicStreaming(ctx, rw, modelBody, model.ModelID, model, idleTimeout, cancel, clientCtx); err != nil {
+			if err := h.handleAnthropicStreaming(attemptCtx, rw, modelBody, model.ModelID, model, idleTimeout, cancelAttempt, clientCtx, &heartbeatPaused); err != nil {
 				if !handleStreamError(err, model, "anthropic") {
-					return
-				}
-				if err != transformer.ErrStreamIdle && rw.ssePayloadWritten {
-					h.sendStreamError(rw, fmt.Sprintf("all upstream models failed after SSE payload started: %v", err))
-					h.metrics.RecordFailure()
 					return
 				}
 				continue
@@ -547,15 +566,15 @@ func (h *MessagesHandler) handleStreaming(
 		// OpenAI-compatible models (both Go and Zen)
 		openaiReq, err := h.requestTransformer.TransformRequest(anthropicReq, model)
 		if err != nil {
-			cancel()
+			cancelAttempt()
 			h.logger.Warn("request transform failed", "model", model.ModelID, "error", err)
 			continue
 		}
 
-		streamBody, err := h.client.GetStreamingBody(ctx, model.ModelID, openaiReq, model)
+		streamBody, err := h.client.GetStreamingBody(attemptCtx, model.ModelID, openaiReq, model)
 		if err != nil {
-			cancel()
-			if clientCtx.Err() == context.Canceled {
+			cancelAttempt()
+			if clientCtx.Err() != nil {
 				h.logger.Debug("client disconnected during upstream request")
 				return
 			}
@@ -563,14 +582,17 @@ func (h *MessagesHandler) handleStreaming(
 			continue
 		}
 
-		// Bind body read to ctx so streaming_timeout_ms aborts mid-stream.
-		streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
+		// Bind body read to attemptCtx so streaming_timeout_ms aborts mid-stream.
+		streamReader := transformer.NewCtxReadCloser(attemptCtx, streamBody)
 
-		if err := h.streamHandler.ProxyStream(rw, streamReader, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
+		if err := h.streamHandler.ProxyStream(rw, streamReader, model.ModelID, attemptCtx, idleTimeout, cancelAttempt); err != nil {
 			_ = streamBody.Close()
 			if err == transformer.ErrClientDisconnected {
-				h.logger.Debug("client disconnected during stream")
-				return
+				if clientCtx.Err() != nil {
+					h.logger.Debug("client disconnected during stream")
+					return
+				}
+				err = fmt.Errorf("streaming timeout (%v) exceeded", timeout)
 			}
 			if !handleStreamError(err, model, "openai") {
 				return
@@ -715,6 +737,9 @@ func replaceModelInRawBody(rawBody json.RawMessage, modelID string) json.RawMess
 			"error", err)
 		return rawBody
 	}
+	if _, ok := obj["model"]; !ok {
+		return rawBody
+	}
 	encoded, err := json.Marshal(modelID)
 	if err != nil {
 		// json.Marshal on a string should never fail, but guard anyway.
@@ -745,7 +770,10 @@ func (h *MessagesHandler) handleAnthropicStreaming(
 	idleTimeout time.Duration,
 	cancel context.CancelFunc,
 	clientCtx context.Context,
+	heartbeatPaused *int32,
 ) error {
+	atomic.StoreInt32(heartbeatPaused, 1)
+	defer atomic.StoreInt32(heartbeatPaused, 0)
 	// Sanitize Anthropic-specific fields (e.g., tool type shorthands) that
 	// upstream models may not understand.
 	rawBody = sanitizeAnthropicBody(rawBody)
@@ -852,13 +880,19 @@ func (h *MessagesHandler) handleNonStreaming(
 		ctx,
 		modelChain,
 		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			timeout := h.client.RequestTimeout(model)
+			attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+
 			// Try new provider-based dispatch first.
-			if prov, ok := h.providerRegistry.Get(model.Provider); ok {
-				execResult, execErr := prov.Execute(ctx, normalizedReq, model)
-				if execErr != nil {
-					return nil, execErr
+			if h.providerRegistry != nil {
+				if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+					execResult, execErr := prov.Execute(attemptCtx, normalizedReq, model)
+					if execErr != nil {
+						return nil, execErr
+					}
+					return execResult.Body, nil
 				}
-				return execResult.Body, nil
 			}
 
 			h.logger.Warn("provider not found in registry, falling back to old client",
@@ -872,26 +906,30 @@ func (h *MessagesHandler) handleNonStreaming(
 					if model.AnthropicToolsDisabled {
 						// Fall through to OpenAI-compatible handling below.
 					} else {
-						return h.executeAnthropicRequest(ctx, replaceModelInRawBody(rawBody, model.ModelID), model)
+						return h.executeAnthropicRequest(attemptCtx, replaceModelInRawBody(rawBody, model.ModelID), model)
 					}
 				case client.EndpointResponses:
-					return h.executeResponsesRequest(ctx, anthropicReq, model)
+					return h.executeResponsesRequest(attemptCtx, anthropicReq, model)
 				case client.EndpointGemini:
-					return h.executeGeminiRequest(ctx, anthropicReq, model)
+					return h.executeGeminiRequest(attemptCtx, anthropicReq, model)
 				default:
 					// Fall through to OpenAI-compatible handling
 				}
 			} else if client.IsAnthropicModel(model.ModelID) {
 				// Go provider Anthropic-native models (MiniMax, Qwen)
-				return h.executeAnthropicRequest(ctx, replaceModelInRawBody(rawBody, model.ModelID), model)
+				return h.executeAnthropicRequest(attemptCtx, replaceModelInRawBody(rawBody, model.ModelID), model)
 			}
 
 			// OpenAI-compatible models (both Go and Zen)
-			return h.executeOpenAIRequest(ctx, anthropicReq, model)
+			return h.executeOpenAIRequest(attemptCtx, anthropicReq, model)
 		},
 	)
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			h.logger.Info("request context canceled during non-streaming fallback", "error", err)
+			return
+		}
 		h.metrics.RecordFailure()
 		h.sendError(w, http.StatusBadGateway, "all models failed", err)
 		return

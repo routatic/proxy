@@ -1072,6 +1072,55 @@ func TestProxyStream_EOFFallbackStopReasonToolUse(t *testing.T) {
 	}
 }
 
+// TestProxyStream_ToolUseFirstContentBlock verifies that when the first
+// assistant output is a direct tool call (no preceding text or reasoning),
+// the tool_use block is emitted at index 0 per Anthropic SSE spec.
+func TestProxyStream_ToolUseFirstContentBlock(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"toolu_abc","type":"function","function":{"name":"read_file","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"/tmp/x\"}"}}]}}]}`,
+		`{"choices":[{"delta":{},"finish_reason":"tool_use"}]}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyStream(w, body, "kimi-k2.6", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// 0: message_start
+	// 1: content_block_start (index 0, type tool_use) — first content block
+	// 2: content_block_delta (index 0)
+	// 3: content_block_stop (index 0)
+	// 4: message_delta
+	// 5: message_stop
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].Type != "content_block_start" {
+		t.Fatalf("event[1].Type = %q, want content_block_start", events[1].Type)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Fatalf("event[1].ContentBlock = %+v, want tool_use", events[1].ContentBlock)
+	}
+	if events[1].Index == nil || *events[1].Index != 0 {
+		t.Fatalf("tool_use content_block_start index = %v, want 0", events[1].Index)
+	}
+
+	if events[3].Type != "content_block_stop" || events[3].Index == nil || *events[3].Index != 0 {
+		t.Fatalf("tool_use content_block_stop index = %v, want 0", events[3].Index)
+	}
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
+		t.Errorf("event[4] = %+v, want message_delta(tool_use)", events[4])
+	}
+}
+
 // helpers
 
 func mustJSON(t *testing.T, v any) string {

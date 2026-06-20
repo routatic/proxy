@@ -36,20 +36,22 @@ type ModelConfig struct {
 
 // OpenCodeGoConfig holds the upstream OpenCode Go API settings.
 type OpenCodeGoConfig struct {
-	BaseURL          string `json:"base_url"`
-	AnthropicBaseURL string `json:"anthropic_base_url"`
-	TimeoutMs        int    `json:"timeout_ms"`
-	StreamTimeoutMs  int    `json:"stream_timeout_ms"`
+	BaseURL            string `json:"base_url"`
+	AnthropicBaseURL   string `json:"anthropic_base_url"`
+	TimeoutMs          int    `json:"timeout_ms"`
+	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
+	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
 }
 
 // OpenCodeZenConfig holds the upstream OpenCode Zen API settings.
 type OpenCodeZenConfig struct {
-	BaseURL          string `json:"base_url"`
-	AnthropicBaseURL string `json:"anthropic_base_url"`
-	ResponsesBaseURL string `json:"responses_base_url"`
-	GeminiBaseURL    string `json:"gemini_base_url"`
-	TimeoutMs        int    `json:"timeout_ms"`
-	StreamTimeoutMs  int    `json:"stream_timeout_ms"`
+	BaseURL            string `json:"base_url"`
+	AnthropicBaseURL   string `json:"anthropic_base_url"`
+	ResponsesBaseURL   string `json:"responses_base_url"`
+	GeminiBaseURL      string `json:"gemini_base_url"`
+	TimeoutMs          int    `json:"timeout_ms"`
+	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
+	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
 }
 
 // LoggingConfig controls application logging behavior.

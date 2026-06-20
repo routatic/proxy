@@ -14,19 +14,19 @@ func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
 		want    bool
 	}{
 		{
-			name:    "minimax m2.5 uses openai endpoint on Go provider",
+			name:    "minimax m2.5 uses anthropic endpoint on Go provider",
 			modelID: "minimax-m2.5",
-			want:    false,
+			want:    true,
 		},
 		{
-			name:    "minimax m2.7 uses openai endpoint on Go provider",
+			name:    "minimax m2.7 uses anthropic endpoint on Go provider",
 			modelID: "minimax-m2.7",
-			want:    false,
+			want:    true,
 		},
 		{
-			name:    "minimax m3 uses openai endpoint on Go provider",
+			name:    "minimax m3 uses anthropic endpoint on Go provider",
 			modelID: "minimax-m3",
-			want:    false,
+			want:    true,
 		},
 		{
 			name:    "deepseek pro uses openai endpoint",
@@ -64,19 +64,19 @@ func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "qwen3.5-plus uses openai endpoint on Go provider",
+			name:    "qwen3.5-plus uses anthropic endpoint on Go provider",
 			modelID: "qwen3.5-plus",
-			want:    false,
+			want:    true,
 		},
 		{
-			name:    "qwen3.6-plus uses openai endpoint on Go provider",
+			name:    "qwen3.6-plus uses anthropic endpoint on Go provider",
 			modelID: "qwen3.6-plus",
-			want:    false,
+			want:    true,
 		},
 		{
-			name:    "qwen3.7-plus uses openai endpoint on Go provider",
+			name:    "qwen3.7-plus uses anthropic endpoint on Go provider",
 			modelID: "qwen3.7-plus",
-			want:    false,
+			want:    true,
 		},
 		{
 			name:    "qwen3.7-max uses anthropic endpoint (no oa-compat support)",
@@ -509,5 +509,138 @@ func TestStreamIdleTimeout(t *testing.T) {
 				t.Errorf("StreamIdleTimeout() = %v, want %v", got, tt.wantDur)
 			}
 		})
+	}
+}
+
+func TestRequestTimeout_UsesConfiguredTimeout(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			TimeoutMs: 120000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
+	timeout := c.RequestTimeout(model)
+	if timeout != 120*time.Second {
+		t.Errorf("RequestTimeout = %v, want 120s", timeout)
+	}
+}
+
+func TestRequestTimeout_FallsBackToDefault(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			TimeoutMs: 0,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
+	timeout := c.RequestTimeout(model)
+	if timeout != 5*time.Minute {
+		t.Errorf("RequestTimeout = %v, want 5m", timeout)
+	}
+}
+
+func TestRequestTimeout_ZenProvider(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeZen: config.OpenCodeZenConfig{
+			TimeoutMs: 60000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeZen, ModelID: "claude-sonnet-4.5"}
+	timeout := c.RequestTimeout(model)
+	if timeout != 60*time.Second {
+		t.Errorf("RequestTimeout = %v, want 60s", timeout)
+	}
+}
+
+func TestStreamingTimeout_UsesStreamingTimeoutMs(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			TimeoutMs:          300000,
+			StreamingTimeoutMs: 600000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
+	timeout := c.StreamingTimeout(model)
+	if timeout != 600*time.Second {
+		t.Errorf("StreamingTimeout = %v, want 600s", timeout)
+	}
+}
+
+func TestStreamingTimeout_FallsBackToTimeoutMs(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			TimeoutMs:          300000,
+			StreamingTimeoutMs: 0,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
+	timeout := c.StreamingTimeout(model)
+	if timeout != 300*time.Second {
+		t.Errorf("StreamingTimeout = %v, want 300s (fallback to timeout_ms)", timeout)
+	}
+}
+
+func TestStreamingTimeout_FallsBackToDefault(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			TimeoutMs:          0,
+			StreamingTimeoutMs: 0,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
+	timeout := c.StreamingTimeout(model)
+	if timeout != 5*time.Minute {
+		t.Errorf("StreamingTimeout = %v, want 5m", timeout)
+	}
+}
+
+func TestStreamingTimeout_ZenProvider(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeZen: config.OpenCodeZenConfig{
+			TimeoutMs:          300000,
+			StreamingTimeoutMs: 600000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeZen, ModelID: "claude-sonnet-4.5"}
+	timeout := c.StreamingTimeout(model)
+	if timeout != 600*time.Second {
+		t.Errorf("StreamingTimeout = %v, want 600s", timeout)
+	}
+}
+
+func TestStreamingTimeout_SmallConfiguredValue(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			TimeoutMs:          300000,
+			StreamingTimeoutMs: 100,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
+	timeout := c.StreamingTimeout(model)
+	if timeout != 100*time.Millisecond {
+		t.Errorf("StreamingTimeout = %v, want 100ms", timeout)
 	}
 }

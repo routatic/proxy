@@ -247,3 +247,49 @@ When a request arrives, the proxy selects a model chain using the following orde
 3. **Scenario routing** — fall back to the scenario chain (`default`, `background`, `think`, `complex`, `long_context`, `fast`).
 
 > **Trust model:** any client whose requests flow through the proxy can select from the configured `model_overrides` set without additional authentication. If you run the proxy as a shared service, treat `model_overrides` as a privileged allowlist.
+
+### Streaming Scenario Routing
+
+`enable_streaming_scenario_routing` controls whether streaming requests are evaluated by the full scenario router or routed directly to the `fast` scenario.
+
+> **Note for Claude Code `/review-code`, `/ultracode`, and multi-agent workflows**
+>
+> If you use Claude Code workflows that dispatch many subagents or produce many parallel tool calls, enable streaming scenario routing:
+>
+> ```json
+> {
+>   "enable_streaming_scenario_routing": true
+> }
+> ```
+>
+> Without this option, streaming requests are routed through the `fast` scenario even when the request is actually tool-heavy. This can route complex Claude Code workloads, such as `/review-code` with many `Agent` tool calls, to a fast model that may not handle parallel tool-call orchestration reliably.
+>
+> When enabled, streaming requests are evaluated by the same scenario router as non-streaming requests, allowing large or tool-heavy workloads to use `complex` or `long_context` models instead of always using the `fast` model.
+
+Recommended setup for Claude Code review workflows:
+
+```json
+{
+  "enable_streaming_scenario_routing": true,
+  "models": {
+    "fast": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-flash",
+      "max_tokens": 4096
+    },
+    "complex": {
+      "provider": "opencode-go",
+      "model_id": "minimax-m3",
+      "max_tokens": 8192
+    },
+    "long_context": {
+      "provider": "opencode-go",
+      "model_id": "minimax-m3",
+      "max_tokens": 16384,
+      "context_threshold": 80000
+    }
+  }
+}
+```
+
+Use the `fast` scenario for short/simple requests. Use `complex` or `long_context` for code review, multi-agent dispatch, large diffs, many tools, or long-context Claude Code sessions.

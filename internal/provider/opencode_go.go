@@ -63,10 +63,14 @@ func (p *OpenCodeGoProvider) WireFormat(modelID string) core.WireFormat {
 	return core.WireFormatOpenAIChat
 }
 
-// isAnthropicNativeGo returns true for Go provider models that require the
-// Anthropic Messages endpoint rather than the OpenAI Chat Completions endpoint.
 func isAnthropicNativeGo(modelID string) bool {
-	return modelID == "qwen3.7-max"
+	switch modelID {
+	case "minimax-m2.5", "minimax-m2.7", "minimax-m3",
+		"qwen3.5-plus", "qwen3.6-plus", "qwen3.7-plus", "qwen3.7-max":
+		return true
+	default:
+		return false
+	}
 }
 
 // RoundTripName returns the model ID to use in the upstream request.

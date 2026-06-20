@@ -589,6 +589,9 @@ func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef 
 	var result []types.ToolDef
 
 	for _, tool := range tools {
+		if strings.TrimSpace(tool.Name) == "" {
+			continue
+		}
 		// InputSchema is already json.RawMessage, use it directly
 		schema := tool.InputSchema
 		switch {

@@ -175,6 +175,13 @@ func (h *FallbackHandler) ExecuteWithFallback(
 	totalModels := len(models)
 
 	for i, model := range models {
+		if err := ctx.Err(); err != nil {
+			h.logger.Info("request context canceled, stopping fallback attempts",
+				"error", err,
+			)
+			return nil, nil, err
+		}
+
 		cb := h.getCircuitBreaker(model.ModelID)
 
 		// Skip models with open circuit breakers
@@ -206,6 +213,14 @@ func (h *FallbackHandler) ExecuteWithFallback(
 				Attempted:   i + 1,
 				TotalModels: totalModels,
 			}, body, nil
+		}
+
+		if errCtx := ctx.Err(); errCtx != nil {
+			h.logger.Info("request context canceled after model attempt, stopping fallback",
+				"model", model.ModelID,
+				"error", errCtx,
+			)
+			return nil, nil, errCtx
 		}
 
 		if IsRetryableError(err) {

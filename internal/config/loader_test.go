@@ -634,3 +634,45 @@ func TestValidateAPIKeys_RejectsAllEmpty(t *testing.T) {
 		t.Fatal("expected validation error for empty api_keys entry, got nil")
 	}
 }
+
+func TestDefaults_StreamingTimeoutFallback(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "test-key",
+		"opencode_go": {
+			"timeout_ms": 300000,
+			"streaming_timeout_ms": 600000
+		},
+		"opencode_zen": {
+			"timeout_ms": 300000,
+			"streaming_timeout_ms": 700000
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("OC_GO_CC_CONFIG", cfgPath)
+	defer func() { _ = os.Unsetenv("OC_GO_CC_CONFIG") }()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.OpenCodeGo.StreamingTimeoutMs != 600000 {
+		t.Errorf("OpenCodeGo.StreamingTimeoutMs = %d, want 600000", cfg.OpenCodeGo.StreamingTimeoutMs)
+	}
+	if cfg.OpenCodeGo.StreamTimeoutMs != 600000 {
+		t.Errorf("OpenCodeGo.StreamTimeoutMs = %d, want 600000 (should fallback to StreamingTimeoutMs)", cfg.OpenCodeGo.StreamTimeoutMs)
+	}
+
+	if cfg.OpenCodeZen.StreamingTimeoutMs != 700000 {
+		t.Errorf("OpenCodeZen.StreamingTimeoutMs = %d, want 700000", cfg.OpenCodeZen.StreamingTimeoutMs)
+	}
+	if cfg.OpenCodeZen.StreamTimeoutMs != 700000 {
+		t.Errorf("OpenCodeZen.StreamTimeoutMs = %d, want 700000 (should fallback to StreamingTimeoutMs)", cfg.OpenCodeZen.StreamTimeoutMs)
+	}
+}

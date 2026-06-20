@@ -183,7 +183,11 @@ func applyDefaults(cfg *Config) {
 		cfg.OpenCodeGo.TimeoutMs = defaultTimeoutMs
 	}
 	if cfg.OpenCodeGo.StreamTimeoutMs == 0 {
-		cfg.OpenCodeGo.StreamTimeoutMs = cfg.OpenCodeGo.TimeoutMs
+		if cfg.OpenCodeGo.StreamingTimeoutMs > 0 {
+			cfg.OpenCodeGo.StreamTimeoutMs = cfg.OpenCodeGo.StreamingTimeoutMs
+		} else {
+			cfg.OpenCodeGo.StreamTimeoutMs = cfg.OpenCodeGo.TimeoutMs
+		}
 	}
 	if cfg.OpenCodeZen.BaseURL == "" {
 		cfg.OpenCodeZen.BaseURL = defaultZenBaseURL
@@ -201,7 +205,11 @@ func applyDefaults(cfg *Config) {
 		cfg.OpenCodeZen.TimeoutMs = defaultTimeoutMs
 	}
 	if cfg.OpenCodeZen.StreamTimeoutMs == 0 {
-		cfg.OpenCodeZen.StreamTimeoutMs = cfg.OpenCodeZen.TimeoutMs
+		if cfg.OpenCodeZen.StreamingTimeoutMs > 0 {
+			cfg.OpenCodeZen.StreamTimeoutMs = cfg.OpenCodeZen.StreamingTimeoutMs
+		} else {
+			cfg.OpenCodeZen.StreamTimeoutMs = cfg.OpenCodeZen.TimeoutMs
+		}
 	}
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = defaultLogLevel
