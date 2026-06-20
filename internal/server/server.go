@@ -18,6 +18,7 @@ import (
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/provider"
 	"github.com/routatic/proxy/internal/router"
+	"github.com/routatic/proxy/internal/status"
 	"github.com/routatic/proxy/internal/token"
 )
 
@@ -58,6 +59,9 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	_ = providerRegistry.Register(provider.NewOpenCodeGoProvider(atomic))
 	_ = providerRegistry.Register(provider.NewOpenCodeZenProvider(atomic))
 
+	// Create status store for the statusline endpoint.
+	statusStore := status.NewStore(0)
+
 	// Create handlers.
 	messagesHandler := handlers.NewMessagesHandler(
 		openCodeClient,
@@ -67,7 +71,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 		tokenCounter,
 		metrics,
 	)
-	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics)
+	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics, statusStore)
 
 	// Setup router.
 	mux := http.NewServeMux()
@@ -76,6 +80,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	mux.HandleFunc("/v1/messages", messagesHandler.HandleMessages)
 	mux.HandleFunc("/v1/messages/count_tokens", healthHandler.HandleCountTokens)
 	mux.HandleFunc("/health", healthHandler.HandleHealth)
+	mux.HandleFunc("/statusline", healthHandler.HandleStatusline)
 
 	// Create HTTP server.
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

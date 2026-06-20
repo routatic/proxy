@@ -1,6 +1,7 @@
 package transformer
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/routatic/proxy/pkg/types"
@@ -215,9 +216,7 @@ func TestTransformResponseExtractsTextFromContentParts(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role: "assistant",
-					Content: []interface{}{
-						map[string]interface{}{"type": "text", "text": "Vedo uno screenshot."},
-					},
+					Content: json.RawMessage(`[{"type":"text","text":"Vedo uno screenshot."}]`),
 				},
 				FinishReason: "stop",
 			},

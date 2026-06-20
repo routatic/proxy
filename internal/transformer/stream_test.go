@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/routatic/proxy/pkg/types"
 )
@@ -256,7 +257,7 @@ func TestProxyStream_ContentArrayTextDelta(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx); err != nil {
+	if err := handler.ProxyStream(w, body, "qwen3.6-plus", ctx, 5*time.Second, cancel); err != nil {
 		t.Fatalf("ProxyStream error: %v", err)
 	}
 

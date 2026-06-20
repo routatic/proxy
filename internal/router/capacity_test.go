@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 func TestFilterByCapacitySkipsPrimaryAndUsesEligibleFallback(t *testing.T) {

@@ -229,7 +229,10 @@ func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 
 	router := NewModelRouter(newTestAtomicConfig(cfg))
 
-	result, ok := router.resolveRequestedModel(cfg, "kimi-k2.6")
+	result, ok, err := router.resolveRequestedModel(cfg, "kimi-k2.6", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if !ok {
 		t.Fatal("expected resolveRequestedModel to match")
 	}

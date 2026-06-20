@@ -3,7 +3,7 @@ package router
 import (
 	"fmt"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 const minimumOutputTokens = 256
@@ -35,7 +35,7 @@ func FilterByCapacity(chain []config.ModelConfig, inputTokens int, requestedMaxT
 
 	for _, raw := range chain {
 		model := config.ResolveModelConfig(raw)
-		if needsVision && !model.SupportsVision {
+		if needsVision && !model.Vision {
 			decision.Skipped = append(decision.Skipped, SkippedModel{ModelID: model.ModelID, Reason: "vision_not_supported"})
 			continue
 		}

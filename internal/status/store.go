@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"oc-go-cc/internal/buildinfo"
-	"oc-go-cc/internal/router"
+	"github.com/routatic/proxy/internal/buildinfo"
+	"github.com/routatic/proxy/internal/router"
 )
 
 type Snapshot struct {

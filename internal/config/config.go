@@ -27,7 +27,11 @@ type ModelConfig struct {
 	WireFormat             string          `json:"wire_format,omitempty"` // "auto" (default), "openai", "anthropic", "responses", "gemini"
 	Temperature            float64         `json:"temperature"`
 	MaxTokens              int             `json:"max_tokens"`
+	MaxOutputTokens        int             `json:"max_output_tokens,omitempty"`
+	ContextWindow          int             `json:"context_window,omitempty"`
+	ContextMargin          int             `json:"context_margin,omitempty"`
 	ContextThreshold       int             `json:"context_threshold"`
+	SupportsTools          *bool           `json:"supports_tools,omitempty"`
 	ReasoningEffort        string          `json:"reasoning_effort"`
 	Thinking               json.RawMessage `json:"thinking,omitempty"`
 	Vision                 bool            `json:"vision"`

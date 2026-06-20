@@ -53,6 +53,111 @@ func NewStreamHandler() *StreamHandler {
 	}
 }
 
+// EmitMessageResponse synthesizes an Anthropic-format SSE stream from a non-streaming
+// MessageResponse. This is used for vision scenarios where the upstream model does not
+// support streaming — the proxy fetches the full response, then emits it as SSE events
+// so the client's streaming contract is preserved.
+func (h *StreamHandler) EmitMessageResponse(w http.ResponseWriter, resp *types.MessageResponse) error {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("streaming not supported by response writer")
+	}
+	if resp == nil {
+		return fmt.Errorf("nil message response")
+	}
+	msgStart := types.MessageEvent{
+		Type:    "message_start",
+		Message: resp,
+	}
+	if err := writeSSEEvent(w, msgStart); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+
+	for i, block := range resp.Content {
+		idx := i
+		startBlock := block
+		switch block.Type {
+		case "text":
+			startBlock.Text = ""
+		case "thinking":
+			startBlock.Thinking = ""
+		case "tool_use":
+			startBlock.Input = json.RawMessage(`{}`)
+		}
+		if err := writeSSEEvent(w, types.MessageEvent{
+			Type:         "content_block_start",
+			Index:        &idx,
+			ContentBlock: &startBlock,
+		}); err != nil {
+			return ErrClientDisconnected
+		}
+		switch block.Type {
+		case "text":
+			if block.Text != "" {
+				if err := writeSSEEvent(w, types.MessageEvent{
+					Type:  "content_block_delta",
+					Index: &idx,
+					Delta: &types.Delta{Type: "text_delta", Text: block.Text},
+				}); err != nil {
+					return ErrClientDisconnected
+				}
+			}
+		case "thinking":
+			if block.Thinking != "" {
+				if err := writeSSEEvent(w, types.MessageEvent{
+					Type:  "content_block_delta",
+					Index: &idx,
+					Delta: &types.Delta{Type: "thinking_delta", Thinking: block.Thinking},
+				}); err != nil {
+					return ErrClientDisconnected
+				}
+			}
+		case "tool_use":
+			if len(block.Input) > 0 {
+				if err := writeSSEEvent(w, types.MessageEvent{
+					Type:  "content_block_delta",
+					Index: &idx,
+					Delta: &types.Delta{Type: "input_json_delta", PartialJSON: string(block.Input)},
+				}); err != nil {
+					return ErrClientDisconnected
+				}
+			}
+		}
+		if err := writeSSEEvent(w, types.MessageEvent{
+			Type:  "content_block_stop",
+			Index: &idx,
+		}); err != nil {
+			return ErrClientDisconnected
+		}
+		flusher.Flush()
+	}
+
+	stopReason := resp.StopReason
+	if stopReason == "" {
+		stopReason = "end_turn"
+	}
+	if err := writeSSEEvent(w, types.MessageEvent{
+		Type: "message_delta",
+		Delta: &types.Delta{
+			StopReason: stopReason,
+		},
+		Usage: &types.Usage{
+			InputTokens:              resp.Usage.InputTokens,
+			OutputTokens:             resp.Usage.OutputTokens,
+			CacheCreationInputTokens: resp.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     resp.Usage.CacheReadInputTokens,
+		},
+	}); err != nil {
+		return ErrClientDisconnected
+	}
+	if err := writeSSEEvent(w, types.MessageEvent{Type: "message_stop"}); err != nil {
+		return ErrClientDisconnected
+	}
+	flusher.Flush()
+	return nil
+}
+
 // ProxyStream takes an OpenAI streaming response and writes Anthropic-format SSE to the writer.
 // It reads OpenAI ChatCompletionChunk SSE events and transforms them into Anthropic MessageEvent SSE events.
 // The streamCtx is the per-model attempt context (carries streaming_timeout_ms); the caller

@@ -5,23 +5,23 @@ const DefaultContextMargin = 8192
 type ModelMetadata struct {
 	ContextWindow   int
 	MaxOutputTokens int
-	SupportsVision  bool
+	Vision          bool
 	SupportsTools   bool
 }
 
 var modelMetadata = map[string]ModelMetadata{
-	"deepseek-v4-pro":   {ContextWindow: 1000000, MaxOutputTokens: 8192, SupportsVision: false, SupportsTools: true},
-	"deepseek-v4-flash": {ContextWindow: 1000000, MaxOutputTokens: 4096, SupportsVision: false, SupportsTools: true},
-	"kimi-k2.6":         {ContextWindow: 256000, MaxOutputTokens: 8192, SupportsVision: true, SupportsTools: true},
-	"kimi-k2.5":         {ContextWindow: 256000, MaxOutputTokens: 8192, SupportsVision: true, SupportsTools: true},
-	"mimo-v2.5-pro":     {ContextWindow: 1000000, MaxOutputTokens: 16384, SupportsVision: false, SupportsTools: true},
-	"mimo-v2.5":         {ContextWindow: 1000000, MaxOutputTokens: 8192, SupportsVision: false, SupportsTools: true},
-	"minimax-m2.7":      {ContextWindow: 200000, MaxOutputTokens: 8192, SupportsVision: false, SupportsTools: true},
-	"minimax-m2.5":      {ContextWindow: 200000, MaxOutputTokens: 4096, SupportsVision: false, SupportsTools: true},
-	"qwen3.6-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, SupportsVision: true, SupportsTools: true},
-	"qwen3.5-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, SupportsVision: true, SupportsTools: true},
-	"glm-5.1":           {ContextWindow: 200000, MaxOutputTokens: 8192, SupportsVision: false, SupportsTools: true},
-	"glm-5":             {ContextWindow: 200000, MaxOutputTokens: 8192, SupportsVision: false, SupportsTools: true},
+	"deepseek-v4-pro":   {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
+	"deepseek-v4-flash": {ContextWindow: 1000000, MaxOutputTokens: 4096, Vision: false, SupportsTools: true},
+	"kimi-k2.6":         {ContextWindow: 256000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
+	"kimi-k2.5":         {ContextWindow: 256000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
+	"mimo-v2.5-pro":     {ContextWindow: 1000000, MaxOutputTokens: 16384, Vision: false, SupportsTools: true},
+	"mimo-v2.5":         {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
+	"minimax-m2.7":      {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
+	"minimax-m2.5":      {ContextWindow: 200000, MaxOutputTokens: 4096, Vision: false, SupportsTools: true},
+	"qwen3.6-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
+	"qwen3.5-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
+	"glm-5.1":           {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
+	"glm-5":             {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 }
 
 func ResolveModelConfig(model ModelConfig) ModelConfig {
@@ -32,8 +32,8 @@ func ResolveModelConfig(model ModelConfig) ModelConfig {
 		if model.MaxOutputTokens == 0 {
 			model.MaxOutputTokens = meta.MaxOutputTokens
 		}
-		if !model.SupportsVision {
-			model.SupportsVision = meta.SupportsVision
+		if !model.Vision {
+			model.Vision = meta.Vision
 		}
 		if model.SupportsTools == nil {
 			v := meta.SupportsTools

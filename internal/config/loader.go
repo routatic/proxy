@@ -240,6 +240,25 @@ func validate(cfg *Config) error {
 		return err
 	}
 
+	if err := validateVisionModels(cfg); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateVisionModels checks that when a vision scenario is configured,
+// the primary model supports vision. Vision scenarios are optional —
+// only validate them when they appear in the models map.
+func validateVisionModels(cfg *Config) error {
+	for _, scenario := range []string{"vision", "vision_complex", "vision_long_context"} {
+		if model, ok := cfg.Models[scenario]; ok && !model.Vision {
+			resolved := ResolveModelConfig(model)
+			if !resolved.Vision {
+				return fmt.Errorf("models[%q] does not support vision but is configured for vision scenario", scenario)
+			}
+		}
+	}
 	return nil
 }
 
@@ -291,23 +310,6 @@ func validateModelOverrides(overrides map[string]ModelConfig) error {
 		}
 		if mc.Provider != "" && mc.Provider != "opencode-go" && mc.Provider != "opencode-zen" {
 			return fmt.Errorf("model_overrides[%q] has invalid provider %q (must be \"opencode-go\" or \"opencode-zen\")", key, mc.Provider)
-		}
-	}
-	if len(cfg.Models) > 0 {
-		for _, scenario := range []string{"vision", "vision_complex", "vision_long_context"} {
-			model, ok := cfg.Models[scenario]
-			if !ok {
-				return fmt.Errorf("%s model is required when models are configured", scenario)
-			}
-			if !model.SupportsVision {
-				return fmt.Errorf("%s model %s must support vision", scenario, model.ModelID)
-			}
-			for _, fallback := range cfg.Fallbacks[scenario] {
-				fallback = ResolveModelConfig(fallback)
-				if !fallback.SupportsVision {
-					return fmt.Errorf("%s fallback model %s must support vision", scenario, fallback.ModelID)
-				}
-			}
 		}
 	}
 	return nil
