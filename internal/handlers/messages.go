@@ -242,7 +242,9 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Route to appropriate model and build fallback chain.
-	modelChain, routeResult, err := h.buildModelChain(anthropicReq.Model, routerMessages, tokenCount, isStreaming)
+	facts := router.AnalyzeRequestFacts(routerMessages)
+	needsTools := len(anthropicReq.Tools) > 0
+	modelChain, routeResult, err := h.buildModelChain(anthropicReq.Model, routerMessages, tokenCount, isStreaming, anthropicReq.MaxTokens, facts.NeedsVision, needsTools)
 	if err != nil {
 		h.sendError(w, http.StatusInternalServerError, "routing failed", err)
 		return
@@ -278,25 +280,43 @@ func (h *MessagesHandler) buildModelChain(
 	routerMessages []router.MessageContent,
 	tokenCount int,
 	isStreaming bool,
+	requestedMaxTokens int,
+	needsVision bool,
+	needsTools bool,
 ) ([]config.ModelConfig, router.RouteResult, error) {
+	var chain []config.ModelConfig
+	var result router.RouteResult
+
 	if requestedModel != "" {
 		if overrideResult, ok := h.modelRouter.RouteWithOverride(requestedModel); ok {
 			scenarioResult, err := h.routeOnce(routerMessages, tokenCount, "", isStreaming)
 			if err != nil {
-				// Override is valid; surface the scenario routing error rather
-				// than silently dropping the safety net.
 				return overrideResult.GetModelChain(), overrideResult, err
 			}
-			chain := appendUniqueModels(overrideResult.GetModelChain(), scenarioResult.GetModelChain())
-			return chain, overrideResult, nil
+			chain = appendUniqueModels(overrideResult.GetModelChain(), scenarioResult.GetModelChain())
+			result = overrideResult
 		}
 	}
 
-	result, err := h.routeOnce(routerMessages, tokenCount, requestedModel, isStreaming)
+	if chain == nil {
+		var err error
+		result, err = h.routeOnce(routerMessages, tokenCount, requestedModel, isStreaming)
+		if err != nil {
+			return nil, result, err
+		}
+		chain = result.GetModelChain()
+	}
+
+	decision, err := router.FilterByCapacity(chain, tokenCount, requestedMaxTokens, needsVision, needsTools)
 	if err != nil {
 		return nil, result, err
 	}
-	return result.GetModelChain(), result, nil
+
+	for _, s := range decision.Skipped {
+		h.logger.Info("model skipped by capacity filter", "model", s.ModelID, "reason", s.Reason)
+	}
+
+	return decision.Models, result, nil
 }
 
 // routeOnce performs scenario-based routing, honoring the streaming-scenario-routing

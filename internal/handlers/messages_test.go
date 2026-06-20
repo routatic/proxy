@@ -147,7 +147,7 @@ func TestBuildModelChain_NoOverride_UsesScenarioRoute(t *testing.T) {
 	}
 	h := newTestMessagesHandler(t, cfg)
 
-	chain, result, err := h.buildModelChain("", nil, 100, false)
+	chain, result, err := h.buildModelChain("", nil, 100, false, 4096, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestBuildModelChain_Override_AppendsScenarioChainDeduped(t *testing.T) {
 	}
 	h := newTestMessagesHandler(t, cfg)
 
-	chain, result, err := h.buildModelChain("kimi-k2.6", nil, 100, false)
+	chain, result, err := h.buildModelChain("kimi-k2.6", nil, 100, false, 4096, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
 	}
 	h := newTestMessagesHandler(t, cfg)
 
-	chain, result, err := h.buildModelChain("claude-sonnet-4.5", nil, 100, false)
+	chain, result, err := h.buildModelChain("claude-sonnet-4.5", nil, 100, false, 4096, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestBuildModelChain_Override_NoMatchingFallbacksKey(t *testing.T) {
 	}
 	h := newTestMessagesHandler(t, cfg)
 
-	chain, _, err := h.buildModelChain("claude-sonnet-4.5", nil, 100, false)
+	chain, _, err := h.buildModelChain("claude-sonnet-4.5", nil, 100, false, 4096, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestBuildModelChain_StreamingFlag_UsesStreamingRoute(t *testing.T) {
 	h := newTestMessagesHandler(t, cfg)
 
 	// Non-streaming: scenario is default
-	_, resultNonStream, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, false)
+	_, resultNonStream, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, false, 4096, false, false)
 	if resultNonStream.Scenario != router.ScenarioOverride {
 		t.Errorf("non-streaming scenario = %s, want %s", resultNonStream.Scenario, router.ScenarioOverride)
 	}
@@ -307,7 +307,7 @@ func TestBuildModelChain_StreamingFlag_UsesStreamingRoute(t *testing.T) {
 	// Streaming: override still wins, but the safety-net uses fast route.
 	// Chain: [claude-sonnet-4.5 (override), mimo-v2-pro (default fallback),
 	//         qwen3.6-plus (fast scenario primary), qwen3.5-plus (fast scenario fallback)]
-	chain, _, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, true)
+	chain, _, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, true, 4096, false, false)
 	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "qwen3.6-plus", "qwen3.5-plus"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("streaming chain = %v, want %v (safety-net should use RouteForStreaming)", got, want)
@@ -331,7 +331,7 @@ func TestBuildModelChain_UnknownModel_FallsThroughToScenarioRoute(t *testing.T) 
 	}
 	h := newTestMessagesHandler(t, cfg)
 
-	chain, result, err := h.buildModelChain("completely-unknown", nil, 100, false)
+	chain, result, err := h.buildModelChain("completely-unknown", nil, 100, false, 4096, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
