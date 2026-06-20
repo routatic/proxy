@@ -116,6 +116,11 @@ routatic-proxy --version          Show version
 | [MODELS.md](MODELS.md)                   | Model capabilities, costs, and routing recommendations          |
 | [CONTRIBUTING.md](CONTRIBUTING.md)       | Development setup, architecture, how it works                   |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and debug mode                                    |
+| [docs/architecture.md](docs/architecture.md)           | System design, request flow, module overview                    |
+| [docs/reference-api.md](docs/reference-api.md)         | HTTP API reference (endpoints, streaming, errors)               |
+| [docs/howto-add-model.md](docs/howto-add-model.md)     | Adding new models (zero code changes)                           |
+| [docs/howto-custom-routing.md](docs/howto-custom-routing.md) | Customizing scenario detection and model selection         |
+| [docs/howto-debug-routing.md](docs/howto-debug-routing.md)   | Debugging routing issues and common problems               |
 
 ## License
 
