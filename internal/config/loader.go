@@ -232,6 +232,10 @@ func validate(cfg *Config) error {
 		return err
 	}
 
+	if err := validateSingleAPIKey(cfg.APIKey); err != nil {
+		return err
+	}
+
 	if err := validateModelOverrides(cfg.ModelOverrides); err != nil {
 		return err
 	}
@@ -287,6 +291,16 @@ func validateAnthropicToolsDisabled(cfg *Config) error {
 // validateAPIKeys ensures no api_keys entries contain unresolved ${VAR} placeholders.
 // Unresolved placeholders indicate the user did not set the corresponding env vars,
 // and the literal placeholder string would be sent as a bearer token.
+func validateSingleAPIKey(key string) error {
+	if key == "" {
+		return nil
+	}
+	if envVarPattern.MatchString(key) {
+		return fmt.Errorf("api_key contains unresolved env var %q — set the corresponding environment variable or use api_keys", key)
+	}
+	return nil
+}
+
 func validateAPIKeys(keys []string) error {
 	for i, key := range keys {
 		if key == "" {

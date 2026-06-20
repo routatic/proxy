@@ -143,8 +143,12 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Generate or get request ID for correlation
+	// Generate or get request ID for correlation.
+	// Cap externally-provided IDs at 256 bytes to prevent header abuse.
 	requestID := r.Header.Get("X-Request-ID")
+	if len(requestID) > 256 {
+		requestID = requestID[:256]
+	}
 	if requestID == "" {
 		requestID = h.requestIDGen.Generate()
 	}
