@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"syscall"
 )
 
 const (
@@ -71,14 +72,16 @@ func GetPID(pidPath string) (int, error) {
 }
 
 // WritePID writes the given PID to a file.
-// Refuses to write if the target path is a symlink to prevent
-// symlink-traversal attacks (CWE-59).
+// Uses O_NOFOLLOW to atomically reject symlinks at open time,
+// preventing symlink-traversal attacks (CWE-59).
 func WritePID(pidPath string, pid int) error {
-	// Check if an existing symlink is present before writing.
-	if info, err := os.Lstat(pidPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to write PID file: %s is a symlink", pidPath)
+	f, err := os.OpenFile(pidPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0644)
+	if err != nil {
+		return fmt.Errorf("refusing to write PID file: %w", err)
 	}
-	return os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", pid)), 0644)
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "%d", pid)
+	return err
 }
 
 // FindBinary returns the absolute path to the routatic-proxy binary.

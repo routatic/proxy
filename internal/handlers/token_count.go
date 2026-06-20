@@ -75,11 +75,22 @@ func extractTokenTextFromBlocks(blocks []types.ContentBlock) string {
 	return content.String()
 }
 
+// imageTokenEstimate estimates extra tokens for image blocks.
+// For base64 images, derives an estimate from encoded data length (file-size
+// heuristic, not pixel-dimension based). For URL images where no data is
+// available, returns a default estimate. This is used for routing decisions
+// (scenario detection), not billing — Anthropic's actual token cost depends
+// on image dimensions after resize.
 func imageTokenEstimate(blocks []types.ContentBlock) int {
 	total := 0
 	for _, block := range blocks {
-		if block.Type == "image" && block.Source != nil {
+		if block.Type != "image" || block.Source == nil {
+			continue
+		}
+		if len(block.Source.Data) > 0 {
 			total += imageTokenEstimateFromBase64(len(block.Source.Data))
+		} else {
+			total += 1500
 		}
 	}
 	return total
