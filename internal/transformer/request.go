@@ -7,9 +7,15 @@ import (
 	"fmt"
 	"strings"
 
-	"oc-go-cc/internal/config"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/pkg/types"
 )
+
+// contentText is a convenience wrapper around types.TextContent for brevity
+// at call sites that construct ChatMessage values.
+func contentText(s string) json.RawMessage {
+	return types.TextContent(s)
+}
 
 // RequestTransformer converts Anthropic requests to OpenAI format.
 type RequestTransformer struct{}
@@ -34,11 +40,35 @@ func isDeepSeekModel(modelID string) bool {
 	return strings.HasPrefix(modelID, "deepseek-")
 }
 
+// isOpenAIReasoningModel returns true for OpenAI o1 and o3 models.
+func isOpenAIReasoningModel(modelID string) bool {
+	return strings.HasPrefix(modelID, "o1-") || strings.HasPrefix(modelID, "o3-")
+}
+
 // needsPlaceholderReasoning returns true for providers whose validators require
 // a non-empty reasoning_content field on assistant tool-call messages.
 func needsPlaceholderReasoning(modelID string) bool {
 	// Moonshot's validator treats an empty string as missing.
 	return strings.HasPrefix(modelID, "kimi-")
+}
+
+// constrainTemperature overrides model-specific temperature constraints.
+// Some models require specific temperature values — return the constrained
+// value or the original if no constraint applies.
+func constrainTemperature(modelID string, temp float64) float64 {
+	// Moonshot AI (kimi-k2.7-code) only allows temperature=1.
+	if modelID == "kimi-k2.7-code" {
+		return 1.0
+	}
+	return temp
+}
+
+// stripCacheControl removes cache_control from all messages in the list.
+// The caller must not hold references to the slice elements.
+func stripCacheControl(messages []types.ChatMessage) {
+	for i := range messages {
+		messages[i].CacheControl = nil
+	}
 }
 
 // TransformRequest converts an Anthropic MessageRequest to OpenAI ChatCompletionRequest.
@@ -47,9 +77,14 @@ func (t *RequestTransformer) TransformRequest(
 	model config.ModelConfig,
 ) (*types.ChatCompletionRequest, error) {
 	// Transform messages
-	messages, err := t.transformMessages(anthropicReq, model)
+	messages, err := t.transformMessages(anthropicReq, model.ModelID, model.Vision)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform messages: %w", err)
+	}
+
+	// Strip cache_control for models that don't support it
+	if !isDeepSeekModel(model.ModelID) {
+		stripCacheControl(messages)
 	}
 
 	// Build OpenAI request
@@ -76,52 +111,29 @@ func (t *RequestTransformer) TransformRequest(
 		openaiReq.MaxTokens = &maxTokens
 	}
 
-	// Apply model-specific overrides
+	// Apply model-specific overrides and temperature constraints
 	if model.Temperature > 0 {
 		openaiReq.Temperature = &model.Temperature
+	}
+	if openaiReq.Temperature != nil {
+		temp := constrainTemperature(model.ModelID, *openaiReq.Temperature)
+		openaiReq.Temperature = &temp
 	}
 	if model.MaxTokens > 0 {
 		maxTokens := model.MaxTokens
 		openaiReq.MaxTokens = &maxTokens
 	}
 
-	// DeepSeek-v4 models always operate in thinking mode. When conversation
-	// history contains thinking blocks (round-tripped as reasoning_content),
-	// we MUST send thinking mode params so DeepSeek validates reasoning_content
-	// on assistant messages. When history LACKS thinking blocks (Claude Code
-	// dropped them), we MUST explicitly disable thinking mode so DeepSeek
-	// doesn't require reasoning_content we can't provide.
-	hasThinkingInHistory := HasThinkingBlocks(anthropicReq.Messages)
-	if hasThinkingInHistory {
-		if len(model.Thinking) > 0 {
-			openaiReq.Thinking = model.Thinking
-		} else {
-			openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
-		}
-		// DeepSeek returns 400 if reasoning_effort is sent alongside
-		// thinking: disabled — only set it when thinking is active.
-		if !isThinkingDisabled(openaiReq.Thinking) || !isDeepSeekModel(model.ModelID) {
-			if model.ReasoningEffort != "" {
-				openaiReq.ReasoningEffort = &model.ReasoningEffort
-			} else {
-				defaultEffort := "high"
-				openaiReq.ReasoningEffort = &defaultEffort
-			}
-		}
-	} else if isDeepSeekModel(model.ModelID) || len(model.Thinking) > 0 || model.ReasoningEffort != "" {
-		// DeepSeek-v4 models default to thinking mode upstream — once
-		// engaged, every assistant message in the conversation history is
-		// required to carry reasoning_content, and we can't synthesize that
-		// reliably (Claude Code emits assistant turns whose original
-		// thinking content was elided to "" or stripped on /compact). The
-		// safe default for DeepSeek with no extant thinking history is to
-		// explicitly disable upstream thinking mode.
-		//
-		// Same disable also applies when the model config requested thinking
-		// but we don't have any thinking blocks yet — sending thinking:enabled
-		// alongside assistant messages without reasoning_content 400s.
-		openaiReq.Thinking = json.RawMessage(`{"type":"disabled"}`)
-	}
+	// Determine thinking and reasoning_effort for the upstream request.
+	// Priority: explicit config → history continuity → safety guard.
+	//
+	// The safety guard (thinking: disabled) only engages when the history
+	// contains assistant messages that lack thinking blocks — DeepSeek
+	// validates reasoning_content on every assistant message in thinking
+	// mode and will 400 if any are missing.  On a first turn (no assistant
+	// messages) or when the user explicitly opts in via config, we send
+	// thinking: enabled so the model can produce reasoning.
+	resolveThinkingAndEffort(anthropicReq, model, openaiReq)
 
 	// Transform tools if present
 	if len(anthropicReq.Tools) > 0 {
@@ -158,25 +170,224 @@ func HasThinkingBlocks(messages []types.Message) bool {
 	return false
 }
 
+// resolveThinkingAndEffort applies thinking/reasoning_effort to the OpenAI
+// request. Decision priority:
+//
+//  1. Client request — anthropicReq.Thinking set and not disabled
+//     → forward thinking config; map budget_tokens to reasoning_effort.
+//  2. History continuity — a prior turn used thinking → keep it enabled.
+//  3. Explicit config — model.Thinking set → use it verbatim.
+//  4. Config intent — model.ReasoningEffort set without model.Thinking
+//     → enable on first turn (no assistant messages), disable only when
+//     safety guard fires (DeepSeek + history assistant msgs lack thinking).
+//  5. No config, no history → leave both unset (safety guard for DeepSeek).
+//
+// budgetTokensToEffort maps Anthropic budget_tokens to OpenAI reasoning_effort.
+func budgetTokensToEffort(budget int) string {
+	switch {
+	case budget <= 2048:
+		return "low"
+	case budget <= 8192:
+		return "medium"
+	case budget <= 32768:
+		return "high"
+	default:
+		return "max"
+	}
+}
+
+// parseBudgetTokens extracts budget_tokens from a thinking JSON field.
+func parseBudgetTokens(thinking json.RawMessage) int {
+	var m struct {
+		BudgetTokens int `json:"budget_tokens"`
+	}
+	if err := json.Unmarshal(thinking, &m); err != nil {
+		return 0
+	}
+	return m.BudgetTokens
+}
+
+func resolveThinkingAndEffort(
+	anthropicReq *types.MessageRequest,
+	model config.ModelConfig,
+	openaiReq *types.ChatCompletionRequest,
+) {
+	hasThinking := HasThinkingBlocks(anthropicReq.Messages)
+	hasAssistant := hasAssistantMessages(anthropicReq.Messages)
+	explicitThinking := len(model.Thinking) > 0
+	explicitEffort := model.ReasoningEffort != ""
+	isDeepSeek := isDeepSeekModel(model.ModelID)
+	isOpenAIReasoning := isOpenAIReasoningModel(model.ModelID)
+	requestThinkingDisabled := isThinkingDisabled(anthropicReq.Thinking)
+	requestThinking := !requestThinkingDisabled && len(anthropicReq.Thinking) > 0
+
+	allowThinkingParam := isDeepSeek || explicitThinking
+	allowEffortParam := isOpenAIReasoning || isDeepSeek || explicitEffort
+
+	if requestThinkingDisabled {
+		if allowThinkingParam {
+			openaiReq.Thinking = anthropicReq.Thinking
+		}
+		return
+	}
+
+	if isDeepSeek && hasAssistant && !hasThinking {
+		if allowThinkingParam {
+			openaiReq.Thinking = json.RawMessage(`{"type":"disabled"}`)
+		}
+		return
+	}
+
+	switch {
+	case requestThinking:
+		// Client explicitly opted into thinking mode via the request
+		// (e.g., effortLevel in Claude Code sends thinking: {type:"enabled", budget_tokens:N}).
+		// Forward the raw thinking config if allowed, and map budget_tokens to reasoning_effort if allowed.
+		if allowThinkingParam {
+			openaiReq.Thinking = anthropicReq.Thinking
+		}
+		if allowEffortParam {
+			if budget := parseBudgetTokens(anthropicReq.Thinking); budget > 0 {
+				effort := budgetTokensToEffort(budget)
+				openaiReq.ReasoningEffort = &effort
+			}
+		}
+
+	case hasThinking:
+		// History has thinking blocks — maintain continuity.
+		if allowThinkingParam {
+			if explicitThinking {
+				openaiReq.Thinking = model.Thinking
+			} else {
+				openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
+			}
+		}
+		if allowEffortParam {
+			if !isThinkingDisabled(openaiReq.Thinking) || !isDeepSeek {
+				setReasoningEffort(openaiReq, model.ReasoningEffort)
+			}
+		}
+
+	case explicitThinking:
+		// Config explicitly sets thinking — respect it.
+		if allowThinkingParam {
+			openaiReq.Thinking = model.Thinking
+		}
+		if allowEffortParam {
+			if !isThinkingDisabled(openaiReq.Thinking) || !isDeepSeek {
+				setReasoningEffort(openaiReq, model.ReasoningEffort)
+			}
+		}
+
+	case explicitEffort:
+		// User set reasoning_effort but not thinking. Intent is clear.
+		if allowThinkingParam {
+			openaiReq.Thinking = json.RawMessage(`{"type":"enabled"}`)
+		}
+		if allowEffortParam {
+			setReasoningEffort(openaiReq, model.ReasoningEffort)
+		}
+
+	default:
+		// No config, no history: leave both unset.
+	}
+}
+
+// setReasoningEffort sets reasoning_effort on the request, defaulting to
+// "high" when the config value is empty.
+func setReasoningEffort(openaiReq *types.ChatCompletionRequest, effort string) {
+	if effort != "" {
+		openaiReq.ReasoningEffort = &effort
+	} else {
+		defaultEffort := "high"
+		openaiReq.ReasoningEffort = &defaultEffort
+	}
+}
+
+// hasAssistantMessages returns true when the conversation contains at least
+// one assistant message.
+func hasAssistantMessages(messages []types.Message) bool {
+	for _, msg := range messages {
+		if msg.Role == "assistant" {
+			return true
+		}
+	}
+	return false
+}
+
 // transformMessages converts Anthropic messages to OpenAI format.
-func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageRequest, model config.ModelConfig) ([]types.ChatMessage, error) {
+func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageRequest, modelID string, vision bool) ([]types.ChatMessage, error) {
 	hasThinking := HasThinkingBlocks(anthropicReq.Messages)
 
 	var result []types.ChatMessage
 
-	// Add system message if present, preserving cache_control if available
+	// Add system message from top-level field if present, preserving cache_control.
+	// DeepSeek V3.x / V4 reorders all system-role messages to the front internally.
+	// When Claude Code injects periodic system reminders mid-conversation, any
+	// extra {"role": "system"} in the messages array would shift every subsequent
+	// user/assistant/tool message after the reorder, blowing the prefix cache.
 	systemText := anthropicReq.SystemText()
 	if systemText != "" {
 		systemMsg := types.ChatMessage{
 			Role:    "system",
-			Content: systemText,
+			Content: contentText(systemText),
+		}
+		if !strings.HasPrefix(modelID, "kimi-") && len(anthropicReq.System) > 0 {
+			var blocks []types.SystemContentBlock
+			if err := json.Unmarshal(anthropicReq.System, &blocks); err == nil {
+				for _, b := range blocks {
+					if b.Type == "text" && b.CacheControl != nil {
+						systemMsg.CacheControl = b.CacheControl
+						break
+					}
+				}
+			}
 		}
 		result = append(result, systemMsg)
 	}
 
-	// Transform each message
+	// Transform remaining messages.
+	//
+	// DeepSeek V3.x / V4 internally reorders all system-role messages to the
+	// front of the effective prompt.  When Claude Code injects periodic system
+	// reminders mid-conversation (e.g. "task tools haven't been used recently"),
+	// forwarding them as {"role": "system"} would cause DeepSeek's reordering
+	// to shift every user/assistant/tool message, invalidating the prefix cache
+	// from the insertion point onward.
+	//
+	// For DeepSeek models only, convert non-top-level system messages into user
+	// messages wrapped in <system-reminder> tags.  This preserves the semantic
+	// intent while preventing DeepSeek from reordering them past the
+	// conversational history.
+	rewriteSystem := isDeepSeekModel(modelID)
 	for _, msg := range anthropicReq.Messages {
-		openaiMsgs, err := t.transformMessage(msg, model, hasThinking)
+		if msg.Role == "system" && rewriteSystem {
+			blocks := msg.ContentBlocks()
+			var sb strings.Builder
+			for _, b := range blocks {
+				if b.Type == "text" {
+					sb.WriteString(b.Text)
+				}
+			}
+			text := sb.String()
+			if text == "" {
+				continue
+			}
+			// Deduplicate: skip if this text is already part of the top-level
+			// system prompt (matched after trimming whitespace on both sides).
+			if canonicalSystem := strings.TrimSpace(systemText); canonicalSystem != "" {
+				canonicalText := strings.TrimSpace(text)
+				if strings.Contains(canonicalSystem, canonicalText) {
+					continue
+				}
+			}
+			result = append(result, types.ChatMessage{
+				Role:    "user",
+				Content: contentText("<system-reminder>\n" + text + "\n</system-reminder>"),
+			})
+			continue
+		}
+		openaiMsgs, err := t.transformMessage(msg, modelID, hasThinking, vision)
 		if err != nil {
 			return nil, err
 		}
@@ -188,14 +399,14 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 
 // transformMessage converts a single Anthropic message to one or more OpenAI messages.
 // Tool_use and tool_result require special handling to map to OpenAI's function calling format.
-func (t *RequestTransformer) transformMessage(msg types.Message, model config.ModelConfig, hasThinkingInHistory bool) ([]types.ChatMessage, error) {
+func (t *RequestTransformer) transformMessage(msg types.Message, modelID string, hasThinkingInHistory bool, vision bool) ([]types.ChatMessage, error) {
 	blocks := msg.ContentBlocks()
 
 	switch msg.Role {
 	case "user":
-		return t.transformUserMessage(blocks, model.SupportsVision)
+		return t.transformUserMessage(blocks, vision)
 	case "assistant":
-		return t.transformAssistantMessage(blocks, model.ModelID, hasThinkingInHistory)
+		return t.transformAssistantMessage(blocks, modelID, hasThinkingInHistory)
 	default:
 		// Fallback: concatenate all text
 		var text string
@@ -204,84 +415,85 @@ func (t *RequestTransformer) transformMessage(msg types.Message, model config.Mo
 				text += b.Text
 			}
 		}
-		return []types.ChatMessage{{Role: msg.Role, Content: text}}, nil
+		return []types.ChatMessage{{Role: msg.Role, Content: contentText(text)}}, nil
 	}
 }
 
-// transformUserMessage converts a user message with potential tool_result blocks.
-func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, supportsVision bool) ([]types.ChatMessage, error) {
+// transformUserMessage converts a user message with potential tool_result and image blocks.
+// Image blocks are converted to OpenAI's multimodal content format (content array
+// with image_url parts) so that vision-capable models receive the actual image data.
+// For models without vision support, image blocks are replaced with a "[Image]" text
+// placeholder to prevent upstream 400 errors from unsupported image_url parts.
+func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, vision bool) ([]types.ChatMessage, error) {
 	var result []types.ChatMessage
 	var textParts []string
-	var contentParts []types.ContentPart
+	var imageParts []types.ChatContentPart
+	hasImage := false
 
 	for _, block := range blocks {
 		switch block.Type {
 		case "text":
 			textParts = append(textParts, block.Text)
-			contentParts = append(contentParts, types.ContentPart{
-				Type: "text",
-				Text: block.Text,
-			})
 		case "tool_result":
 			// In OpenAI, tool results are separate messages with role "tool"
 			toolContent := block.TextContent()
 			result = append(result, types.ChatMessage{
 				Role:       "tool",
-				Content:    toolContent,
+				Content:    contentText(toolContent),
 				ToolCallID: block.GetToolID(),
 			})
 		case "image":
-			if !supportsVision {
-				textParts = append(textParts, "[Image omitted for text-only model]")
-				contentParts = append(contentParts, types.ContentPart{
-					Type: "text",
-					Text: "[Image omitted for text-only model]",
-				})
-				continue
-			}
-			if block.Source != nil && block.Source.Type == "base64" && block.Source.MediaType != "" && block.Source.Data != "" {
-				contentParts = append(contentParts, types.ContentPart{
-					Type: "image_url",
-					ImageURL: &types.ImageURL{
-						URL: "data:" + block.Source.MediaType + ";base64," + block.Source.Data,
-					},
-				})
-			} else if block.Source != nil && block.Source.URL != "" {
-				contentParts = append(contentParts, types.ContentPart{
-					Type: "image_url",
-					ImageURL: &types.ImageURL{
-						URL: block.Source.URL,
-					},
-				})
+			if block.Source != nil {
+				if vision {
+					imageParts = append(imageParts, types.ChatContentPart{
+						Type: "image_url",
+						ImageURL: &types.ImageURL{
+							URL: fmt.Sprintf("data:%s;base64,%s", block.Source.MediaType, block.Source.Data),
+						},
+					})
+				} else {
+					hasImage = true
+				}
 			}
 		}
 	}
 
-	// If there's text content, add it as a user message
-	if len(contentParts) > 0 {
-		text := ""
-		for _, p := range textParts {
-			text += p
-		}
-		// OpenAI-compatible tool calling requires tool responses to appear
-		// immediately after the assistant message that emitted tool_calls.
-		// If the Anthropic user turn also includes free-form text, emit it as
-		// a subsequent user message after all tool results.
-		content := interface{}(text)
-		if len(contentParts) > 0 {
-			hasImage := false
-			for _, p := range contentParts {
-				if p.Type == "image_url" {
-					hasImage = true
-					break
+	// If there's text or image content, add it as a user message.
+	// OpenAI-compatible tool calling requires tool responses to appear
+	// immediately after the assistant message that emitted tool_calls.
+	// If the Anthropic user turn also includes free-form text and/or images,
+	// emit it as a subsequent user message after all tool results.
+	if len(textParts) > 0 || len(imageParts) > 0 || hasImage {
+		if len(imageParts) > 0 {
+			// Multimodal message: build content array with text + image_url parts
+			var parts []types.ChatContentPart
+			if len(textParts) > 0 {
+				parts = append(parts, types.ChatContentPart{
+					Type: "text",
+					Text: strings.Join(textParts, ""),
+				})
+			}
+			parts = append(parts, imageParts...)
+			contentJSON, err := json.Marshal(parts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal multimodal content: %w", err)
+			}
+			result = append(result, types.ChatMessage{Role: "user", Content: contentJSON})
+		} else {
+			// Text-only message (possibly with image placeholder for non-vision models)
+			text := strings.Join(textParts, "")
+			if hasImage {
+				if text != "" {
+					text += "\n\n[Image]"
+				} else {
+					text = "[Image]"
 				}
 			}
-			if hasImage {
-				content = contentParts
-			}
+			result = append(result, types.ChatMessage{
+				Role:    "user",
+				Content: contentText(text),
+			})
 		}
-		userMsg := types.ChatMessage{Role: "user", Content: content}
-		result = append(result, userMsg)
 	}
 
 	return result, nil
@@ -364,7 +576,7 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 
 	msg := types.ChatMessage{
 		Role:             "assistant",
-		Content:          content,
+		Content:          contentText(content),
 		ReasoningContent: reasoningContentPtr,
 		ToolCalls:        toolCalls,
 	}
@@ -377,10 +589,47 @@ func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef 
 	var result []types.ToolDef
 
 	for _, tool := range tools {
+		if strings.TrimSpace(tool.Name) == "" {
+			continue
+		}
 		// InputSchema is already json.RawMessage, use it directly
 		schema := tool.InputSchema
-		if len(schema) == 0 {
-			schema = []byte(`{"type":"object","properties":{}}`)
+		switch {
+		case len(schema) == 0, string(schema) == "null", string(schema) == "{}":
+			schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+		default:
+			var schemaObj map[string]interface{}
+			if err := json.Unmarshal(schema, &schemaObj); err != nil {
+				schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+			} else {
+				// Valid JSON " null " unmarshals to a nil map, which would panic
+				// on the field assignments below.
+				if schemaObj == nil {
+					schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+				} else {
+					// Validate type field is "object" — otherwise OpenAI rejects the
+					// tool. A schema like {"type":"string"} passes unmarshal but
+					// produces a 400 from the upstream OpenAI-compatible endpoint.
+					schemaType, _ := schemaObj["type"].(string)
+					if schemaType != "object" {
+						schemaObj["type"] = "object"
+					}
+
+					// Validate properties is an object — wrong shapes like arrays
+					// or primitives also produce 400 errors upstream.
+					if props, ok := schemaObj["properties"]; ok {
+						if _, valid := props.(map[string]interface{}); !valid {
+							schemaObj["properties"] = map[string]interface{}{}
+						}
+					} else {
+						schemaObj["properties"] = map[string]interface{}{}
+					}
+
+					if fixed, err := json.Marshal(schemaObj); err == nil {
+						schema = fixed
+					}
+				}
+			}
 		}
 
 		result = append(result, types.ToolDef{

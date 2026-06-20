@@ -3,13 +3,15 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/client"
+	"github.com/routatic/proxy/internal/config"
 )
 
 // CircuitState represents the state of a circuit breaker.
@@ -175,6 +177,13 @@ func (h *FallbackHandler) ExecuteWithFallback(
 	totalModels := len(models)
 
 	for i, model := range models {
+		if err := ctx.Err(); err != nil {
+			h.logger.Info("request context canceled, stopping fallback attempts",
+				"error", err,
+			)
+			return nil, nil, err
+		}
+
 		cb := h.getCircuitBreaker(model.ModelID)
 
 		// Skip models with open circuit breakers
@@ -208,13 +217,29 @@ func (h *FallbackHandler) ExecuteWithFallback(
 			}, body, nil
 		}
 
-		cb.RecordFailure()
-		h.logger.Warn("model failed, trying fallback",
-			"model", model.ModelID,
-			"error", err,
-			"remaining", totalModels-i-1,
-			"circuit_state", cb.State(),
-		)
+		if errCtx := ctx.Err(); errCtx != nil {
+			h.logger.Info("request context canceled after model attempt, stopping fallback",
+				"model", model.ModelID,
+				"error", errCtx,
+			)
+			return nil, nil, errCtx
+		}
+
+		if IsRetryableError(err) {
+			cb.RecordFailure()
+			h.logger.Warn("model failed, trying fallback",
+				"model", model.ModelID,
+				"error", err,
+				"remaining", totalModels-i-1,
+				"circuit_state", cb.State(),
+			)
+		} else {
+			h.logger.Warn("non-retryable error (skipping circuit breaker), trying fallback",
+				"model", model.ModelID,
+				"error", err,
+				"remaining", totalModels-i-1,
+			)
+		}
 	}
 
 	return &FallbackResult{
@@ -242,14 +267,26 @@ func IsRetryableError(err error) bool {
 		return false
 	}
 
+	// APIError from the client carries the HTTP status code — use it directly
+	// instead of string matching, so error format changes upstream can't
+	// silently break the classification.
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) {
+		// 4xx client errors are not retryable — the request format itself is
+		// invalid for that model, and retrying won't fix it. This includes 429
+		// (rate limit) so the circuit breaker doesn't open for rate limits.
+		return apiErr.StatusCode >= 500
+	}
+
+	// For non-API errors (network errors, timeouts, etc.), fall back to
+	// pattern matching on the error string.
 	errStr := err.Error()
-	// Retry on network errors, timeouts, rate limits, server errors
+
 	retryable := []string{
 		"timeout",
 		"connection refused",
 		"connection reset",
 		"rate limit",
-		"429",
 		"503",
 		"502",
 		"500",

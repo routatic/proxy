@@ -11,13 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"oc-go-cc/internal/client"
-	"oc-go-cc/internal/config"
-	"oc-go-cc/internal/handlers"
-	"oc-go-cc/internal/metrics"
-	"oc-go-cc/internal/router"
-	"oc-go-cc/internal/status"
-	"oc-go-cc/internal/token"
+	"github.com/routatic/proxy/internal/client"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
+	"github.com/routatic/proxy/internal/handlers"
+	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/provider"
+	"github.com/routatic/proxy/internal/router"
+	"github.com/routatic/proxy/internal/token"
 )
 
 // Server represents the proxy server.
@@ -51,18 +52,22 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	openCodeClient := client.NewOpenCodeClient(atomic)
 	modelRouter := router.NewModelRouter(atomic)
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
-	statusStore := status.NewStore(10 * time.Second)
+
+	// Register providers.
+	providerRegistry := core.NewProviderRegistry()
+	_ = providerRegistry.Register(provider.NewOpenCodeGoProvider(atomic))
+	_ = providerRegistry.Register(provider.NewOpenCodeZenProvider(atomic))
 
 	// Create handlers.
 	messagesHandler := handlers.NewMessagesHandler(
 		openCodeClient,
+		providerRegistry,
 		modelRouter,
 		fallbackHandler,
 		tokenCounter,
 		metrics,
-		statusStore,
 	)
-	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics, statusStore)
+	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics)
 
 	// Setup router.
 	mux := http.NewServeMux()
@@ -71,16 +76,21 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	mux.HandleFunc("/v1/messages", messagesHandler.HandleMessages)
 	mux.HandleFunc("/v1/messages/count_tokens", healthHandler.HandleCountTokens)
 	mux.HandleFunc("/health", healthHandler.HandleHealth)
-	mux.HandleFunc("/statusline", healthHandler.HandleStatusline)
 
 	// Create HTTP server.
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	httpSrv := &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,
-		IdleTimeout:  120 * time.Second,
+		Addr:        addr,
+		Handler:     mux,
+		ReadTimeout: 120 * time.Second,
+		// WriteTimeout is disabled (zero). Long-running SSE streams must not be
+		// killed mid-flight. Stuck upstream connections are handled by the
+		// per-stream idle watchdog (transformer/idle.go) which cancels the
+		// upstream context when no bytes arrive within the model's idle timeout.
+		// IdleTimeout here governs keep-alive between separate HTTP requests on
+		// the same TCP connection; it does NOT affect in-stream byte gaps.
+		WriteTimeout: 0,
+		IdleTimeout:  300 * time.Second,
 	}
 
 	srv := &Server{
@@ -102,7 +112,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 // Start starts the server with graceful shutdown.
 func (s *Server) Start() error {
 	cfg := s.atomic.Get()
-	s.logger.Info("starting oc-go-cc proxy",
+	s.logger.Info("starting routatic-proxy",
 		"host", cfg.Host,
 		"port", cfg.Port,
 		"base_url", cfg.OpenCodeGo.BaseURL,

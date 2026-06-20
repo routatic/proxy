@@ -1,15 +1,17 @@
-.PHONY: build run test clean install dist lint vet
+.PHONY: build run test clean install dist lint vet docker-up docker-stop
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS = -X main.version=$(VERSION)
-BINARY = oc-go-cc
-CMD = ./cmd/oc-go-cc
+BINARY = routatic-proxy
+LEGACY_BINARY = oc-go-cc
+CMD = ./cmd/routatic-proxy
 
 # ── Development ────────────────────────────────────────────────────
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
+	@ln -sf $(BINARY) bin/$(LEGACY_BINARY)
 
 run:
 	go run -ldflags "$(LDFLAGS)" $(CMD)
@@ -34,6 +36,40 @@ install: build
 	cp bin/$(BINARY) $(GOPATH)/bin/$(BINARY) 2>/dev/null || \
 		cp bin/$(BINARY) $(HOME)/go/bin/$(BINARY) 2>/dev/null || \
 		go install -ldflags "$(LDFLAGS)" $(CMD)
+	@INSTALL_DIR="$$(go env GOPATH 2>/dev/null)/bin"; \
+		if [ -x "$$INSTALL_DIR/$(BINARY)" ]; then \
+			ln -sf "$(BINARY)" "$$INSTALL_DIR/$(LEGACY_BINARY)"; \
+		fi
+
+# ── Docker ─────────────────────────────────────────────────────────
+
+docker-up:
+	@echo "Building Docker image..."
+	docker build -t routatic-proxy .
+	@echo ""
+	@echo "Starting container..."
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found."; \
+		echo "Create it with: cp .env.example .env"; \
+		exit 1; \
+	fi
+	@docker stop routatic-proxy 2>/dev/null || true
+	@docker rm routatic-proxy 2>/dev/null || true
+	docker run -d \
+			--name routatic-proxy \
+			--restart unless-stopped \
+			--env-file .env \
+			-p 3456:3456 \
+			routatic-proxy
+	@echo ""
+	@echo "Container started! Proxy listening on http://localhost:3456"
+	@echo "Stop with:  make docker-stop"
+
+docker-stop:
+	@echo "Stopping container..."
+	docker stop routatic-proxy 2>/dev/null || true
+	docker rm routatic-proxy 2>/dev/null || true
+	@echo "Container stopped and removed."
 
 # ── Release / Cross-Compilation ────────────────────────────────────
 

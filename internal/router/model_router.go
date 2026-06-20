@@ -5,7 +5,7 @@ package router
 import (
 	"fmt"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 // ModelRouter handles model selection based on scenarios.
@@ -18,6 +18,16 @@ func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
 	return &ModelRouter{atomic: atomic}
 }
 
+// isRespectRequestedModel returns true when the client-specified model should be
+// used as the primary routing target.  nil (unset in config) defaults to true;
+// an explicit *false from the user config is honoured.
+func isRespectRequestedModel(cfg *config.Config) bool {
+	if cfg.RespectRequestedModel == nil {
+		return true // default when not explicitly set
+	}
+	return *cfg.RespectRequestedModel
+}
+
 // RouteResult contains the selected model and fallback chain.
 type RouteResult struct {
 	Primary   config.ModelConfig
@@ -28,9 +38,9 @@ type RouteResult struct {
 // resolveRequestedModel checks if the user-specified model should override
 // scenario-based routing. Returns the route result and true if it matched,
 // or zero value and false if scenario routing should proceed normally.
-func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel string, needsVision bool) (RouteResult, bool, error) {
-	if !cfg.RespectRequestedModel || requestedModel == "" {
-		return RouteResult{}, false, nil
+func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel string) (RouteResult, bool) {
+	if !isRespectRequestedModel(cfg) || requestedModel == "" {
+		return RouteResult{}, false
 	}
 
 	// Look up the requested model in config to inherit its settings
@@ -46,29 +56,22 @@ func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel s
 			primary.MaxTokens = def.MaxTokens
 		}
 	}
-	primary = config.ResolveModelConfig(primary)
-	if needsVision && !primary.SupportsVision {
-		return RouteResult{}, false, fmt.Errorf("requested model %s does not support vision", primary.ModelID)
-	}
 
-	fallbacks := normalizeModels(cfg.Fallbacks["default"])
+	fallbacks := cfg.Fallbacks["default"]
 
 	return RouteResult{
 		Primary:   primary,
 		Fallbacks: fallbacks,
 		Scenario:  ScenarioDefault,
-	}, true, nil
+	}, true
 }
 
 // Route determines which model to use for a request.
 // If respect_requested_model is enabled and requestedModel is provided, it overrides scenario-based routing.
 func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requestedModel string) (RouteResult, error) {
 	cfg := r.atomic.Get()
-	facts := AnalyzeRequestFacts(messages)
 
-	if result, ok, err := r.resolveRequestedModel(cfg, requestedModel, facts.NeedsVision); err != nil {
-		return RouteResult{}, err
-	} else if ok {
+	if result, ok := r.resolveRequestedModel(cfg, requestedModel); ok {
 		return result, nil
 	}
 
@@ -78,35 +81,18 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requested
 	// Get primary model for scenario
 	primary, ok := cfg.Models[string(result.Scenario)]
 	if !ok {
-		if isVisionScenario(result.Scenario) {
-			return RouteResult{}, fmt.Errorf("vision scenario %s is not configured", result.Scenario)
-		}
 		// Fall back to default if scenario model not configured
 		primary, ok = cfg.Models["default"]
 		if !ok {
 			return RouteResult{}, fmt.Errorf("no default model configured")
 		}
 	}
-	primary = config.ResolveModelConfig(primary)
-	if isVisionScenario(result.Scenario) && !primary.SupportsVision {
-		return RouteResult{}, fmt.Errorf("vision scenario %s primary model %s does not support vision", result.Scenario, primary.ModelID)
-	}
 
 	// Get fallbacks for scenario
-	fallbacks := normalizeModels(cfg.Fallbacks[string(result.Scenario)])
+	fallbacks := cfg.Fallbacks[string(result.Scenario)]
 	if len(fallbacks) == 0 {
-		if isVisionScenario(result.Scenario) {
-			return RouteResult{}, fmt.Errorf("vision scenario %s has no configured vision fallbacks", result.Scenario)
-		}
 		// Fall back to default fallbacks
-		fallbacks = normalizeModels(cfg.Fallbacks["default"])
-	}
-	if isVisionScenario(result.Scenario) {
-		for _, fallback := range fallbacks {
-			if !fallback.SupportsVision {
-				return RouteResult{}, fmt.Errorf("vision scenario %s fallback model %s does not support vision", result.Scenario, fallback.ModelID)
-			}
-		}
+		fallbacks = cfg.Fallbacks["default"]
 	}
 
 	return RouteResult{
@@ -122,6 +108,36 @@ func (r *ModelRouter) IsStreamingScenarioRoutingEnabled() bool {
 	return r.atomic.Get().EnableStreamingScenarioRouting
 }
 
+// RouteWithOverride checks if the requested model matches a model_overrides entry.
+//
+// When matched, the returned RouteResult uses the override ModelConfig as the
+// primary. The fallback chain is fallbacks[<requestedModel>], falling back to
+// fallbacks["default"] when the override key has no entry (matching the
+// behavior of Route and RouteForStreaming). The caller (MessagesHandler) is
+// expected to merge a scenario-derived safety-net chain on top.
+//
+// Returns the override RouteResult and true if matched, or a zero value and
+// false if the requested model has no entry in model_overrides.
+func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, bool) {
+	cfg := r.atomic.Get()
+	if cfg.ModelOverrides == nil {
+		return RouteResult{}, false
+	}
+	override, ok := cfg.ModelOverrides[requestedModel]
+	if !ok {
+		return RouteResult{}, false
+	}
+	fallbacks := cfg.Fallbacks[requestedModel]
+	if len(fallbacks) == 0 {
+		fallbacks = cfg.Fallbacks["default"]
+	}
+	return RouteResult{
+		Primary:   override,
+		Fallbacks: fallbacks,
+		Scenario:  ScenarioOverride,
+	}, true
+}
+
 // GetModelChain returns the full chain of models to try (primary + fallbacks).
 func (rr *RouteResult) GetModelChain() []config.ModelConfig {
 	chain := []config.ModelConfig{rr.Primary}
@@ -132,12 +148,11 @@ func (rr *RouteResult) GetModelChain() []config.ModelConfig {
 // RouteForStreaming determines which model to use for streaming requests.
 // Prioritizes fast TTFT (time-to-first-token) over capability.
 // If respect_requested_model is enabled and requestedModel is provided, it overrides scenario-based routing.
-func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount int, requestedModel string) RouteResult {
+func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount int, requestedModel string) (RouteResult, error) {
 	cfg := r.atomic.Get()
-	facts := AnalyzeRequestFacts(messages)
 
-	if result, ok, err := r.resolveRequestedModel(cfg, requestedModel, facts.NeedsVision); err == nil && ok {
-		return result
+	if result, ok := r.resolveRequestedModel(cfg, requestedModel); ok {
+		return result, nil
 	}
 
 	// Otherwise, use scenario-based routing for streaming
@@ -146,9 +161,6 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 	// Get primary model for scenario
 	primary, ok := cfg.Models[string(result.Scenario)]
 	if !ok {
-		if isVisionScenario(result.Scenario) {
-			return RouteResult{Scenario: result.Scenario}
-		}
 		// Fall back to fast scenario if not configured
 		primary, ok = cfg.Models["fast"]
 		if !ok {
@@ -156,37 +168,20 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 			primary = cfg.Models["default"]
 		}
 	}
-	primary = config.ResolveModelConfig(primary)
+	if primary.ModelID == "" {
+		return RouteResult{}, fmt.Errorf("no model configured for streaming; neither scenario %q, \"fast\", nor \"default\" exist in models map", result.Scenario)
+	}
 
 	// Get fallbacks for scenario
-	fallbacks := normalizeModels(cfg.Fallbacks[string(result.Scenario)])
+	fallbacks := cfg.Fallbacks[string(result.Scenario)]
 	if len(fallbacks) == 0 {
-		if isVisionScenario(result.Scenario) {
-			fallbacks = nil
-		} else {
-			// Fall back to fast fallbacks
-			fallbacks = normalizeModels(cfg.Fallbacks["fast"])
-		}
+		// Fall back to fast fallbacks
+		fallbacks = cfg.Fallbacks["fast"]
 	}
 
 	return RouteResult{
 		Primary:   primary,
 		Fallbacks: fallbacks,
 		Scenario:  result.Scenario,
-	}
-}
-
-func isVisionScenario(s Scenario) bool {
-	return s == ScenarioVision || s == ScenarioVisionComplex || s == ScenarioVisionLongContext
-}
-
-func normalizeModels(models []config.ModelConfig) []config.ModelConfig {
-	if len(models) == 0 {
-		return nil
-	}
-	out := make([]config.ModelConfig, 0, len(models))
-	for _, model := range models {
-		out = append(out, config.ResolveModelConfig(model))
-	}
-	return out
+	}, nil
 }

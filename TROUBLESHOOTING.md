@@ -2,7 +2,7 @@
 
 ## Windows Scoop Background Mode
 
-On Windows, `oc-go-cc serve -b` uses the native Windows process APIs and keeps
+On Windows, `routatic-proxy serve -b` uses the native Windows process APIs and keeps
 the Scoop shim path intact. This means background mode does not require `nohup`
 or a Unix-like shell, and Scoop-provided environment variables continue to work.
 
@@ -17,23 +17,23 @@ This means the proxy couldn't parse the request from Claude Code. Enable debug l
 Or set the environment variable:
 
 ```bash
-export OC_GO_CC_LOG_LEVEL=debug
+export ROUTATIC_PROXY_LOG_LEVEL=debug
 ```
 
 ## "all models failed" Error
 
 All models in the fallback chain returned errors. Check:
 
-1. Your API key is valid: `oc-go-cc validate`
+1. Your API key is valid: `routatic-proxy validate`
 2. You haven't exceeded your [usage limits](https://opencode.ai/auth)
-3. The OpenCode Go service is reachable: `curl -H "Authorization: Bearer $OC_GO_CC_API_KEY" https://opencode.ai/zen/go/v1/models`
+3. The OpenCode Go service is reachable: `curl -H "Authorization: Bearer $ROUTATIC_PROXY_API_KEY" https://opencode.ai/zen/go/v1/models`
 
 ## Connection Refused
 
 Make sure the proxy is running:
 
 ```bash
-oc-go-cc status
+routatic-proxy status
 ```
 
 And Claude Code is pointing to the right address:
@@ -55,12 +55,12 @@ The proxy transforms OpenAI SSE to Anthropic SSE in real-time. If streaming appe
 For maximum logging, run with debug level:
 
 ```bash
-OC_GO_CC_LOG_LEVEL=debug oc-go-cc serve
+ROUTATIC_PROXY_LOG_LEVEL=debug routatic-proxy serve
 ```
 
 This logs:
 
 - Raw Anthropic request body from Claude Code
-- Transformed OpenAI request sent to OpenCode Go
-- Raw OpenAI response received
+- Transformed request sent to upstream (OpenCode Go/Zen)
+- Upstream response received
 - SSE stream events during streaming

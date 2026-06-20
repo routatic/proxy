@@ -4,22 +4,20 @@ import (
 	"fmt"
 	"strings"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
 
 // Scenario represents the routing scenario for model selection.
 type Scenario string
 
 const (
-	ScenarioDefault           Scenario = "default"
-	ScenarioBackground        Scenario = "background"
-	ScenarioThink             Scenario = "think"
-	ScenarioComplex           Scenario = "complex"
-	ScenarioLongContext       Scenario = "long_context"
-	ScenarioFast              Scenario = "fast"
-	ScenarioVision            Scenario = "vision"
-	ScenarioVisionComplex     Scenario = "vision_complex"
-	ScenarioVisionLongContext Scenario = "vision_long_context"
+	ScenarioDefault     Scenario = "default"
+	ScenarioBackground  Scenario = "background"
+	ScenarioThink       Scenario = "think"
+	ScenarioComplex     Scenario = "complex"
+	ScenarioLongContext Scenario = "long_context"
+	ScenarioFast        Scenario = "fast"
+	ScenarioOverride    Scenario = "override"
 )
 
 // ScenarioResult contains the detected scenario and token count.
@@ -31,19 +29,8 @@ type ScenarioResult struct {
 
 // MessageContent represents a single message in a conversation.
 type MessageContent struct {
-	Role        string
-	Content     string
-	HasImage    bool
-	ImageHashes []string
-}
-
-type RequestFacts struct {
-	LatestUserText          string
-	LatestUserHasImage      bool
-	AnyHistoricalImage      bool
-	LatestTextVisualIntent  bool
-	LatestTextComplexIntent bool
-	NeedsVision             bool
+	Role    string
+	Content string
 }
 
 // DetectScenario analyzes a request to determine which model to use.
@@ -56,17 +43,9 @@ type RequestFacts struct {
 //
 // For streaming requests, consider using RouteForStreaming() to prefer faster models.
 func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Config) ScenarioResult {
-	facts := AnalyzeRequestFacts(messages)
 	// 1. Check for long context first (most important)
 	threshold := getLongContextThreshold(cfg)
 	if tokenCount > threshold {
-		if facts.NeedsVision {
-			return ScenarioResult{
-				Scenario:   ScenarioVisionLongContext,
-				TokenCount: tokenCount,
-				Reason:     fmt.Sprintf("image request token count %d exceeds threshold %d", tokenCount, threshold),
-			}
-		}
 		return ScenarioResult{
 			Scenario:   ScenarioLongContext,
 			TokenCount: tokenCount,
@@ -74,24 +53,8 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 		}
 	}
 
-	if facts.NeedsVision {
-		if facts.LatestTextComplexIntent {
-			return ScenarioResult{
-				Scenario:   ScenarioVisionComplex,
-				TokenCount: tokenCount,
-				Reason:     "complex image request detected",
-			}
-		}
-		return ScenarioResult{
-			Scenario:   ScenarioVision,
-			TokenCount: tokenCount,
-			Reason:     "simple image request detected",
-		}
-	}
-
 	// 2. Check for complex tasks (architectural OR tool-related)
-	latestUser := latestUserMessages(messages)
-	if hasComplexPattern(latestUser) {
+	if hasComplexPattern(messages) {
 		return ScenarioResult{
 			Scenario:   ScenarioComplex,
 			TokenCount: tokenCount,
@@ -100,7 +63,7 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 	}
 
 	// 3. Check for thinking/reasoning patterns
-	if hasThinkingPattern(latestUser) {
+	if hasThinkingPattern(messages) {
 		return ScenarioResult{
 			Scenario:   ScenarioThink,
 			TokenCount: tokenCount,
@@ -125,106 +88,6 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 	}
 }
 
-func hasImage(messages []MessageContent) bool {
-	for _, msg := range messages {
-		if msg.HasImage {
-			return true
-		}
-	}
-	return false
-}
-
-func latestUserHasImage(messages []MessageContent) bool {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
-			return messages[i].HasImage
-		}
-	}
-	return false
-}
-
-func latestImageUserMessages(messages []MessageContent) []MessageContent {
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		if msg.Role == "user" && msg.HasImage {
-			return []MessageContent{msg}
-		}
-	}
-	return messages
-}
-
-func AnalyzeRequestFacts(messages []MessageContent) RequestFacts {
-	facts := RequestFacts{}
-	latestIdx := -1
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
-			latestIdx = i
-			break
-		}
-	}
-	if latestIdx == -1 {
-		return facts
-	}
-
-	latest := messages[latestIdx]
-	facts.LatestUserText = latest.Content
-	facts.LatestUserHasImage = latest.HasImage && imageHashesAreNewForLatest(messages, latestIdx)
-	facts.LatestTextVisualIntent = hasVisualIntent(latest.Content)
-	facts.LatestTextComplexIntent = hasComplexPattern([]MessageContent{latest}) || hasThinkingPattern([]MessageContent{latest})
-
-	for i, msg := range messages {
-		if i != latestIdx && msg.Role == "user" && msg.HasImage {
-			facts.AnyHistoricalImage = true
-			break
-		}
-	}
-
-	facts.NeedsVision = facts.LatestUserHasImage || (facts.AnyHistoricalImage && facts.LatestTextVisualIntent)
-	return facts
-}
-
-func imageHashesAreNewForLatest(messages []MessageContent, latestIdx int) bool {
-	latest := messages[latestIdx]
-	if len(latest.ImageHashes) == 0 {
-		return latest.HasImage
-	}
-	seen := map[string]bool{}
-	for i := 0; i < latestIdx; i++ {
-		for _, hash := range messages[i].ImageHashes {
-			seen[hash] = true
-		}
-	}
-	for _, hash := range latest.ImageHashes {
-		if !seen[hash] {
-			return true
-		}
-	}
-	return false
-}
-
-func latestUserMessages(messages []MessageContent) []MessageContent {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
-			return []MessageContent{messages[i]}
-		}
-	}
-	return nil
-}
-
-func hasVisualIntent(content string) bool {
-	visualKeywords := []string{
-		"image", "screenshot", "screen", "schermata", "immagine", "foto",
-		"allegato", "[image", "vedi", "visual", "ui", "layout",
-	}
-	lower := strings.ToLower(content)
-	for _, kw := range visualKeywords {
-		if strings.Contains(lower, kw) {
-			return true
-		}
-	}
-	return false
-}
-
 // hasComplexPattern looks for complex operations that need more capable models.
 // This includes tool-based operations (executing functions, writing/editing files, etc.)
 func hasComplexPattern(messages []MessageContent) bool {
@@ -234,7 +97,6 @@ func hasComplexPattern(messages []MessageContent) bool {
 		"complex", "difficult", "challenging",
 		"optimize", "performance", "efficiency",
 		"design pattern", "best practice",
-		"bug", "debug", "error", "exception", "stack trace",
 		// Tool-related keywords indicate complex operations
 		"execute", "run command", "bash", "shell",
 		"implement", "build", "create", "add feature",
@@ -334,19 +196,11 @@ func getLongContextThreshold(cfg *config.Config) int {
 // For streaming, we prioritize fast TTFT (time-to-first-token) over capability.
 // This may return a less capable model but one that streams faster.
 func RouteForStreaming(messages []MessageContent, tokenCount int, cfg *config.Config) ScenarioResult {
-	facts := AnalyzeRequestFacts(messages)
 	// For streaming, use simpler models that have better TTFT
 	// Complex models (GLM, Kimi) are too slow for streaming with many tools
 
 	threshold := getLongContextThreshold(cfg)
 	if tokenCount > threshold {
-		if facts.NeedsVision {
-			return ScenarioResult{
-				Scenario:   ScenarioVisionLongContext,
-				TokenCount: tokenCount,
-				Reason:     fmt.Sprintf("high token count image request (%d > %d)", tokenCount, threshold),
-			}
-		}
 		model := "long_context"
 		if cfg != nil {
 			if lc, ok := cfg.Models["long_context"]; ok && lc.ModelID != "" {
@@ -360,23 +214,7 @@ func RouteForStreaming(messages []MessageContent, tokenCount int, cfg *config.Co
 		}
 	}
 
-	if facts.NeedsVision {
-		if facts.LatestTextComplexIntent {
-			return ScenarioResult{
-				Scenario:   ScenarioVisionComplex,
-				TokenCount: tokenCount,
-				Reason:     "complex image request detected",
-			}
-		}
-		return ScenarioResult{
-			Scenario:   ScenarioVision,
-			TokenCount: tokenCount,
-			Reason:     "simple image request detected",
-		}
-	}
-
-	latestUser := latestUserMessages(messages)
-	if hasComplexPattern(latestUser) || hasThinkingPattern(latestUser) {
+	if hasComplexPattern(messages) || hasThinkingPattern(messages) {
 		// Complex request but streaming - downgrade to faster model
 		// GLM-5 and Kimi are too slow for streaming with complex prompts
 		return ScenarioResult{

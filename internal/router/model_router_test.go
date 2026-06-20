@@ -3,8 +3,10 @@ package router
 import (
 	"testing"
 
-	"oc-go-cc/internal/config"
+	"github.com/routatic/proxy/internal/config"
 )
+
+func boolPtr(b bool) *bool { return &b }
 
 func newTestAtomicConfig(cfg *config.Config) *config.AtomicConfig {
 	return config.NewAtomicConfig(cfg, "/tmp/test-config.json")
@@ -12,7 +14,7 @@ func newTestAtomicConfig(cfg *config.Config) *config.AtomicConfig {
 
 func TestRoute_RespectRequestedModel_BypassesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {
 				Provider: "opencode-go",
@@ -60,7 +62,7 @@ func TestRoute_RespectRequestedModel_BypassesScenarioRouting(t *testing.T) {
 
 func TestRoute_RespectRequestedModel_False_UsesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: false,
+		RespectRequestedModel: boolPtr(false),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "kimi-k2.6"},
 			"complex": {ModelID: "glm-5.1"},
@@ -88,7 +90,7 @@ func TestRoute_RespectRequestedModel_False_UsesScenarioRouting(t *testing.T) {
 
 func TestRoute_RespectRequestedModel_EmptyModel_FallsThrough(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "kimi-k2.6"},
 		},
@@ -115,7 +117,7 @@ func TestRoute_RespectRequestedModel_EmptyModel_FallsThrough(t *testing.T) {
 
 func TestRoute_RespectRequestedModel_UnknownModel_UsesDefaults(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {
 				Provider:    "opencode-go",
@@ -153,7 +155,7 @@ func TestRoute_RespectRequestedModel_UnknownModel_UsesDefaults(t *testing.T) {
 
 func TestRouteForStreaming_RespectRequestedModel_BypassesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "qwen3.6-plus"},
 			"kimi-k2.6": {
@@ -172,7 +174,10 @@ func TestRouteForStreaming_RespectRequestedModel_BypassesScenarioRouting(t *test
 		{Role: "user", Content: "Hello"},
 	}
 
-	result := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	result, err := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result.Primary.ModelID != "kimi-k2.6" {
 		t.Errorf("expected model kimi-k2.6, got %s", result.Primary.ModelID)
 	}
@@ -183,7 +188,7 @@ func TestRouteForStreaming_RespectRequestedModel_BypassesScenarioRouting(t *test
 
 func TestRouteForStreaming_RespectRequestedModel_False_UsesScenarioRouting(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: false,
+		RespectRequestedModel: boolPtr(false),
 		Models: map[string]config.ModelConfig{
 			"default": {ModelID: "qwen3.6-plus"},
 		},
@@ -198,7 +203,10 @@ func TestRouteForStreaming_RespectRequestedModel_False_UsesScenarioRouting(t *te
 		{Role: "user", Content: "Hello"},
 	}
 
-	result := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	result, err := router.RouteForStreaming(messages, 100, "kimi-k2.6")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	// Should use streaming scenario routing, not the requested model
 	if result.Primary.ModelID != "qwen3.6-plus" {
 		t.Errorf("expected streaming model qwen3.6-plus, got %s", result.Primary.ModelID)
@@ -207,7 +215,7 @@ func TestRouteForStreaming_RespectRequestedModel_False_UsesScenarioRouting(t *te
 
 func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 	cfg := &config.Config{
-		RespectRequestedModel: true,
+		RespectRequestedModel: boolPtr(true),
 		Models: map[string]config.ModelConfig{
 			"kimi-k2.6": {ModelID: "kimi-k2.6"},
 		},
@@ -221,10 +229,7 @@ func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 
 	router := NewModelRouter(newTestAtomicConfig(cfg))
 
-	result, ok, err := router.resolveRequestedModel(cfg, "kimi-k2.6", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	result, ok := router.resolveRequestedModel(cfg, "kimi-k2.6")
 	if !ok {
 		t.Fatal("expected resolveRequestedModel to match")
 	}
@@ -236,57 +241,120 @@ func TestResolveRequestedModel_UsesFallbacks(t *testing.T) {
 	}
 }
 
-func TestRoute_VisionScenarioRequiresConfiguredVisionModel(t *testing.T) {
+func TestRouteWithOverride_MatchesKey(t *testing.T) {
 	cfg := &config.Config{
-		Models: map[string]config.ModelConfig{
-			"default": {ModelID: "deepseek-v4-pro"},
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {
+				Provider:    "opencode-go",
+				ModelID:     "kimi-k2.6",
+				Temperature: 0.3,
+				MaxTokens:   2048,
+			},
 		},
 		Fallbacks: map[string][]config.ModelConfig{
-			"default": {{ModelID: "deepseek-v4-flash"}},
+			"kimi-k2.6": {
+				{Provider: "opencode-go", ModelID: "qwen3.5-plus"},
+			},
 		},
 	}
+
 	router := NewModelRouter(newTestAtomicConfig(cfg))
-	_, err := router.Route([]MessageContent{
-		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
-	}, 100, "")
-	if err == nil {
-		t.Fatal("expected missing vision model to return an error")
+
+	result, ok := router.RouteWithOverride("kimi-k2.6")
+	if !ok {
+		t.Fatal("expected RouteWithOverride to match")
+	}
+	if result.Primary.ModelID != "kimi-k2.6" {
+		t.Errorf("expected primary kimi-k2.6, got %s", result.Primary.ModelID)
+	}
+	if result.Primary.Temperature != 0.3 {
+		t.Errorf("expected temperature 0.3, got %f", result.Primary.Temperature)
+	}
+	if result.Scenario != ScenarioOverride {
+		t.Errorf("expected ScenarioOverride, got %s", result.Scenario)
+	}
+	if len(result.Fallbacks) != 1 || result.Fallbacks[0].ModelID != "qwen3.5-plus" {
+		t.Errorf("expected single fallback qwen3.5-plus, got %+v", result.Fallbacks)
 	}
 }
 
-func TestRoute_VisionFallbacksMustSupportVision(t *testing.T) {
+func TestRouteWithOverride_NoMatch(t *testing.T) {
 	cfg := &config.Config{
-		Models: map[string]config.ModelConfig{
-			"default": {ModelID: "deepseek-v4-pro"},
-			"vision":  {ModelID: "qwen3.6-plus", SupportsVision: true},
-		},
-		Fallbacks: map[string][]config.ModelConfig{
-			"vision": {{ModelID: "deepseek-v4-pro", SupportsVision: false}},
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
 		},
 	}
+
 	router := NewModelRouter(newTestAtomicConfig(cfg))
-	_, err := router.Route([]MessageContent{
-		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
-	}, 100, "")
-	if err == nil {
-		t.Fatal("expected text-only vision fallback to return an error")
+
+	result, ok := router.RouteWithOverride("some-other-model")
+	if ok {
+		t.Errorf("expected no match, got result %+v", result)
 	}
 }
 
-func TestRoute_RespectRequestedTextModelRejectsVisionRequest(t *testing.T) {
-	cfg := &config.Config{
-		RespectRequestedModel: true,
-		Models: map[string]config.ModelConfig{
-			"default":         {ModelID: "deepseek-v4-pro"},
-			"deepseek-v4-pro": {ModelID: "deepseek-v4-pro", SupportsVision: false},
-			"vision":          {ModelID: "qwen3.6-plus", SupportsVision: true},
-		},
-	}
+func TestRouteWithOverride_NilMap(t *testing.T) {
+	cfg := &config.Config{} // ModelOverrides is nil
+
 	router := NewModelRouter(newTestAtomicConfig(cfg))
-	_, err := router.Route([]MessageContent{
-		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
-	}, 100, "deepseek-v4-pro")
-	if err == nil {
-		t.Fatal("expected requested text-only model to reject vision request")
+
+	if _, ok := router.RouteWithOverride("anything"); ok {
+		t.Error("expected no match for nil ModelOverrides map (must not panic)")
+	}
+}
+
+func TestRouteWithOverride_MissingFallbacksKey_FallsBackToDefault(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {
+				{Provider: "opencode-go", ModelID: "qwen3.5-plus"},
+				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+			},
+		},
+		// No entry in Fallbacks for "kimi-k2.6" — should fall back to
+		// fallbacks["default"], matching Route/RouteForStreaming behavior.
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("kimi-k2.6")
+	if !ok {
+		t.Fatal("expected RouteWithOverride to match")
+	}
+	if len(result.Fallbacks) != 2 {
+		t.Fatalf("expected 2 default fallbacks, got %d: %+v", len(result.Fallbacks), result.Fallbacks)
+	}
+	if result.Fallbacks[0].ModelID != "qwen3.5-plus" || result.Fallbacks[1].ModelID != "mimo-v2-pro" {
+		t.Errorf("expected default fallbacks [qwen3.5-plus, mimo-v2-pro], got %+v", result.Fallbacks)
+	}
+	chain := result.GetModelChain()
+	if len(chain) != 3 {
+		t.Errorf("expected 3-element chain (primary + 2 default fallbacks), got %d", len(chain))
+	}
+}
+
+func TestRouteWithOverride_NoFallbacksAnywhere(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		// Both the override key and "default" are missing.
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("kimi-k2.6")
+	if !ok {
+		t.Fatal("expected RouteWithOverride to match")
+	}
+	if len(result.Fallbacks) != 0 {
+		t.Errorf("expected empty fallbacks, got %+v", result.Fallbacks)
+	}
+	chain := result.GetModelChain()
+	if len(chain) != 1 {
+		t.Errorf("expected 1-element chain, got %d", len(chain))
 	}
 }

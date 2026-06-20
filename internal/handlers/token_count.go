@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"oc-go-cc/internal/token"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/token"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 func tokenMessagesFromAnthropic(messages []types.Message) []token.MessageContent {

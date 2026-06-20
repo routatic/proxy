@@ -3,7 +3,7 @@ package transformer
 import (
 	"testing"
 
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 func TestTransformResponsePreservesReasoningContent(t *testing.T) {
@@ -20,7 +20,7 @@ func TestTransformResponsePreservesReasoningContent(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:             "assistant",
-					Content:          "The answer is 42.",
+					Content:          contentText("The answer is 42."),
 					ReasoningContent: &reasoning,
 				},
 				FinishReason: "stop",
@@ -71,7 +71,7 @@ func TestTransformResponsePreservesReasoningContentWithToolCalls(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:             "assistant",
-					Content:          "",
+					Content:          contentText(""),
 					ReasoningContent: &reasoning,
 					ToolCalls: []types.ToolCall{
 						{
@@ -136,7 +136,7 @@ func TestTransformResponseOmitsEmptyReasoningContent(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:             "assistant",
-					Content:          "Hello there.",
+					Content:          contentText("Hello there."),
 					ReasoningContent: &emptyReasoning,
 				},
 				FinishReason: "stop",
@@ -176,7 +176,7 @@ func TestTransformResponseNoReasoningContent(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:    "assistant",
-					Content: "Just a plain response.",
+					Content: contentText("Just a plain response."),
 				},
 				FinishReason: "stop",
 			},
@@ -253,7 +253,7 @@ func TestTransformResponseWithCacheTokens(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:    "assistant",
-					Content: "Hello, world!",
+					Content: contentText("Hello, world!"),
 				},
 				FinishReason: "stop",
 			},
@@ -305,7 +305,7 @@ func TestTransformResponseWithPartialCacheTokens(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:    "assistant",
-					Content: "ok",
+					Content: contentText("ok"),
 				},
 				FinishReason: "stop",
 			},
@@ -351,7 +351,7 @@ func TestTransformResponseCacheExceedsPromptTokens(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:    "assistant",
-					Content: "ok",
+					Content: contentText("ok"),
 				},
 				FinishReason: "stop",
 			},
@@ -394,7 +394,7 @@ func TestTransformResponseWithoutCacheTokens(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:    "assistant",
-					Content: "No cache here",
+					Content: contentText("No cache here"),
 				},
 				FinishReason: "stop",
 			},

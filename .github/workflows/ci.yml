@@ -39,7 +39,7 @@ jobs:
         run: go test ./... -v -race
 
       - name: Build
-        run: go build ./cmd/oc-go-cc
+        run: go build ./cmd/routatic-proxy
 
   lint:
     name: Lint

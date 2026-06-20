@@ -4,8 +4,9 @@ package transformer
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // ResponseTransformer converts OpenAI responses to Anthropic format.
@@ -24,40 +25,6 @@ func nonNegative(n int) int {
 // NewResponseTransformer creates a new response transformer.
 func NewResponseTransformer() *ResponseTransformer {
 	return &ResponseTransformer{}
-}
-
-func contentAsString(content interface{}) string {
-	switch v := content.(type) {
-	case string:
-		return v
-	case []types.ContentPart:
-		var text string
-		for _, part := range v {
-			if part.Type == "text" {
-				text += part.Text
-			}
-		}
-		return text
-	case []interface{}:
-		var text string
-		for _, part := range v {
-			if m, ok := part.(map[string]interface{}); ok {
-				if partText, ok := m["text"].(string); ok {
-					text += partText
-				}
-			}
-		}
-		return text
-	case map[string]interface{}:
-		if text, ok := v["text"].(string); ok {
-			return text
-		}
-		return ""
-	case nil:
-		return ""
-	default:
-		return ""
-	}
 }
 
 // TransformResponse converts an OpenAI ChatCompletionResponse to Anthropic MessageResponse.
@@ -138,11 +105,10 @@ func (t *ResponseTransformer) transformContent(msg types.ChatMessage) ([]types.C
 	}
 
 	// Handle text content.
-	textContent := contentAsString(msg.Content)
-	if textContent != "" {
+	if text := msg.ContentText(); text != "" {
 		blocks = append(blocks, types.ContentBlock{
 			Type: "text",
-			Text: textContent,
+			Text: text,
 		})
 	}
 
@@ -164,7 +130,7 @@ func (t *ResponseTransformer) mapFinishReason(reason string) string {
 		return "end_turn"
 	case "length":
 		return "max_tokens"
-	case "tool_calls":
+	case "tool_calls", "tool_use":
 		return "tool_use"
 	case "content_filter":
 		return "end_turn"
@@ -202,4 +168,116 @@ func mapHTTPStatusToErrorType(statusCode int) string {
 	default:
 		return "api_error"
 	}
+}
+
+// TransformResponsesResponse converts an OpenAI ResponsesResponse to Anthropic MessageResponse.
+func (t *ResponseTransformer) TransformResponsesResponse(
+	responsesResp *types.ResponsesResponse,
+	originalModel string,
+) (*types.MessageResponse, error) {
+	if len(responsesResp.Output) == 0 {
+		return nil, fmt.Errorf("no output in response")
+	}
+
+	var contentBlocks []types.ContentBlock
+
+	for _, output := range responsesResp.Output {
+		switch output.Type {
+		case "message":
+			for _, c := range output.Content {
+				if c.Type == "output_text" {
+					contentBlocks = append(contentBlocks, types.ContentBlock{
+						Type: "text",
+						Text: c.Text,
+					})
+				}
+			}
+		case "function_call":
+			inputJSON := json.RawMessage(`{}`)
+			if output.Arguments != "" {
+				inputJSON = json.RawMessage(output.Arguments)
+			}
+			contentBlocks = append(contentBlocks, types.ContentBlock{
+				Type:  "tool_use",
+				ID:    output.CallID,
+				Name:  output.Name,
+				Input: inputJSON,
+			})
+		}
+	}
+
+	if len(contentBlocks) == 0 {
+		contentBlocks = append(contentBlocks, types.ContentBlock{
+			Type: "text",
+			Text: "",
+		})
+	}
+
+	anthropicResp := &types.MessageResponse{
+		ID:         responsesResp.ID,
+		Type:       "message",
+		Role:       "assistant",
+		Content:    contentBlocks,
+		Model:      originalModel,
+		StopReason: "end_turn",
+		Usage: types.Usage{
+			InputTokens:  responsesResp.Usage.InputTokens,
+			OutputTokens: responsesResp.Usage.OutputTokens,
+		},
+	}
+
+	return anthropicResp, nil
+}
+
+// TransformGeminiResponse converts a GeminiResponse to Anthropic MessageResponse.
+func (t *ResponseTransformer) TransformGeminiResponse(
+	geminiResp *types.GeminiResponse,
+	originalModel string,
+) (*types.MessageResponse, error) {
+	if len(geminiResp.Candidates) == 0 {
+		return nil, fmt.Errorf("no candidates in response")
+	}
+
+	candidate := geminiResp.Candidates[0]
+	var contentBlocks []types.ContentBlock
+
+	for _, part := range candidate.Content.Parts {
+		if part.Text != "" {
+			contentBlocks = append(contentBlocks, types.ContentBlock{
+				Type: "text",
+				Text: part.Text,
+			})
+		}
+	}
+
+	if len(contentBlocks) == 0 {
+		contentBlocks = append(contentBlocks, types.ContentBlock{
+			Type: "text",
+			Text: "",
+		})
+	}
+
+	stopReason := "end_turn"
+	switch candidate.FinishReason {
+	case "MAX_TOKENS":
+		stopReason = "max_tokens"
+	}
+
+	anthropicResp := &types.MessageResponse{
+		ID:         fmt.Sprintf("gemini_%d", time.Now().UnixNano()),
+		Type:       "message",
+		Role:       "assistant",
+		Content:    contentBlocks,
+		Model:      originalModel,
+		StopReason: stopReason,
+	}
+
+	if geminiResp.UsageMetadata != nil {
+		anthropicResp.Usage = types.Usage{
+			InputTokens:  geminiResp.UsageMetadata.PromptTokenCount,
+			OutputTokens: geminiResp.UsageMetadata.CandidatesTokenCount,
+		}
+	}
+
+	return anthropicResp, nil
 }

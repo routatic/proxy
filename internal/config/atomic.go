@@ -38,17 +38,23 @@ func (a *AtomicConfig) Reload() error {
 		return err
 	}
 
-	// Warn about changes that require a server restart before swapping.
+	// Warn about settings that take effect differently on reload.
 	if old != nil {
 		if old.Host != cfg.Host || old.Port != cfg.Port {
 			slog.Warn("host/port changed but requires server restart to take effect",
 				"old_host", old.Host, "new_host", cfg.Host,
 				"old_port", old.Port, "new_port", cfg.Port)
 		}
-		if old.OpenCodeGo.TimeoutMs != cfg.OpenCodeGo.TimeoutMs {
-			slog.Warn("timeout_ms changed but requires server restart to take effect",
-				"old_timeout", old.OpenCodeGo.TimeoutMs,
-				"new_timeout", cfg.OpenCodeGo.TimeoutMs)
+		// Timeout changes apply on the next request.
+		if old.OpenCodeGo.TimeoutMs != cfg.OpenCodeGo.TimeoutMs ||
+			old.OpenCodeGo.StreamingTimeoutMs != cfg.OpenCodeGo.StreamingTimeoutMs ||
+			old.OpenCodeZen.TimeoutMs != cfg.OpenCodeZen.TimeoutMs ||
+			old.OpenCodeZen.StreamingTimeoutMs != cfg.OpenCodeZen.StreamingTimeoutMs {
+			slog.Info("timeout config updated, takes effect immediately",
+				"go_timeout_ms", cfg.OpenCodeGo.TimeoutMs,
+				"go_streaming_timeout_ms", cfg.OpenCodeGo.StreamingTimeoutMs,
+				"zen_timeout_ms", cfg.OpenCodeZen.TimeoutMs,
+				"zen_streaming_timeout_ms", cfg.OpenCodeZen.StreamingTimeoutMs)
 		}
 	}
 

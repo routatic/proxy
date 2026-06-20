@@ -3,11 +3,12 @@ package transformer
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
-	"oc-go-cc/internal/config"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // TestTransformRequestRoundTripReasoning verifies that a DeepSeek response with
@@ -25,7 +26,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 			Index: 0,
 			Message: types.ChatMessage{
 				Role:             "assistant",
-				Content:          "The answer is 42",
+				Content:          contentText("The answer is 42"),
 				ReasoningContent: &deepSeekReasoning,
 			},
 			FinishReason: "stop",
@@ -86,6 +87,7 @@ func TestTransformRequestRoundTripReasoning(t *testing.T) {
 	}
 	if assistantMsg == nil {
 		t.Fatal("assistant message not found in transformed request")
+		return
 	}
 
 	// Step 5: Verify reasoning_content is preserved.
@@ -317,12 +319,11 @@ func TestTransformRequestAppliesReasoningEffortAndThinking(t *testing.T) {
 	}
 }
 
-func TestTransformRequestStripsReasoningEffortWhenNoThinkingHistory(t *testing.T) {
+func TestTransformRequestDeepSeekHistoryGuardOverridesExplicitThinking(t *testing.T) {
 	transformer := NewRequestTransformer()
 
-	// When the conversation history has NO thinking blocks, reasoning_effort
-	// and thinking should be stripped to avoid DeepSeek's validation error:
-	// "The reasoning_content in the thinking mode must be passed back to the API."
+	// DeepSeek rejects thinking mode when historical assistant messages lack
+	// reasoning_content, so the safety guard must win over explicit config.
 	req := &types.MessageRequest{
 		Model:     "claude-test",
 		MaxTokens: 256,
@@ -342,16 +343,307 @@ func TestTransformRequestStripsReasoningEffortWhenNoThinkingHistory(t *testing.T
 	}
 
 	if openaiReq.ReasoningEffort != nil {
-		t.Fatalf("ReasoningEffort = %v, want nil (stripped because no thinking history)", *openaiReq.ReasoningEffort)
+		t.Fatalf("ReasoningEffort = %v, want nil (DeepSeek history guard)", *openaiReq.ReasoningEffort)
 	}
-	// We explicitly send thinking: {"type":"disabled"} so DeepSeek knows
-	// not to require reasoning_content on assistant messages.
 	if got, want := string(openaiReq.Thinking), `{"type":"disabled"}`; got != want {
 		t.Fatalf("Thinking = %s, want %s", got, want)
 	}
 }
 
-func TestTransformRequestOmitsAnthropicSystemCacheControlForOpenAIModels(t *testing.T) {
+func TestTransformRequestFirstTurnEnablesThinkingWithReasoningEffort(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// First turn (no assistant messages in history), only reasoning_effort
+	// set in config → thinking should be enabled so DeepSeek can produce
+	// reasoning content from the very first response.
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"solve this carefully"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID:         "deepseek-v4-pro",
+		ReasoningEffort: "max",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort == nil {
+		t.Fatal("ReasoningEffort = nil, want max on first turn")
+	}
+	if got, want := *openaiReq.ReasoningEffort, "max"; got != want {
+		t.Fatalf("ReasoningEffort = %q, want %q", got, want)
+	}
+	if got, want := string(openaiReq.Thinking), `{"type":"enabled"}`; got != want {
+		t.Fatalf("Thinking = %s, want %s", got, want)
+	}
+}
+
+func TestTransformRequestRequestDisabledThinkingSkipsReasoningEffort(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Thinking:  json.RawMessage(`{"type":"disabled"}`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"solve this carefully"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID:         "deepseek-v4-pro",
+		ReasoningEffort: "max",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort != nil {
+		t.Fatalf("ReasoningEffort = %v, want nil when request disables thinking", *openaiReq.ReasoningEffort)
+	}
+	if got, want := string(openaiReq.Thinking), `{"type":"disabled"}`; got != want {
+		t.Fatalf("Thinking = %s, want %s", got, want)
+	}
+}
+
+func TestTransformRequestThinkingDecisionMatrix(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	userOnly := []types.Message{
+		{Role: "user", Content: json.RawMessage(`"solve this carefully"`)},
+	}
+	plainAssistantHistory := []types.Message{
+		{Role: "user", Content: json.RawMessage(`"hello"`)},
+		{Role: "assistant", Content: json.RawMessage(`"hi"`)},
+		{Role: "user", Content: json.RawMessage(`"explain"`)},
+	}
+	thinkingHistory := []types.Message{
+		{Role: "user", Content: json.RawMessage(`"hello"`)},
+		{
+			Role: "assistant",
+			Content: json.RawMessage(`[
+				{"type":"thinking","thinking":"Let me think..."},
+				{"type":"text","text":"The answer is 42"}
+			]`),
+		},
+		{Role: "user", Content: json.RawMessage(`"explain"`)},
+	}
+
+	tests := []struct {
+		name       string
+		messages   []types.Message
+		thinking   json.RawMessage
+		model      config.ModelConfig
+		wantThink  string
+		wantEffort *string
+	}{
+		{
+			name:      "deepseek request thinking first turn maps budget to effort",
+			messages:  userOnly,
+			thinking:  json.RawMessage(`{"type":"enabled","budget_tokens":4096}`),
+			model:     config.ModelConfig{ModelID: "deepseek-v4-pro"},
+			wantThink: `{"type":"enabled","budget_tokens":4096}`,
+			wantEffort: func() *string {
+				s := "medium"
+				return &s
+			}(),
+		},
+		{
+			name:      "deepseek plain assistant history guard beats request thinking",
+			messages:  plainAssistantHistory,
+			thinking:  json.RawMessage(`{"type":"enabled","budget_tokens":4096}`),
+			model:     config.ModelConfig{ModelID: "deepseek-v4-pro"},
+			wantThink: `{"type":"disabled"}`,
+		},
+		{
+			name:      "deepseek request disabled beats thinking history and effort",
+			messages:  thinkingHistory,
+			thinking:  json.RawMessage(`{"type":"disabled"}`),
+			model:     config.ModelConfig{ModelID: "deepseek-v4-pro", ReasoningEffort: "max"},
+			wantThink: `{"type":"disabled"}`,
+		},
+		{
+			name:      "openai reasoning model maps request budget without thinking field",
+			messages:  userOnly,
+			thinking:  json.RawMessage(`{"type":"enabled","budget_tokens":2048}`),
+			model:     config.ModelConfig{ModelID: "o3-mini"},
+			wantThink: "",
+			wantEffort: func() *string {
+				s := "low"
+				return &s
+			}(),
+		},
+		{
+			name:      "openai reasoning model uses explicit effort without thinking field",
+			messages:  userOnly,
+			model:     config.ModelConfig{ModelID: "o3-mini", ReasoningEffort: "max"},
+			wantThink: "",
+			wantEffort: func() *string {
+				s := "max"
+				return &s
+			}(),
+		},
+		{
+			name:      "standard model ignores request thinking",
+			messages:  userOnly,
+			thinking:  json.RawMessage(`{"type":"enabled","budget_tokens":2048}`),
+			model:     config.ModelConfig{ModelID: "qwen3.6-plus"},
+			wantThink: "",
+		},
+		{
+			name:      "request disabled overrides explicit model thinking",
+			messages:  userOnly,
+			thinking:  json.RawMessage(`{"type":"disabled"}`),
+			model:     config.ModelConfig{ModelID: "deepseek-v4-pro", Thinking: json.RawMessage(`{"type":"enabled"}`), ReasoningEffort: "max"},
+			wantThink: `{"type":"disabled"}`,
+		},
+		{
+			name:      "model disabled thinking skips explicit effort",
+			messages:  userOnly,
+			model:     config.ModelConfig{ModelID: "deepseek-v4-pro", Thinking: json.RawMessage(`{"type":"disabled"}`), ReasoningEffort: "max"},
+			wantThink: `{"type":"disabled"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &types.MessageRequest{
+				Model:     "claude-test",
+				MaxTokens: 256,
+				Thinking:  tt.thinking,
+				Messages:  tt.messages,
+			}
+
+			openaiReq, err := transformer.TransformRequest(req, tt.model)
+			if err != nil {
+				t.Fatalf("TransformRequest() error = %v", err)
+			}
+
+			if got := string(openaiReq.Thinking); got != tt.wantThink {
+				t.Fatalf("Thinking = %s, want %s", got, tt.wantThink)
+			}
+			if tt.wantEffort == nil {
+				if openaiReq.ReasoningEffort != nil {
+					t.Fatalf("ReasoningEffort = %v, want nil", *openaiReq.ReasoningEffort)
+				}
+				return
+			}
+			if openaiReq.ReasoningEffort == nil {
+				t.Fatalf("ReasoningEffort = nil, want %s", *tt.wantEffort)
+			}
+			if got, want := *openaiReq.ReasoningEffort, *tt.wantEffort; got != want {
+				t.Fatalf("ReasoningEffort = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+func TestTransformRequestFirstTurnReasoningEffortDefaultsToHigh(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// First turn with thinking in history (from previous response round-trip).
+	// No explicit ReasoningEffort → defaults to "high".
+	// This test also covers the no-explicit-thinking-config path.
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{"type":"thinking","thinking":"Let me think..."},
+					{"type":"text","text":"The answer is 42"}
+				]`),
+			},
+			{Role: "user", Content: json.RawMessage(`"explain"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-pro",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort == nil {
+		t.Fatal("ReasoningEffort = nil, want default high")
+	}
+	if got, want := *openaiReq.ReasoningEffort, "high"; got != want {
+		t.Fatalf("ReasoningEffort = %q, want %q", got, want)
+	}
+	if got, want := string(openaiReq.Thinking), `{"type":"enabled"}`; got != want {
+		t.Fatalf("Thinking = %s, want %s", got, want)
+	}
+}
+
+func TestTransformRequestSafetyGuardWithReasoningEffortOnly(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// Only ReasoningEffort set (no explicit Thinking). History has an
+	// assistant message without thinking blocks + it's a DeepSeek model
+	// → safety guard fires, thinking is disabled to prevent the 400
+	// "reasoning_content must be passed back" error.
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`"hi"`)},
+			{Role: "user", Content: json.RawMessage(`"explain"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID:         "deepseek-v4-pro",
+		ReasoningEffort: "max",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort != nil {
+		t.Fatalf("ReasoningEffort = %v, want nil (safety guard)", *openaiReq.ReasoningEffort)
+	}
+	if got, want := string(openaiReq.Thinking), `{"type":"disabled"}`; got != want {
+		t.Fatalf("Thinking = %s, want %s (safety guard)", got, want)
+	}
+}
+
+func TestTransformRequestNoThinkingConfigNoHistory(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// No Thinking, no ReasoningEffort, no thinking history → nothing set.
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-pro",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort != nil {
+		t.Fatalf("ReasoningEffort = %v, want nil", *openaiReq.ReasoningEffort)
+	}
+	if openaiReq.Thinking != nil {
+		t.Fatalf("Thinking = %s, want nil", string(openaiReq.Thinking))
+	}
+}
+
+func TestTransformRequestPreservesSystemCacheControl(t *testing.T) {
 	transformer := NewRequestTransformer()
 
 	req := &types.MessageRequest{
@@ -359,6 +651,44 @@ func TestTransformRequestOmitsAnthropicSystemCacheControlForOpenAIModels(t *test
 		MaxTokens: 256,
 		System: json.RawMessage(`[
 			{"type":"text","text":"You are helpful","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if got, want := systemMsg.Role, "system"; got != want {
+		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
+	}
+	if got, want := systemMsg.ContentText(), "You are helpful"; got != want {
+		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
+	}
+	if systemMsg.CacheControl == nil {
+		t.Fatal("Messages[0].CacheControl = nil, want non-nil")
+	}
+	if got, want := systemMsg.CacheControl.Type, "ephemeral"; got != want {
+		t.Fatalf("Messages[0].CacheControl.Type = %q, want %q", got, want)
+	}
+}
+
+func TestTransformRequestSkipsCacheControlForKimiSystem(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"system prompt","cache_control":{"type":"ephemeral"}}
 		]`),
 		Messages: []types.Message{
 			{Role: "user", Content: json.RawMessage(`"hello"`)},
@@ -378,11 +708,70 @@ func TestTransformRequestOmitsAnthropicSystemCacheControlForOpenAIModels(t *test
 	if got, want := systemMsg.Role, "system"; got != want {
 		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
 	}
-	if got, want := systemMsg.Content, "You are helpful"; got != want {
+	if got, want := systemMsg.ContentText(), "system prompt"; got != want {
 		t.Fatalf("Messages[0].Content = %q, want %q", got, want)
 	}
 	if systemMsg.CacheControl != nil {
-		t.Fatalf("Messages[0].CacheControl = %v, want nil", systemMsg.CacheControl)
+		t.Fatalf("Kimi system message CacheControl = %v, want nil (guard should prevent assignment)", systemMsg.CacheControl)
+	}
+}
+
+func TestTransformRequestStripsCacheControlForNonKimiNonDeepSeek(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"system prompt","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	// Use a non-Kimi, non-DeepSeek model (e.g. GLM) — cache_control should be
+	// set by transformMessages then stripped by stripCacheControl().
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "glm-5"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if got, want := systemMsg.Role, "system"; got != want {
+		t.Fatalf("Messages[0].Role = %q, want %q", got, want)
+	}
+	if systemMsg.CacheControl != nil {
+		t.Fatalf("Non-Kimi/non-DeepSeek system message CacheControl = %v, want nil", systemMsg.CacheControl)
+	}
+}
+
+func TestTransformRequestStripsCacheControlForNonDeepSeek(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		System: json.RawMessage(`[
+			{"type":"text","text":"You are helpful","cache_control":{"type":"ephemeral"}}
+		]`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	systemMsg := openaiReq.Messages[0]
+	if systemMsg.CacheControl != nil {
+		t.Fatalf("Messages[0].CacheControl = %v, want nil for non-DeepSeek model", systemMsg.CacheControl)
 	}
 }
 
@@ -439,7 +828,8 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 		},
 	}
 
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "kimi-k2.6"})
+	// DeepSeek models preserve cache_control
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
 	if err != nil {
 		t.Fatalf("TransformRequest() error = %v", err)
 	}
@@ -460,7 +850,7 @@ func TestTransformRequestPlacesToolResultsBeforeUserText(t *testing.T) {
 	if got, want := openaiReq.Messages[2].Role, "user"; got != want {
 		t.Fatalf("Messages[2].Role = %q, want %q", got, want)
 	}
-	if got, want := openaiReq.Messages[2].Content, "now continue"; got != want {
+	if got, want := openaiReq.Messages[2].ContentText(), "now continue"; got != want {
 		t.Fatalf("Messages[2].Content = %q, want %q", got, want)
 	}
 }
@@ -579,6 +969,7 @@ func TestTransformRequestDeepSeekPlaceholderWithThinkingHistory(t *testing.T) {
 	}
 	if toolCallAssistant == nil {
 		t.Fatal("no assistant message with tool_calls found")
+		return
 	}
 	if toolCallAssistant.ReasoningContent == nil {
 		t.Fatal("ReasoningContent = nil, want non-nil placeholder for DeepSeek with thinking history")
@@ -648,6 +1039,7 @@ func TestTransformRequestDeepSeekPlaceholderForTextOnlyAssistant(t *testing.T) {
 	}
 	if textOnlyAssistant == nil {
 		t.Fatal("expected two assistant messages in transformed request, found fewer")
+		return
 	}
 	if len(textOnlyAssistant.ToolCalls) != 0 {
 		t.Fatalf("text-only assistant message unexpectedly had tool_calls: %+v", textOnlyAssistant.ToolCalls)
@@ -694,6 +1086,8 @@ func TestTransformRequestForceDisablesThinkingForDeepSeekWithoutHistory(t *testi
 		Model:     "claude-test",
 		MaxTokens: 256,
 		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`"hi"`)},
 			{Role: "user", Content: json.RawMessage(`"do something"`)},
 		},
 	}
@@ -777,6 +1171,7 @@ func TestTransformRequestExtractsThinkingFromToolUseBlock(t *testing.T) {
 	}
 	if assistantMsg == nil {
 		t.Fatal("no assistant message in transformed request")
+		return
 	}
 	if assistantMsg.ReasoningContent == nil {
 		t.Fatal("ReasoningContent = nil, want non-nil (thinking on tool_use must round-trip)")
@@ -794,100 +1189,6 @@ func TestTransformRequestExtractsThinkingFromToolUseBlock(t *testing.T) {
 	}
 }
 
-func TestTransformRequestPreservesUserImageBlocksAsOpenAIContentParts(t *testing.T) {
-	req := &types.MessageRequest{
-		Model:     "claude-3-5-sonnet",
-		MaxTokens: 1024,
-		Messages: []types.Message{
-			{
-				Role: "user",
-				Content: json.RawMessage(`[
-					{"type":"text","text":"Describe this screen"},
-					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
-				]`),
-			},
-		},
-	}
-
-	transformer := NewRequestTransformer()
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
-		Provider:       "opencode-go",
-		ModelID:        "qwen3.6-plus",
-		SupportsVision: true,
-	})
-	if err != nil {
-		t.Fatalf("TransformRequest: %v", err)
-	}
-
-	if len(openaiReq.Messages) != 1 {
-		t.Fatalf("Messages = %d, want 1", len(openaiReq.Messages))
-	}
-
-	contentJSON, err := json.Marshal(openaiReq.Messages[0].Content)
-	if err != nil {
-		t.Fatalf("marshal content: %v", err)
-	}
-
-	var parts []map[string]any
-	if err := json.Unmarshal(contentJSON, &parts); err != nil {
-		t.Fatalf("content = %s, want OpenAI content parts: %v", contentJSON, err)
-	}
-	if len(parts) != 2 {
-		t.Fatalf("content parts = %d, want 2: %s", len(parts), contentJSON)
-	}
-	if got, want := parts[0]["type"], "text"; got != want {
-		t.Fatalf("first part type = %v, want %s", got, want)
-	}
-	if got, want := parts[0]["text"], "Describe this screen"; got != want {
-		t.Fatalf("first part text = %v, want %s", got, want)
-	}
-
-	imageURL, ok := parts[1]["image_url"].(map[string]any)
-	if !ok {
-		t.Fatalf("second part image_url missing: %s", contentJSON)
-	}
-	if got, want := imageURL["url"], "data:image/png;base64,iVBORw0KGgo="; got != want {
-		t.Fatalf("image url = %v, want %s", got, want)
-	}
-}
-
-func TestTransformRequest_TextOnlyModelOmitsImageURL(t *testing.T) {
-	req := &types.MessageRequest{
-		Model:     "claude-3-5-sonnet",
-		MaxTokens: 1024,
-		Messages: []types.Message{
-			{
-				Role: "user",
-				Content: json.RawMessage(`[
-					{"type":"text","text":"ci sei?"},
-					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
-				]`),
-			},
-		},
-	}
-
-	transformer := NewRequestTransformer()
-	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
-		Provider:       "opencode-go",
-		ModelID:        "deepseek-v4-pro",
-		SupportsVision: false,
-	})
-	if err != nil {
-		t.Fatalf("TransformRequest: %v", err)
-	}
-
-	body, err := json.Marshal(openaiReq)
-	if err != nil {
-		t.Fatalf("marshal request: %v", err)
-	}
-	if strings.Contains(string(body), "image_url") || strings.Contains(string(body), "data:image") {
-		t.Fatalf("text-only request leaked image content: %s", body)
-	}
-	if !strings.Contains(string(body), "[Image omitted for text-only model]") {
-		t.Fatalf("text-only request missing image placeholder: %s", body)
-	}
-}
-
 func mustJSONBytes(t *testing.T, v any) json.RawMessage {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -895,4 +1196,571 @@ func mustJSONBytes(t *testing.T, v any) json.RawMessage {
 		t.Fatalf("marshal: %v", err)
 	}
 	return json.RawMessage(b)
+}
+
+func TestTransformRequestVisionModelPassesImageContent(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// User message with both text and an image
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"What's in this image?"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	// Vision-capable model: images should be passed as image_url content parts
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "kimi-k2.6",
+		Vision:  true,
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	body, err := json.Marshal(openaiReq.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if !bytes.Contains(body, []byte(`"type":"image_url"`)) {
+		t.Fatalf("vision model content missing image_url: %s", body)
+	}
+	if !bytes.Contains(body, []byte(`"data:image/png;base64,iVBORw0KGgo="`)) {
+		t.Fatalf("vision model content missing image data URL: %s", body)
+	}
+	if !bytes.Contains(body, []byte(`"What's in this image?"`)) {
+		t.Fatalf("vision model content missing text: %s", body)
+	}
+}
+
+func TestTransformRequestNonVisionModelStripsImages(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// User message with both text and an image
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"What's in this image?"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	// Non-vision model: images should be replaced with [Image] placeholder
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-pro",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	content := openaiReq.Messages[0].ContentText()
+	if !strings.Contains(content, "[Image]") {
+		t.Fatalf("non-vision model content missing [Image] placeholder: %q", content)
+	}
+	if !strings.Contains(content, "What's in this image?") {
+		t.Fatalf("non-vision model content missing original text: %q", content)
+	}
+	// Verify no image_url was sent
+	body, err := json.Marshal(openaiReq.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(body, []byte(`"type":"image_url"`)) {
+		t.Fatalf("non-vision model should not contain image_url: %s", body)
+	}
+}
+
+func TestTransformRequestNonVisionModelImageOnly(t *testing.T) {
+	transformer := NewRequestTransformer()
+
+	// User message with only an image, no text
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{
+				Role: "user",
+				Content: json.RawMessage(`[
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}
+				]`),
+			},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	content := openaiReq.Messages[0].ContentText()
+	if got, want := content, "[Image]"; got != want {
+		t.Fatalf("ContentText() = %q, want %q", got, want)
+	}
+}
+
+func TestTransformRequestDeepSeekRewritesSystemRoleToUserMessage(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"task tools haven't been used recently"}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have 2 messages: user + rewritten system
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	// The system message should be rewritten to a user message with <system-reminder> tags
+	msg := openaiReq.Messages[1]
+	if msg.Role != "user" {
+		t.Fatalf("rewritten message role = %q, want %q", msg.Role, "user")
+	}
+	wantContent := "<system-reminder>\ntask tools haven't been used recently\n</system-reminder>"
+	if got := msg.ContentText(); got != wantContent {
+		t.Fatalf("rewritten content = %q, want %q", got, wantContent)
+	}
+}
+
+func TestTransformRequestNonDeepSeekIgnoresSystemRoleMessages(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "qwen3.6-plus",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"a system reminder"}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "qwen3.6-plus"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Non-DeepSeek models should pass system messages to transformMessage for normal handling.
+	// transformMessage's default case will produce a message with the original role.
+	lastMsg := openaiReq.Messages[len(openaiReq.Messages)-1]
+	if lastMsg.Role != "system" {
+		t.Fatalf("non-DeepSeek system message role = %q, want %q (should pass through unchanged)", lastMsg.Role, "system")
+	}
+}
+
+func TestTransformRequestDeepSeekDeduplicatesSystemMessage(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		System:    json.RawMessage(`"You are Claude. task tools haven't been used recently"`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			// This system message is a substring of the top-level system prompt — should be skipped
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"task tools haven't been used recently"}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have 2 messages: system (from top-level) + user
+	// The duplicate system message should be dropped
+	if got, want := len(openaiReq.Messages), 2; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	// First message should be the top-level system prompt
+	if openaiReq.Messages[0].Role != "system" {
+		t.Fatalf("first message role = %q, want %q", openaiReq.Messages[0].Role, "system")
+	}
+	// Second message should be the user message
+	if openaiReq.Messages[1].Role != "user" {
+		t.Fatalf("second message role = %q, want %q", openaiReq.Messages[1].Role, "user")
+	}
+	if got, want := openaiReq.Messages[1].ContentText(), "hello"; got != want {
+		t.Fatalf("second message content = %q, want %q", got, want)
+	}
+}
+
+func TestTransformRequestDeepSeekSkipsEmptySystemMessage(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			// Empty text blocks — should be skipped
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":""}]`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have exactly 1 message (just the user message)
+	if got, want := len(openaiReq.Messages), 1; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+}
+
+func TestTransformRequestDeepSeekRewritesMultipleSystemMessages(t *testing.T) {
+	t.Parallel()
+	transformer := NewRequestTransformer()
+
+	req := &types.MessageRequest{
+		Model:     "deepseek-v4-pro",
+		MaxTokens: 256,
+		Messages: []types.Message{
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"first reminder"}]`)},
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"second reminder"}]`)},
+			{Role: "assistant", Content: json.RawMessage(`"hi"`)},
+		},
+	}
+
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{ModelID: "deepseek-v4-pro"})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	// Should have 4 messages: 2 rewritten system + user + assistant
+	if got, want := len(openaiReq.Messages), 4; got != want {
+		t.Fatalf("len(Messages) = %d, want %d", got, want)
+	}
+
+	// Both system messages should be rewritten to user with <system-reminder> tags
+	for i, idx := range []int{0, 2} {
+		msg := openaiReq.Messages[idx]
+		if msg.Role != "user" {
+			t.Fatalf("Messages[%d] role = %q, want %q", idx, msg.Role, "user")
+		}
+		wantSuffix := []string{"first reminder", "second reminder"}[i]
+		got := msg.ContentText()
+		if !strings.Contains(got, wantSuffix) {
+			t.Fatalf("Messages[%d] content = %q, want it to contain %q", idx, got, wantSuffix)
+		}
+		if !strings.HasPrefix(got, "<system-reminder>") {
+			t.Fatalf("Messages[%d] content = %q, want <system-reminder> prefix", idx, got)
+		}
+	}
+
+	// The user and assistant messages should be in their original positions
+	if openaiReq.Messages[1].Role != "user" || openaiReq.Messages[1].ContentText() != "hello" {
+		t.Fatalf("Messages[1] expected user 'hello', got %q %q", openaiReq.Messages[1].Role, openaiReq.Messages[1].ContentText())
+	}
+	if openaiReq.Messages[3].Role != "assistant" || openaiReq.Messages[3].ContentText() != "hi" {
+		t.Fatalf("Messages[3] expected assistant 'hi', got %q %q", openaiReq.Messages[3].Role, openaiReq.Messages[3].ContentText())
+	}
+}
+
+func TestTransformRequestStandardModelIgnoresThinkingAndEffort(t *testing.T) {
+	transformer := NewRequestTransformer()
+	stream := true
+
+	req := &types.MessageRequest{
+		Model:     "claude-test",
+		MaxTokens: 256,
+		Stream:    &stream,
+		Thinking:  json.RawMessage(`{"type":"enabled","budget_tokens":2048}`),
+		Messages: []types.Message{
+			{Role: "user", Content: json.RawMessage(`"hello"`)},
+		},
+	}
+
+	// Standard model like qwen3.6-plus without explicit config
+	openaiReq, err := transformer.TransformRequest(req, config.ModelConfig{
+		ModelID: "qwen3.6-plus",
+	})
+	if err != nil {
+		t.Fatalf("TransformRequest() error = %v", err)
+	}
+
+	if openaiReq.ReasoningEffort != nil {
+		t.Fatalf("expected ReasoningEffort to be nil for standard model, got %v", *openaiReq.ReasoningEffort)
+	}
+	if openaiReq.Thinking != nil {
+		t.Fatalf("expected Thinking to be nil for standard model, got %s", string(openaiReq.Thinking))
+	}
+}
+
+func TestConstrainTemperature(t *testing.T) {
+	tests := []struct {
+		modelID string
+		input   float64
+		want    float64
+	}{
+		// kimi-k2.7-code forces temperature to 1.0
+		{modelID: "kimi-k2.7-code", input: 0.7, want: 1.0},
+		{modelID: "kimi-k2.7-code", input: 0.0, want: 1.0},
+		{modelID: "kimi-k2.7-code", input: 1.5, want: 1.0},
+
+		// Other kimi models are not constrained
+		{modelID: "kimi-k2.6", input: 0.7, want: 0.7},
+		{modelID: "kimi-k2.5", input: 0.5, want: 0.5},
+
+		// Other models are not constrained
+		{modelID: "minimax-m3", input: 0.7, want: 0.7},
+		{modelID: "deepseek-v4-pro", input: 0.5, want: 0.5},
+		{modelID: "glm-5.1", input: 0.3, want: 0.3},
+		{modelID: "qwen3.7-plus", input: 0.9, want: 0.9},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.modelID+"/"+fmt.Sprint(tt.input), func(t *testing.T) {
+			if got := constrainTemperature(tt.modelID, tt.input); got != tt.want {
+				t.Errorf("constrainTemperature(%q, %f) = %f, want %f", tt.modelID, tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestTransformTools_HandlesWhitespaceNullSchema guards against a panic on
+// valid JSON that unmarshals to a nil map (e.g. " null " with decorative
+// whitespace). The fix is to fall back to the default schema when schemaObj
+// is nil after Unmarshal.
+func TestTransformTools_HandlesWhitespaceNullSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "decorative null", InputSchema: json.RawMessage(` null `)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (whitespace-null schema should fall back, not panic)", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("whitespace-null schema should fall back to default object schema: %s", params)
+	}
+	if !strings.Contains(params, `"properties":{}`) {
+		t.Fatalf("whitespace-null schema should fall back to default properties: %s", params)
+	}
+}
+
+func TestTransformTools_SkipsEmptyName(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "", Description: "empty name", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "Bash", Description: "valid tool", InputSchema: json.RawMessage(`{"type":"object"}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (empty-name tool should be skipped)", got, want)
+	}
+	if got, want := result[0].Function.Name, "Bash"; got != want {
+		t.Fatalf("result[0].Name = %q, want %q", got, want)
+	}
+}
+
+func TestTransformTools_SkipsWhitespaceOnlyName(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "   ", Description: "whitespace name", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "Bash", Description: "valid tool", InputSchema: json.RawMessage(`{"type":"object"}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (whitespace-name tool should be skipped)", got, want)
+	}
+}
+
+func TestTransformTools_FillsEmptySchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "no schema", InputSchema: nil},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("parameters missing type=object: %s", params)
+	}
+	if !strings.Contains(params, `"additionalProperties":false`) {
+		t.Fatalf("parameters missing additionalProperties=false: %s", params)
+	}
+}
+
+func TestTransformTools_FillsNullSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "null schema", InputSchema: json.RawMessage(`null`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("null schema should become type=object: %s", params)
+	}
+}
+
+func TestTransformTools_FillsEmptyObjectSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "empty object schema", InputSchema: json.RawMessage(`{}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("empty object schema should get type=object: %s", params)
+	}
+	if !strings.Contains(params, `"additionalProperties":false`) {
+		t.Fatalf("empty object schema should get additionalProperties=false: %s", params)
+	}
+}
+
+func TestTransformTools_FillsMissingType(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Search", Description: "schema without type", InputSchema: json.RawMessage(`{"properties":{"query":{"type":"string"}}}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("schema missing type should get type=object: %s", params)
+	}
+	if !strings.Contains(params, `"query"`) {
+		t.Fatalf("existing properties should be preserved: %s", params)
+	}
+}
+
+func TestTransformTools_FillsMissingProperties(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "NoOp", Description: "schema without properties", InputSchema: json.RawMessage(`{"type":"object"}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"properties"`) {
+		t.Fatalf("schema missing properties should get properties={}: %s", params)
+	}
+}
+
+func TestTransformTools_RecoversFromInvalidJSON(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "malformed JSON", InputSchema: json.RawMessage(`{invalid`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (malformed schema should be replaced, not skipped)", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("malformed schema should be replaced with valid schema: %s", params)
+	}
+}
+
+func TestTransformTools_PreservesValidSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	originalSchema := json.RawMessage(`{"type":"object","properties":{"cmd":{"type":"string","description":"The command"}},"required":["cmd"]}`)
+	tools := []types.Tool{
+		{Name: "Bash", Description: "run a command", InputSchema: originalSchema},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"cmd"`) {
+		t.Fatalf("valid schema properties should be preserved: %s", params)
+	}
+	if !strings.Contains(params, `"required"`) {
+		t.Fatalf("valid schema required should be preserved: %s", params)
+	}
+	if !strings.Contains(params, `"type":"string"`) {
+		t.Fatalf("valid schema nested type should be preserved: %s", params)
+	}
+}
+
+func TestTransformTools_PreservesAdditionalPropertiesWhenSet(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Flexible", Description: "allows extra props", InputSchema: json.RawMessage(`{"type":"object","properties":{"a":{"type":"string"}},"additionalProperties":true}`)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"additionalProperties":true`) {
+		t.Fatalf("existing additionalProperties should be preserved: %s", params)
+	}
 }

@@ -1,180 +1,203 @@
 {
-  "api_key": "${OC_GO_CC_API_KEY}",
+  "api_key": "${ROUTATIC_PROXY_API_KEY}",
   "host": "127.0.0.1",
   "port": 3456,
   "hot_reload": false,
-  "enable_streaming_scenario_routing": true,
+  "enable_streaming_scenario_routing": false,
   "respect_requested_model": false,
+
   "models": {
-    "default": {
-      "provider": "opencode-go",
-      "model_id": "deepseek-v4-pro",
-      "supports_vision": false,
-      "temperature": 0.1,
-      "max_tokens": 8192,
-      "max_output_tokens": 8192,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "reasoning_effort": "max",
-      "thinking": { "type": "enabled" }
-    },
-    "fast": {
-      "provider": "opencode-go",
-      "model_id": "deepseek-v4-flash",
-      "supports_vision": false,
-      "temperature": 0.1,
-      "max_tokens": 4096,
-      "max_output_tokens": 4096,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "reasoning_effort": "max",
-      "thinking": { "type": "enabled" }
-    },
     "background": {
       "provider": "opencode-go",
-      "model_id": "deepseek-v4-flash",
-      "supports_vision": false,
-      "temperature": 0.1,
+      "model_id": "qwen3.5-plus",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "vision": true
+    },
+    "default": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.6",
+      "temperature": 0.7,
       "max_tokens": 4096,
-      "max_output_tokens": 4096,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "reasoning_effort": "max",
-      "thinking": { "type": "enabled" }
-    },
-    "think": {
-      "provider": "opencode-go",
-      "model_id": "deepseek-v4-pro",
-      "supports_vision": false,
-      "temperature": 0.1,
-      "max_tokens": 8192,
-      "max_output_tokens": 8192,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "reasoning_effort": "max",
-      "thinking": { "type": "enabled" }
-    },
-    "complex": {
-      "provider": "opencode-go",
-      "model_id": "deepseek-v4-pro",
-      "supports_vision": false,
-      "temperature": 0.1,
-      "max_tokens": 8192,
-      "max_output_tokens": 8192,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "reasoning_effort": "max",
-      "thinking": { "type": "enabled" }
+      "vision": true
     },
     "long_context": {
       "provider": "opencode-go",
-      "model_id": "deepseek-v4-pro",
-      "supports_vision": false,
-      "temperature": 0.1,
+      "model_id": "minimax-m2.5",
+      "temperature": 0.7,
       "max_tokens": 16384,
-      "max_output_tokens": 8192,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
       "context_threshold": 80000,
-      "reasoning_effort": "max",
-      "thinking": { "type": "enabled" }
+      "vision": true
     },
-    "vision": {
+    "deepseek-v4-pro": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    },
+    "deepseek-v4-flash": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-flash",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    },
+    "think": {
+      "provider": "opencode-go",
+      "model_id": "glm-5",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "complex": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.1",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "vision": true
+    },
+    "fast": {
       "provider": "opencode-go",
       "model_id": "qwen3.6-plus",
-      "supports_vision": true,
-      "temperature": 0.1,
-      "max_tokens": 8192,
-      "max_output_tokens": 8192,
-      "context_window": 1000000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "thinking": { "type": "enabled" }
-    },
-    "vision_complex": {
-      "provider": "opencode-go",
-      "model_id": "kimi-k2.6",
-      "supports_vision": true,
-      "temperature": 0.1,
-      "max_tokens": 8192,
-      "max_output_tokens": 8192,
-      "context_window": 256000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "thinking": { "type": "enabled" }
-    },
-    "vision_long_context": {
-      "provider": "opencode-go",
-      "model_id": "kimi-k2.6",
-      "supports_vision": true,
-      "temperature": 0.1,
-      "max_tokens": 16384,
-      "max_output_tokens": 8192,
-      "context_window": 256000,
-      "context_margin": 8192,
-      "supports_tools": true,
-      "context_threshold": 80000,
-      "thinking": { "type": "enabled" }
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "vision": true
     }
   },
+
   "fallbacks": {
-    "default": [
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
-      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" }
-    ],
-    "fast": [
-      { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
-      { "provider": "opencode-go", "model_id": "minimax-m2.5" },
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
-    ],
     "background": [
-      { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
-      { "provider": "opencode-go", "model_id": "minimax-m2.5" },
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
+      { "provider": "opencode-go", "model_id": "minimax-m2.5" }
     ],
-    "think": [
-      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
-      { "provider": "opencode-go", "model_id": "glm-5.1" }
-    ],
-    "complex": [
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
-      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
+    "default": [
+      { "provider": "opencode-go", "model_id": "mimo-v2-pro" },
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
     ],
     "long_context": [
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
-      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
-      { "provider": "opencode-go", "model_id": "minimax-m2.7" }
+      { "provider": "opencode-go", "model_id": "minimax-m2.7" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
     ],
-    "vision": [
-      { "provider": "opencode-go", "model_id": "kimi-k2.6", "supports_vision": true },
-      { "provider": "opencode-go", "model_id": "qwen3.5-plus", "supports_vision": true },
-      { "provider": "opencode-go", "model_id": "kimi-k2.5", "supports_vision": true }
+    "think": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
+      { "provider": "opencode-go", "model_id": "mimo-v2-pro" }
     ],
-    "vision_complex": [
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus", "supports_vision": true },
-      { "provider": "opencode-go", "model_id": "qwen3.5-plus", "supports_vision": true },
-      { "provider": "opencode-go", "model_id": "kimi-k2.5", "supports_vision": true }
+    "complex": [
+      { "provider": "opencode-go", "model_id": "glm-5" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
     ],
-    "vision_long_context": [
-      { "provider": "opencode-go", "model_id": "kimi-k2.6", "supports_vision": true },
-      { "provider": "opencode-go", "model_id": "qwen3.5-plus", "supports_vision": true },
-      { "provider": "opencode-go", "model_id": "kimi-k2.5", "supports_vision": true }
+    "fast": [
+      { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
+      { "provider": "opencode-go", "model_id": "minimax-m2.5" }
     ]
   },
+
+  "model_overrides": {
+    "claude-sonnet-4.5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4.5",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-sonnet-4.6": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4.6",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-opus-4.7": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4.7",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-haiku-4.5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-haiku-4.5",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "vision": true
+    },
+    "deepseek-v4-flash-free": {
+      "provider": "opencode-zen",
+      "model_id": "deepseek-v4-flash-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "grok-build-0.1": {
+      "provider": "opencode-zen",
+      "model_id": "grok-build-0.1",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "big-pickle": {
+      "provider": "opencode-zen",
+      "model_id": "big-pickle",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "mimo-v2.5-free": {
+      "provider": "opencode-zen",
+      "model_id": "mimo-v2.5-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "nemotron-3-ultra-free": {
+      "provider": "opencode-zen",
+      "model_id": "nemotron-3-ultra-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "north-mini-code-free": {
+      "provider": "opencode-zen",
+      "model_id": "north-mini-code-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "minimax-m3": {
+      "provider": "opencode-go",
+      "model_id": "minimax-m3",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "deepseek-v4-pro": {
+      "provider": "opencode-zen",
+      "model_id": "deepseek-v4-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    }
+  },
+
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
-    "timeout_ms": 300000
+    "timeout_ms": 300000,
+    "streaming_timeout_ms": 600000
   },
+
+  "opencode_zen": {
+    "base_url": "https://opencode.ai/zen/v1/chat/completions",
+    "anthropic_base_url": "https://opencode.ai/zen/v1/messages",
+    "responses_base_url": "https://opencode.ai/zen/v1/responses",
+    "gemini_base_url": "https://opencode.ai/zen/v1/models",
+    "timeout_ms": 300000,
+    "streaming_timeout_ms": 600000
+  },
+
   "logging": {
     "level": "info",
     "requests": true

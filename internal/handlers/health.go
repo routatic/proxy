@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"oc-go-cc/internal/buildinfo"
-	"oc-go-cc/internal/metrics"
-	"oc-go-cc/internal/router"
-	"oc-go-cc/internal/status"
-	"oc-go-cc/internal/token"
-	"oc-go-cc/pkg/types"
+	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/router"
+	"github.com/routatic/proxy/internal/token"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // HealthHandler handles health checks and token counting endpoints.
@@ -17,16 +15,14 @@ type HealthHandler struct {
 	tokenCounter    *token.Counter
 	fallbackHandler *router.FallbackHandler
 	metrics         *metrics.Metrics
-	statusStore     *status.Store
 }
 
 // NewHealthHandler creates a new health handler.
-func NewHealthHandler(tokenCounter *token.Counter, fallbackHandler *router.FallbackHandler, metrics *metrics.Metrics, statusStore *status.Store) *HealthHandler {
+func NewHealthHandler(tokenCounter *token.Counter, fallbackHandler *router.FallbackHandler, metrics *metrics.Metrics) *HealthHandler {
 	return &HealthHandler{
 		tokenCounter:    tokenCounter,
 		fallbackHandler: fallbackHandler,
 		metrics:         metrics,
-		statusStore:     statusStore,
 	}
 }
 
@@ -42,12 +38,8 @@ func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"status":     "ok",
-		"service":    "oc-go-cc",
-		"version":    buildinfo.Version,
-		"build_time": buildinfo.BuildTime,
-		"pid":        buildinfo.PID(),
-		"binary":     buildinfo.BinaryPath(),
+		"status":  "ok",
+		"service": "routatic-proxy",
 		"metrics": map[string]interface{}{
 			"requests_received": snapshot.RequestsReceived,
 			"requests_success":  snapshot.RequestsSuccess,
@@ -67,21 +59,6 @@ func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)
-}
-
-func (h *HealthHandler) HandleStatusline(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.WriteHeader(http.StatusOK)
-	if h.statusStore == nil {
-		_ = json.NewEncoder(w).Encode(status.NewStore(0).Snapshot())
-		return
-	}
-	_ = json.NewEncoder(w).Encode(h.statusStore.Snapshot())
 }
 
 // HandleCountTokens handles POST /v1/messages/count_tokens.
