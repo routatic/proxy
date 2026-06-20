@@ -1484,7 +1484,7 @@ func TestResponseWriter_ConcurrentWrites(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < writesPerGoroutine; j++ {
-				_, _ = rw.Write([]byte(fmt.Sprintf("goroutine-%d-write-%d\n", id, j)))
+				_, _ = fmt.Fprintf(rw, "goroutine-%d-write-%d\n", id, j)
 			}
 		}(i)
 	}
