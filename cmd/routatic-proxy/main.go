@@ -243,11 +243,11 @@ func initCmd() *cobra.Command {
 				return nil
 			}
 
-			if err := os.MkdirAll(configDir, 0755); err != nil {
+			if err := os.MkdirAll(configDir, 0700); err != nil {
 				return fmt.Errorf("failed to create config directory: %w", err)
 			}
 
-			if err := os.WriteFile(configPath, []byte(getDefaultConfig()), 0644); err != nil {
+			if err := os.WriteFile(configPath, []byte(getDefaultConfig()), 0600); err != nil {
 				return fmt.Errorf("failed to write config file: %w", err)
 			}
 
