@@ -591,8 +591,42 @@ func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef 
 	for _, tool := range tools {
 		// InputSchema is already json.RawMessage, use it directly
 		schema := tool.InputSchema
-		if len(schema) == 0 {
-			schema = []byte(`{"type":"object","properties":{}}`)
+		switch {
+		case len(schema) == 0, string(schema) == "null", string(schema) == "{}":
+			schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+		default:
+			var schemaObj map[string]interface{}
+			if err := json.Unmarshal(schema, &schemaObj); err != nil {
+				schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+			} else {
+				// Valid JSON " null " unmarshals to a nil map, which would panic
+				// on the field assignments below.
+				if schemaObj == nil {
+					schema = []byte(`{"type":"object","properties":{},"additionalProperties":false}`)
+				} else {
+					// Validate type field is "object" — otherwise OpenAI rejects the
+					// tool. A schema like {"type":"string"} passes unmarshal but
+					// produces a 400 from the upstream OpenAI-compatible endpoint.
+					schemaType, _ := schemaObj["type"].(string)
+					if schemaType != "object" {
+						schemaObj["type"] = "object"
+					}
+
+					// Validate properties is an object — wrong shapes like arrays
+					// or primitives also produce 400 errors upstream.
+					if props, ok := schemaObj["properties"]; ok {
+						if _, valid := props.(map[string]interface{}); !valid {
+							schemaObj["properties"] = map[string]interface{}{}
+						}
+					} else {
+						schemaObj["properties"] = map[string]interface{}{}
+					}
+
+					if fixed, err := json.Marshal(schemaObj); err == nil {
+						schema = fixed
+					}
+				}
+			}
 		}
 
 		result = append(result, types.ToolDef{

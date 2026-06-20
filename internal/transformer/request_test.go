@@ -1559,3 +1559,27 @@ func TestConstrainTemperature(t *testing.T) {
 		})
 	}
 }
+
+// TestTransformTools_HandlesWhitespaceNullSchema guards against a panic on
+// valid JSON that unmarshals to a nil map (e.g. " null " with decorative
+// whitespace). The fix is to fall back to the default schema when schemaObj
+// is nil after Unmarshal.
+func TestTransformTools_HandlesWhitespaceNullSchema(t *testing.T) {
+	transformer := NewRequestTransformer()
+	tools := []types.Tool{
+		{Name: "Bash", Description: "decorative null", InputSchema: json.RawMessage(` null `)},
+	}
+
+	result := transformer.transformTools(tools)
+	if got, want := len(result), 1; got != want {
+		t.Fatalf("len(result) = %d, want %d (whitespace-null schema should fall back, not panic)", got, want)
+	}
+
+	params := string(result[0].Function.Parameters)
+	if !strings.Contains(params, `"type":"object"`) {
+		t.Fatalf("whitespace-null schema should fall back to default object schema: %s", params)
+	}
+	if !strings.Contains(params, `"properties":{}`) {
+		t.Fatalf("whitespace-null schema should fall back to default properties: %s", params)
+	}
+}
