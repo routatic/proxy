@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/transformer"
@@ -201,7 +202,7 @@ func (p *OpenCodeGoProvider) executeAnthropic(ctx context.Context, req *core.Nor
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -244,7 +245,7 @@ func (p *OpenCodeGoProvider) streamAnthropic(ctx context.Context, req *core.Norm
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp.Body, nil
@@ -276,7 +277,7 @@ func (p *OpenCodeGoProvider) doRequest(ctx context.Context, endpoint, apiKey str
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil

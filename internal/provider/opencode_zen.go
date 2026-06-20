@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/transformer"
@@ -247,7 +248,7 @@ func (p *OpenCodeZenProvider) executeAnthropic(ctx context.Context, req *core.No
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -290,7 +291,7 @@ func (p *OpenCodeZenProvider) streamAnthropic(ctx context.Context, req *core.Nor
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp.Body, nil
@@ -436,7 +437,7 @@ func (p *OpenCodeZenProvider) doRequest(ctx context.Context, endpoint, apiKey st
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil
@@ -463,7 +464,7 @@ func (p *OpenCodeZenProvider) doJSONRequest(ctx context.Context, endpoint, apiKe
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil

@@ -426,7 +426,7 @@ func (h *MessagesHandler) handleStreaming(
 			}
 			h.logger.Warn(action+" streaming failed", "model", model.ModelID, "error", err)
 			if rw.ssePayloadWritten {
-				h.sendStreamError(rw, fmt.Sprintf("all upstream models failed after SSE payload started: %v", err))
+				h.sendStreamError(rw, "all upstream models failed after SSE payload started")
 				h.metrics.RecordFailure()
 				return false // abort — cannot fallback after SSE payload started
 			}
@@ -584,7 +584,6 @@ func (h *MessagesHandler) handleStreaming(
 		streamReader := transformer.NewCtxReadCloser(attemptCtx, streamBody)
 
 		if err := h.streamHandler.ProxyStream(rw, streamReader, model.ModelID, attemptCtx, idleTimeout, cancelAttempt); err != nil {
-			_ = streamBody.Close()
 			if err == transformer.ErrClientDisconnected {
 				if clientCtx.Err() != nil {
 					h.logger.Debug("client disconnected during stream")
@@ -598,7 +597,6 @@ func (h *MessagesHandler) handleStreaming(
 			continue
 		}
 
-		_ = streamBody.Close()
 		recordStreamSuccess(model)
 		return
 	}
@@ -642,11 +640,9 @@ func (h *MessagesHandler) handleResponsesStreaming(
 	streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
 
 	if err := h.streamHandler.ProxyResponsesStream(w, streamReader, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
-		_ = streamBody.Close()
 		return err
 	}
 
-	_ = streamBody.Close()
 	return nil
 }
 
@@ -676,11 +672,9 @@ func (h *MessagesHandler) handleGeminiStreaming(
 	streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
 
 	if err := h.streamHandler.ProxyGeminiStream(w, streamReader, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
-		_ = streamBody.Close()
 		return err
 	}
 
-	_ = streamBody.Close()
 	return nil
 }
 
