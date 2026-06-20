@@ -21,6 +21,18 @@ const (
 	ProviderOpenCodeZen = "opencode-zen"
 )
 
+// APIError represents an HTTP API error returned by an upstream provider.
+// Callers should use errors.As to check for this type and inspect StatusCode
+// for classification (4xx non-retryable, 5xx retryable, etc.).
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API error %d: %s", e.StatusCode, e.Body)
+}
+
 // OpenCodeClient handles communication with OpenCode Go and Zen APIs.
 type OpenCodeClient struct {
 	atomic     *config.AtomicConfig
@@ -290,7 +302,7 @@ func (c *OpenCodeClient) ChatCompletion(
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil
@@ -381,7 +393,7 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil
@@ -417,7 +429,7 @@ func (c *OpenCodeClient) ResponsesCompletion(
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil
@@ -498,7 +510,7 @@ func (c *OpenCodeClient) GeminiCompletion(
 	if resp.StatusCode >= http.StatusBadRequest {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
 	}
 
 	return resp, nil

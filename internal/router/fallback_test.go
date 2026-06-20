@@ -3,51 +3,49 @@ package router
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 )
 
 func TestIsRetryableError_ClientsErrorsNotRetryable(t *testing.T) {
 	tests := []struct {
-		err  string
+		err  error
 		want bool
 	}{
 		// 4xx errors should NOT be retryable
-		{err: "API error 400: bad request", want: false},
-		{err: "API error 401: unauthorized", want: false},
-		{err: "API error 403: forbidden", want: false},
-		{err: "API error 404: not found", want: false},
-		{err: "API error 422: unprocessable", want: false},
-		{err: "API error 429: rate limit", want: false},
+		{err: &client.APIError{StatusCode: 400, Body: "bad request"}, want: false},
+		{err: &client.APIError{StatusCode: 401, Body: "unauthorized"}, want: false},
+		{err: &client.APIError{StatusCode: 403, Body: "forbidden"}, want: false},
+		{err: &client.APIError{StatusCode: 404, Body: "not found"}, want: false},
+		{err: &client.APIError{StatusCode: 422, Body: "unprocessable"}, want: false},
+		{err: &client.APIError{StatusCode: 429, Body: "rate limit"}, want: false},
 
-		// 5xx and network errors should be retryable (existing behavior)
-		{err: "API error 500: internal error", want: true},
-		{err: "API error 502: bad gateway", want: true},
-		{err: "API error 503: service unavailable", want: true},
-		{err: "request timeout", want: true},
-		{err: "connection refused", want: true},
-		{err: "connection reset by peer", want: true},
-		{err: "rate limit exceeded", want: true},
+		// 5xx errors should be retryable
+		{err: &client.APIError{StatusCode: 500, Body: "internal error"}, want: true},
+		{err: &client.APIError{StatusCode: 502, Body: "bad gateway"}, want: true},
+		{err: &client.APIError{StatusCode: 503, Body: "service unavailable"}, want: true},
+
+		// Non-API errors — fall back to string matching
+		{err: errors.New("request timeout"), want: true},
+		{err: errors.New("connection refused"), want: true},
+		{err: errors.New("connection reset by peer"), want: true},
+		{err: errors.New("rate limit exceeded"), want: true},
 
 		// Edge cases
-		{err: "", want: false},
-		{err: "random error", want: false},
-		{err: "API error 400", want: false},
-		{err: "API error 500", want: true},
+		{err: errors.New(""), want: false},
+		{err: errors.New("random error"), want: false},
+		{err: errors.New("API error 400"), want: false},
+		{err: errors.New("API error 500"), want: true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.err, func(t *testing.T) {
-			var err error
-			if tt.err != "" {
-				err = errors.New(tt.err)
-			}
-			if got := IsRetryableError(err); got != tt.want {
-				t.Errorf("IsRetryableError(%q) = %v, want %v", tt.err, got, tt.want)
+		t.Run(tt.err.Error(), func(t *testing.T) {
+			if got := IsRetryableError(tt.err); got != tt.want {
+				t.Errorf("IsRetryableError(%q) = %v, want %v", tt.err.Error(), got, tt.want)
 			}
 		})
 	}
@@ -68,7 +66,7 @@ func TestExecuteWithFallback_NonRetryableDoesNotOpenCircuit(t *testing.T) {
 		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
 			attempts++
 			// Non-retryable 400 error — should NOT open circuit breaker
-			return nil, fmt.Errorf("API error 400: bad request")
+			return nil, &client.APIError{StatusCode: 400, Body: "bad request"}
 		},
 	)
 
@@ -101,7 +99,7 @@ func TestExecuteWithFallback_RetryableOpensCircuit(t *testing.T) {
 		models,
 		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
 			// Retryable 500 error — should open circuit breaker
-			return nil, fmt.Errorf("API error 500: internal error")
+			return nil, &client.APIError{StatusCode: 500, Body: "internal error"}
 		},
 	)
 
@@ -132,10 +130,10 @@ func TestExecuteWithFallback_NonRetryableThenRetryable(t *testing.T) {
 			callCount++
 			if callCount == 1 {
 				// Non-retryable: model-a should NOT get circuit opened
-				return nil, fmt.Errorf("API error 400: bad request")
+				return nil, &client.APIError{StatusCode: 400, Body: "bad request"}
 			}
 			// Retryable: model-b should get circuit opened
-			return nil, fmt.Errorf("API error 500: internal error")
+			return nil, &client.APIError{StatusCode: 500, Body: "internal error"}
 		},
 	)
 

@@ -73,6 +73,7 @@ func (h *StreamHandler) ProxyStream(
 	idleTimeout time.Duration,
 	cancel context.CancelFunc,
 ) error {
+	defer func() { _ = openaiResp.Close() }()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return fmt.Errorf("streaming not supported by response writer")
@@ -690,6 +691,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 	idleTimeout time.Duration,
 	cancel context.CancelFunc,
 ) error {
+	defer func() { _ = responsesResp.Close() }()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return fmt.Errorf("streaming not supported by response writer")
@@ -881,6 +883,7 @@ func (h *StreamHandler) ProxyGeminiStream(
 	idleTimeout time.Duration,
 	cancel context.CancelFunc,
 ) error {
+	defer func() { _ = geminiResp.Close() }()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return fmt.Errorf("streaming not supported by response writer")

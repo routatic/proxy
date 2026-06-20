@@ -466,7 +466,6 @@ func (h *MessagesHandler) handleStreaming(
 					atomic.StoreInt32(&heartbeatPaused, 0)
 				}
 				if errProxy != nil {
-					_ = streamBody.Close()
 					if errProxy == transformer.ErrClientDisconnected {
 						if clientCtx.Err() != nil {
 							h.logger.Debug("client disconnected during stream")
@@ -480,7 +479,6 @@ func (h *MessagesHandler) handleStreaming(
 					continue
 				}
 
-				_ = streamBody.Close()
 				recordStreamSuccess(model)
 				return
 			}
