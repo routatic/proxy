@@ -15,7 +15,7 @@ func TestNewCtxReader_PassesThroughUncanceled(t *testing.T) {
 	in := strings.NewReader("hello world")
 	r := NewCtxReader(ctx, in)
 
-	got, err := io.ReadAll(r.(io.Reader))
+	got, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatalf("ReadAll err = %v, want nil", err)
 	}
