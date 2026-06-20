@@ -6,3 +6,4 @@ configs/config.json
 .tmp/
 oc-go-cc
 routatic-proxy
+.trunk
