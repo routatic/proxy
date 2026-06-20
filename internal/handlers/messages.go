@@ -228,8 +228,9 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		}
 		routerMessages = append(routerMessages, mc)
 		tokenMessages = append(tokenMessages, token.MessageContent{
-			Role:    msg.Role,
-			Content: content,
+			Role:        msg.Role,
+			Content:     content,
+			ExtraTokens: imageTokenEstimate(blocks),
 		})
 	}
 
