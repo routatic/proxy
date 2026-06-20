@@ -71,7 +71,13 @@ func GetPID(pidPath string) (int, error) {
 }
 
 // WritePID writes the given PID to a file.
+// Refuses to write if the target path is a symlink to prevent
+// symlink-traversal attacks (CWE-59).
 func WritePID(pidPath string, pid int) error {
+	// Check if an existing symlink is present before writing.
+	if info, err := os.Lstat(pidPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to write PID file: %s is a symlink", pidPath)
+	}
 	return os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", pid)), 0644)
 }
 
