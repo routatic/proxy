@@ -215,7 +215,7 @@ func TestTransformResponseExtractsTextFromContentParts(t *testing.T) {
 			{
 				Index: 0,
 				Message: types.ChatMessage{
-					Role: "assistant",
+					Role:    "assistant",
 					Content: json.RawMessage(`[{"type":"text","text":"Vedo uno screenshot."}]`),
 				},
 				FinishReason: "stop",
