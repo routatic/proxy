@@ -102,7 +102,7 @@ func (sp *StreamProxy) proxyAnthropicPassthroughStream(
 			if transformer.IsIdleTimeout(rerr) {
 				return transformer.ErrStreamIdle
 			}
-			if errors.Is(rerr, context.Canceled) || clientCtx.Err() == context.Canceled {
+			if errors.Is(rerr, context.Canceled) || errors.Is(rerr, transformer.ErrStreamReadCanceled) || clientCtx.Err() == context.Canceled {
 				if clientCtx.Err() == nil {
 					return transformer.ErrStreamIdle
 				}

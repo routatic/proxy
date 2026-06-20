@@ -455,8 +455,11 @@ func (h *MessagesHandler) handleStreaming(
 				continue
 			}
 
+			// Bind body read to ctx so streaming_timeout_ms aborts mid-stream.
+			streamReader := transformer.NewCtxReadCloser(ctx, streamBody)
+
 			wireFormat := prov.WireFormat(model.ModelID)
-			if err := h.streamProxy.ProxyStream(rw, streamBody, wireFormat, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
+			if err := h.streamProxy.ProxyStream(rw, streamReader, wireFormat, model.ModelID, clientCtx, idleTimeout, cancel); err != nil {
 				_ = streamBody.Close()
 				if err == transformer.ErrClientDisconnected {
 					h.logger.Debug("client disconnected during stream")
