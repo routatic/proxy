@@ -78,9 +78,26 @@ func extractTokenTextFromBlocks(blocks []types.ContentBlock) string {
 func imageTokenEstimate(blocks []types.ContentBlock) int {
 	total := 0
 	for _, block := range blocks {
-		if block.Type == "image" {
-			total += 1500
+		if block.Type == "image" && block.Source != nil {
+			total += imageTokenEstimateFromBase64(len(block.Source.Data))
 		}
 	}
 	return total
+}
+
+// imageTokenEstimateFromBase64 estimates token count from base64 image data length.
+// Base64 encoding inflates size by ~4/3; raw bytes / 75 ≈ Anthropic image tokens.
+func imageTokenEstimateFromBase64(base64Len int) int {
+	if base64Len == 0 {
+		return 1500
+	}
+	rawBytes := base64Len * 3 / 4
+	tokens := rawBytes / 75
+	if tokens < 300 {
+		return 300
+	}
+	if tokens > 4000 {
+		return 4000
+	}
+	return tokens
 }
