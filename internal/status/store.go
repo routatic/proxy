@@ -87,6 +87,15 @@ func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	snap := s.snapshot
+
+	// Deep-copy the SkippedFallbacks slice to avoid sharing the backing
+	// array with a concurrent Update().
+	if len(snap.Models.SkippedFallbacks) > 0 {
+		skipped := make([]router.SkippedModel, len(snap.Models.SkippedFallbacks))
+		copy(skipped, snap.Models.SkippedFallbacks)
+		snap.Models.SkippedFallbacks = skipped
+	}
+
 	if s.updated.IsZero() {
 		snap.SchemaVersion = 1
 		snap.Source = "empty"

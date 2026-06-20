@@ -65,6 +65,9 @@ func FilterByCapacity(chain []config.ModelConfig, inputTokens int, requestedMaxT
 }
 
 func clampOutputTokens(model config.ModelConfig, inputTokens int, requestedMaxTokens int) int {
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
 	limit := model.MaxTokens
 	if requestedMaxTokens > 0 && (limit == 0 || requestedMaxTokens < limit) {
 		limit = requestedMaxTokens
@@ -77,6 +80,9 @@ func clampOutputTokens(model config.ModelConfig, inputTokens int, requestedMaxTo
 	}
 	remaining := model.ContextWindow - inputTokens - model.ContextMargin
 	if limit == 0 || remaining < limit {
+		if remaining < 0 {
+			return 0
+		}
 		limit = remaining
 	}
 	return limit
