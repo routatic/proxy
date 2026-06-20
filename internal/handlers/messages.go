@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -215,8 +217,10 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		blocks := msg.ContentBlocks()
 		content := extractTextFromBlocks(blocks)
 		mc := router.MessageContent{
-			Role:    msg.Role,
-			Content: content,
+			Role:        msg.Role,
+			Content:     content,
+			HasImage:    blocksHaveImage(blocks),
+			ImageHashes: imageHashesFromBlocks(blocks),
 		}
 		routerMessages = append(routerMessages, mc)
 		tokenMessages = append(tokenMessages, token.MessageContent{
@@ -1057,6 +1061,28 @@ func extractTextFromBlocks(blocks []types.ContentBlock) string {
 		}
 	}
 	return content
+}
+
+func blocksHaveImage(blocks []types.ContentBlock) bool {
+	for _, block := range blocks {
+		if block.Type == "image" && block.Source != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func imageHashesFromBlocks(blocks []types.ContentBlock) []string {
+	var hashes []string
+	for _, block := range blocks {
+		if block.Type != "image" || block.Source == nil {
+			continue
+		}
+		source := block.Source.Type + "\x00" + block.Source.MediaType + "\x00" + block.Source.Data + "\x00" + block.Source.URL
+		sum := sha256.Sum256([]byte(source))
+		hashes = append(hashes, hex.EncodeToString(sum[:]))
+	}
+	return hashes
 }
 
 // sendError sends an error response in Anthropic format.
