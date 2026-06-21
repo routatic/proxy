@@ -104,17 +104,17 @@ func TestAWSBedrockProvider_Execute(t *testing.T) {
 		resp := types.ChatCompletionResponse{
 			ID:    "cmpl-test",
 			Model: "moonshotai.kimi-k2.5",
-			Choices: []types.ChatCompletionChoice{
+			Choices: []types.Choice{
 				{
 					Index: 0,
-					Message: types.ChatCompletionMessage{
+					Message: types.ChatMessage{
 						Role:    "assistant",
 						Content: "Hello from Bedrock",
 					},
 					FinishReason: "stop",
 				},
 			},
-			Usage: types.Usage{
+			Usage: types.UsageInfo{
 				PromptTokens:     10,
 				CompletionTokens: 5,
 				TotalTokens:      15,
@@ -127,8 +127,8 @@ func TestAWSBedrockProvider_Execute(t *testing.T) {
 
 	cfg := &config.Config{
 		AWSBedrock: config.AWSBedrockConfig{
-			BaseURL: server.URL,
-			APIKey:  "test-key",
+			BaseURL:   server.URL,
+			APIKey:    "test-key",
 			ProjectID: "proj_123",
 		},
 	}
@@ -212,8 +212,8 @@ func TestAWSBedrockProvider_Execute_NoProjectID(t *testing.T) {
 		resp := types.ChatCompletionResponse{
 			ID:    "cmpl-test",
 			Model: "test-model",
-			Choices: []types.ChatCompletionChoice{
-				{Index: 0, Message: types.ChatCompletionMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop"},
+			Choices: []types.Choice{
+				{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop"},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -244,8 +244,8 @@ func TestAWSBedrockProvider_Execute_NoProjectID(t *testing.T) {
 
 func TestIsBedrock(t *testing.T) {
 	tests := []struct {
-		model  config.ModelConfig
-		want   bool
+		model config.ModelConfig
+		want  bool
 	}{
 		{config.ModelConfig{Provider: "aws-bedrock"}, true},
 		{config.ModelConfig{Provider: "opencode-go"}, false},
@@ -253,7 +253,7 @@ func TestIsBedrock(t *testing.T) {
 		{config.ModelConfig{}, false},
 	}
 	for _, tt := range tests {
-		if got := IsBedrock(tt.model); got != tt.want {
+		if got := client.IsBedrock(tt.model); got != tt.want {
 			t.Errorf("IsBedrock(%v) = %v, want %v", tt.model, got, tt.want)
 		}
 	}
