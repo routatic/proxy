@@ -111,7 +111,7 @@ Anthropic's `system` and `content` fields accept both strings and arrays. The `p
 
 **Why config-driven routing?** Adding a new model requires zero code changes — just add an entry to `config.json`. The scenario detector, fallback chains, and model metadata are all declarative.
 
-**Why not use Anthropic format everywhere?** Most upstream models only support OpenAI Chat Completions format. The proxy handles the translation so Claude Code doesn't need to know which provider it's talking to.
+**Why not use Anthropic format everywhere?** Most upstream models only support OpenAI Chat Completions format. The proxy handles the translation so Claude Code doesn't need to know which provider it's talking to. Bedrock Mantle models also use Chat Completions format via the `aws-bedrock` provider.
 
 **Why per-read idle timeout instead of WriteTimeout?** Claude Code's tool execution can pause streams for minutes. A server-level timeout would kill active streams. The per-byte watchdog only triggers when the upstream is truly stuck.
 

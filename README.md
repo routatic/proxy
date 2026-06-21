@@ -1,19 +1,19 @@
 # routatic-proxy (prev OC-GO-CC)
 
-A Go CLI proxy that lets you use your [OpenCode Go](https://opencode.ai/docs/go/) or [OpenCode Zen](https://opencode.ai/docs/zen/) subscription with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+A Go CLI proxy that lets you route [Claude Code](https://docs.anthropic.com/en/docs/claude-code) requests through multiple upstream providers — [OpenCode Go](https://opencode.ai/docs/go/), [OpenCode Zen](https://opencode.ai/docs/zen/), and [AWS Bedrock](https://aws.amazon.com/bedrock/) — with automatic model selection and format transformation.
 
-`routatic-proxy` sits between Claude Code and OpenCode, intercepting Anthropic API requests, transforming them to the appropriate format (OpenAI, Responses, or Gemini), and forwarding them to OpenCode's endpoints. Claude Code thinks it's talking to Anthropic — but your requests go to affordable open models instead.
+`routatic-proxy` sits between Claude Code and your chosen providers, intercepting Anthropic API requests, transforming them to the appropriate format (OpenAI, Anthropic, Responses, or Gemini), and forwarding them upstream. Claude Code thinks it's talking to Anthropic — but your requests go to the models and providers you configure.
 
 `oc-go-cc` remains available as a compatibility alias, and existing `OC_GO_CC_*` environment variables and `~/.config/oc-go-cc/config.json` files are still recognized.
 
 ## Why?
 
-OpenCode Go gives you access to powerful open coding models for **$5/month** (then $10/month). OpenCode Zen provides curated, tested models with pay-as-you-go pricing. This proxy makes both work seamlessly with Claude Code's interface — no patches, no forks, just set two environment variables and go.
+OpenCode Go gives you access to powerful open coding models for **$5/month** (then $10/month). OpenCode Zen provides curated, tested models with pay-as-you-go pricing. AWS Bedrock lets you run models on your own AWS infrastructure. This proxy makes all three work seamlessly with Claude Code's interface — no patches, no forks, just set two environment variables and go.
 
 ## Features
 
-- **Transparent Proxy** — Claude Code sends Anthropic-format requests, proxy transforms to OpenAI/Responses/Gemini format and back
-- **Dual Provider Support** — Route models through OpenCode Go or OpenCode Zen based on your needs
+- **Multi-Provider** — Route through OpenCode Go, OpenCode Zen, or AWS Bedrock from a single config
+- **Transparent Proxy** — Claude Code sends Anthropic-format requests, proxy transforms to provider-native format and back
 - **Model Routing** — Automatically routes to different models based on context (default, thinking, long context, background)
 - **Streaming Scenario Routing** — Configurable routing for streaming requests; enables proper scenario selection for Claude Code multi-agent and review workflows (see [CONFIGURATION.md](CONFIGURATION.md#streaming-scenario-routing))
 - **Fallback Chains** — If a model fails, automatically tries the next one in your configured chain
@@ -100,7 +100,7 @@ routatic-proxy stop               Stop the running proxy server
 routatic-proxy status             Check if the proxy is running
 routatic-proxy init               Create default configuration file
 routatic-proxy validate           Validate configuration file
-routatic-proxy models             List all available models (Go + Zen)
+routatic-proxy models             List all available models (Go, Zen, Bedrock)
 routatic-proxy autostart enable   Enable auto-start on login
 routatic-proxy autostart disable  Disable auto-start on login
 routatic-proxy autostart status   Check autostart status

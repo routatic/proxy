@@ -131,7 +131,7 @@ configs/
 - **Real-time stream proxying**: SSE events are transformed in-flight, not buffered. This means Claude Code sees responses as they arrive from upstream.
 - **Circuit breaker per model**: Each model gets its own circuit breaker. After 3 consecutive failures, the model is skipped for 30 seconds, then tested again.
 - **Environment variable interpolation**: Config values like `"${ROUTATIC_PROXY_API_KEY}"` are resolved at load time, so you never need to put secrets in the config file.
-- **Provider-aware routing**: The `provider` field in model config determines which upstream service to use (Go or Zen). Zen models are further classified by endpoint type (Chat Completions, Anthropic, Responses, Gemini).
+- **Provider-aware routing**: The `provider` field in model config determines which upstream service to use (Go, Zen, or Bedrock). Zen models are further classified by endpoint type (Chat Completions, Anthropic, Responses, Gemini). Bedrock models use OpenAI Chat Completions format.
 
 ## API Endpoints
 
