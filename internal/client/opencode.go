@@ -19,6 +19,7 @@ import (
 const (
 	ProviderOpenCodeGo  = "opencode-go"
 	ProviderOpenCodeZen = "opencode-zen"
+	ProviderAWSBedrock  = "aws-bedrock"
 )
 
 // APIError represents an HTTP API error returned by an upstream provider.
@@ -75,8 +76,8 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 // for a model. The stream lives as long as data keeps flowing; only an idle
 // period longer than this value is treated as a stuck connection and aborted.
 // Go provider models use OpenCodeGo.StreamTimeoutMs; Zen models use
-// OpenCodeZen.StreamTimeoutMs. Falls back to 5 minutes if the config is
-// unavailable or the value is zero.
+// OpenCodeZen.StreamTimeoutMs; Bedrock models use AWSBedrock.StreamTimeoutMs.
+// Falls back to 5 minutes if the config is unavailable or the value is zero.
 func (c *OpenCodeClient) StreamIdleTimeout(modelConfig config.ModelConfig) time.Duration {
 	const fallback = 5 * time.Minute
 	if c == nil || c.atomic == nil {
@@ -84,13 +85,22 @@ func (c *OpenCodeClient) StreamIdleTimeout(modelConfig config.ModelConfig) time.
 	}
 	cfg := c.atomic.Get()
 	var ms int
-	if IsZen(modelConfig) {
+	switch {
+	case IsBedrock(modelConfig):
+		ms = cfg.AWSBedrock.StreamTimeoutMs
+		if ms <= 0 {
+			ms = cfg.AWSBedrock.TimeoutMs
+		}
+	case IsZen(modelConfig):
 		ms = cfg.OpenCodeZen.StreamTimeoutMs
-	} else {
+		if ms <= 0 {
+			ms = cfg.OpenCodeZen.TimeoutMs
+		}
+	default:
 		ms = cfg.OpenCodeGo.StreamTimeoutMs
-	}
-	if ms <= 0 {
-		ms = cfg.OpenCodeGo.TimeoutMs
+		if ms <= 0 {
+			ms = cfg.OpenCodeGo.TimeoutMs
+		}
 	}
 	if ms <= 0 {
 		return fallback
@@ -105,9 +115,12 @@ func (c *OpenCodeClient) RequestTimeout(model config.ModelConfig) time.Duration 
 	}
 	cfg := c.atomic.Get()
 	var timeoutMs int
-	if IsZen(model) {
+	switch {
+	case IsBedrock(model):
+		timeoutMs = cfg.AWSBedrock.TimeoutMs
+	case IsZen(model):
 		timeoutMs = cfg.OpenCodeZen.TimeoutMs
-	} else {
+	default:
 		timeoutMs = cfg.OpenCodeGo.TimeoutMs
 	}
 	if timeoutMs > 0 {
@@ -123,12 +136,18 @@ func (c *OpenCodeClient) StreamingTimeout(model config.ModelConfig) time.Duratio
 	}
 	cfg := c.atomic.Get()
 	var timeoutMs int
-	if IsZen(model) {
+	switch {
+	case IsBedrock(model):
+		timeoutMs = cfg.AWSBedrock.StreamingTimeoutMs
+		if timeoutMs <= 0 {
+			timeoutMs = cfg.AWSBedrock.TimeoutMs
+		}
+	case IsZen(model):
 		timeoutMs = cfg.OpenCodeZen.StreamingTimeoutMs
 		if timeoutMs <= 0 {
 			timeoutMs = cfg.OpenCodeZen.TimeoutMs
 		}
-	} else {
+	default:
 		timeoutMs = cfg.OpenCodeGo.StreamingTimeoutMs
 		if timeoutMs <= 0 {
 			timeoutMs = cfg.OpenCodeGo.TimeoutMs
@@ -182,6 +201,11 @@ func Provider(model config.ModelConfig) string {
 // IsZen returns true if the model uses the OpenCode Zen provider.
 func IsZen(model config.ModelConfig) bool {
 	return Provider(model) == ProviderOpenCodeZen
+}
+
+// IsBedrock returns true if the model uses the AWS Bedrock provider.
+func IsBedrock(model config.ModelConfig) bool {
+	return Provider(model) == ProviderAWSBedrock
 }
 
 // EndpointType determines which Zen endpoint format to use.

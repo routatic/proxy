@@ -15,6 +15,7 @@ type Config struct {
 	Models                         map[string]ModelConfig   `json:"models"`
 	Fallbacks                      map[string][]ModelConfig `json:"fallbacks"`
 	ModelOverrides                 map[string]ModelConfig   `json:"model_overrides"`
+	AWSBedrock                     AWSBedrockConfig          `json:"aws_bedrock"`
 	OpenCodeGo                     OpenCodeGoConfig         `json:"opencode_go"`
 	OpenCodeZen                    OpenCodeZenConfig        `json:"opencode_zen"`
 	Logging                        LoggingConfig            `json:"logging"`
@@ -36,6 +37,16 @@ type ModelConfig struct {
 	Thinking               json.RawMessage `json:"thinking,omitempty"`
 	Vision                 bool            `json:"vision"`
 	AnthropicToolsDisabled bool            `json:"anthropic_tools_disabled"`
+}
+
+// AWSBedrockConfig holds the upstream AWS Bedrock Mantle API settings.
+type AWSBedrockConfig struct {
+	BaseURL            string `json:"base_url"`
+	APIKey             string `json:"api_key,omitempty"`
+	ProjectID          string `json:"project_id,omitempty"`
+	TimeoutMs          int    `json:"timeout_ms"`
+	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
+	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
 }
 
 // OpenCodeGoConfig holds the upstream OpenCode Go API settings.

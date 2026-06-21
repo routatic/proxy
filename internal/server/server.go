@@ -58,6 +58,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	providerRegistry := core.NewProviderRegistry()
 	_ = providerRegistry.Register(provider.NewOpenCodeGoProvider(atomic))
 	_ = providerRegistry.Register(provider.NewOpenCodeZenProvider(atomic))
+	_ = providerRegistry.Register(provider.NewAWSBedrockProvider(atomic))
 
 	// Create status store for the statusline endpoint.
 	statusStore := status.NewStore(0)
