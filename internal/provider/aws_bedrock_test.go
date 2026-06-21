@@ -109,7 +109,7 @@ func TestAWSBedrockProvider_Execute(t *testing.T) {
 					Index: 0,
 					Message: types.ChatMessage{
 						Role:    "assistant",
-						Content: "Hello from Bedrock",
+						Content: json.RawMessage(`"Hello from Bedrock"`),
 					},
 					FinishReason: "stop",
 				},
@@ -121,7 +121,7 @@ func TestAWSBedrockProvider_Execute(t *testing.T) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -169,8 +169,8 @@ func TestAWSBedrockProvider_Stream(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n"))
-		w.Write([]byte("data: [DONE]\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
@@ -195,7 +195,7 @@ func TestAWSBedrockProvider_Stream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	buf := make([]byte, 1024)
 	n, _ := body.Read(buf)
@@ -213,11 +213,11 @@ func TestAWSBedrockProvider_Execute_NoProjectID(t *testing.T) {
 			ID:    "cmpl-test",
 			Model: "test-model",
 			Choices: []types.Choice{
-				{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop"},
+				{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: json.RawMessage(`"ok"`)}, FinishReason: "stop"},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
