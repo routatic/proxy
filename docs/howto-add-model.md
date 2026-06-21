@@ -15,6 +15,7 @@ Determine which upstream provider the model uses and which endpoint format it ac
 | `opencode-zen` | `/v1/responses` | OpenAI Responses (GPT models) |
 | `opencode-zen` | `/v1/models/{id}` | Gemini |
 | `aws-bedrock` | `/v1/chat/completions` | OpenAI Chat Completions (Bedrock Mantle) |
+| `aws-bedrock` | `/v1/messages` | Anthropic Messages (Bedrock Mantle, requires `wire_format: "anthropic"`) |
 
 ## Step 2: Add Model Metadata
 

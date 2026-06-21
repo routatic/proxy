@@ -38,7 +38,8 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 ### AWS Bedrock (`aws-bedrock`)
 
 - Models hosted on AWS Bedrock Mantle
-- OpenAI Chat Completions endpoint format
+- Supports OpenAI Chat Completions (default) and Anthropic Messages formats
+- Set `wire_format: "anthropic"` for Claude and other Anthropic-native models
 - Best for: Models deployed on your own AWS infrastructure
 
 ## Important: API Endpoints

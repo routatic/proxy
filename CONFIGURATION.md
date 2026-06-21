@@ -138,7 +138,9 @@ routatic-proxy supports three providers for upstream API calls:
 ### AWS Bedrock (`aws-bedrock`)
 
 - Models hosted on AWS Bedrock Mantle
-- Uses OpenAI Chat Completions endpoint format
+- Supports two wire formats:
+  - **OpenAI Chat Completions** (`/v1/chat/completions`) — default, works with most models
+  - **Anthropic Messages** (`/v1/messages`) — for Claude and other Anthropic-native models
 - Supports the `OpenAI-Project` header for project-based routing
 - Bedrock-specific API key falls back to the global key pool if unset
 - Set `"provider": "aws-bedrock"` in your model config to use Bedrock
@@ -147,14 +149,18 @@ routatic-proxy supports three providers for upstream API calls:
 {
   "aws_bedrock": {
     "base_url": "https://bedrock-mantle.us-east-1.api.aws/v1/chat/completions",
+    "anthropic_base_url": "https://bedrock-mantle.us-east-1.api.aws/v1/messages",
     "api_key": "${BEDROCK_API_KEY}",
     "project_id": "proj_xxx",
+    "wire_format": "openai",
     "timeout_ms": 300000,
     "stream_timeout_ms": 60000,
     "streaming_timeout_ms": 600000
   }
 }
 ```
+
+Set `wire_format: "anthropic"` for models that need raw Anthropic Messages format (e.g., Claude on Bedrock). Requires `anthropic_base_url` to be configured.
 
 ## Environment Variables
 
