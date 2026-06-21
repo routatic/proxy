@@ -184,8 +184,10 @@
 
   "aws_bedrock": {
     "base_url": "https://bedrock-mantle.us-east-1.api.aws/v1/chat/completions",
+    "anthropic_base_url": "",
     "api_key": "",
     "project_id": "",
+    "wire_format": "openai",
     "timeout_ms": 300000,
     "stream_timeout_ms": 60000,
     "streaming_timeout_ms": 600000

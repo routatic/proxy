@@ -21,9 +21,24 @@ func TestAWSBedrockProvider_Name(t *testing.T) {
 }
 
 func TestAWSBedrockProvider_WireFormat(t *testing.T) {
-	p := NewAWSBedrockProvider(nil)
+	cfg := &config.Config{}
+	atomic := config.NewAtomicConfig(cfg, "")
+	p := NewAWSBedrockProvider(atomic)
 	if got := p.WireFormat("any-model"); got != core.WireFormatOpenAIChat {
 		t.Errorf("WireFormat() = %v, want WireFormatOpenAIChat", got)
+	}
+}
+
+func TestAWSBedrockProvider_WireFormat_Anthropic(t *testing.T) {
+	cfg := &config.Config{
+		AWSBedrock: config.AWSBedrockConfig{
+			WireFormat: "anthropic",
+		},
+	}
+	atomic := config.NewAtomicConfig(cfg, "")
+	p := NewAWSBedrockProvider(atomic)
+	if got := p.WireFormat("any-model"); got != core.WireFormatAnthropic {
+		t.Errorf("WireFormat() = %v, want WireFormatAnthropic", got)
 	}
 }
 

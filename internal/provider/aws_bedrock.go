@@ -17,7 +17,7 @@ import (
 )
 
 // AWSBedrockProvider implements core.Provider for the AWS Bedrock Mantle backend.
-// Bedrock Mantle exposes an OpenAI-compatible /v1/chat/completions endpoint.
+// Bedrock Mantle exposes OpenAI-compatible and optionally Anthropic-compatible endpoints.
 type AWSBedrockProvider struct {
 	baseProvider
 }
@@ -48,9 +48,14 @@ func (p *AWSBedrockProvider) ModelCapabilities(modelID string) (core.ProviderCap
 	return p.Capabilities(), true
 }
 
-// WireFormat returns the wire format for Bedrock models. Bedrock Mantle uses
-// OpenAI Chat Completions format exclusively.
+// WireFormat returns the wire format for Bedrock models. Defaults to OpenAI
+// Chat Completions. Set wire_format: "anthropic" in aws_bedrock config for
+// models that need raw Anthropic Messages format.
 func (p *AWSBedrockProvider) WireFormat(modelID string) core.WireFormat {
+	cfg := p.atomic.Get()
+	if cfg != nil && cfg.AWSBedrock.WireFormat == "anthropic" {
+		return core.WireFormatAnthropic
+	}
 	return core.WireFormatOpenAIChat
 }
 
@@ -75,6 +80,27 @@ func (p *AWSBedrockProvider) StreamIdleTimeout(model config.ModelConfig) time.Du
 
 // Execute sends a non-streaming request and returns the response.
 func (p *AWSBedrockProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
+	switch p.WireFormat(model.ModelID) {
+	case core.WireFormatAnthropic:
+		return p.executeAnthropic(ctx, req, model)
+	default:
+		return p.executeOpenAI(ctx, req, model)
+	}
+}
+
+// Stream sends a streaming request and returns an io.ReadCloser for SSE events.
+func (p *AWSBedrockProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
+	switch p.WireFormat(model.ModelID) {
+	case core.WireFormatAnthropic:
+		return p.streamAnthropic(ctx, req, model)
+	default:
+		return p.streamOpenAI(ctx, req, model)
+	}
+}
+
+// ── OpenAI Chat Completions ────────────────────────────────────────────
+
+func (p *AWSBedrockProvider) executeOpenAI(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
 	cfg := p.atomic.Get()
 	endpoint := cfg.AWSBedrock.BaseURL
 	apiKey := p.bedrockAPIKey(cfg)
@@ -114,8 +140,7 @@ func (p *AWSBedrockProvider) Execute(ctx context.Context, req *core.NormalizedRe
 	}, nil
 }
 
-// Stream sends a streaming request and returns an io.ReadCloser for SSE events.
-func (p *AWSBedrockProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
+func (p *AWSBedrockProvider) streamOpenAI(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
 	cfg := p.atomic.Get()
 	endpoint := cfg.AWSBedrock.BaseURL
 	apiKey := p.bedrockAPIKey(cfg)
@@ -131,6 +156,97 @@ func (p *AWSBedrockProvider) Stream(ctx context.Context, req *core.NormalizedReq
 
 	return resp.Body, nil
 }
+
+// ── Anthropic Messages ────────────────────────────────────────────────
+
+func (p *AWSBedrockProvider) executeAnthropic(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
+	cfg := p.atomic.Get()
+	endpoint := cfg.AWSBedrock.AnthropicBaseURL
+	if endpoint == "" {
+		return nil, fmt.Errorf("anthropic_base_url not configured for aws-bedrock provider")
+	}
+	apiKey := p.bedrockAPIKey(cfg)
+
+	anthropicReq := transformer.NormalizedToAnthropic(req, model)
+	rawBody, err := json.Marshal(anthropicReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal anthropic request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(rawBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if cfg.AWSBedrock.ProjectID != "" {
+		httpReq.Header.Set("OpenAI-Project", cfg.AWSBedrock.ProjectID)
+	}
+
+	start := time.Now()
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return &core.ExecuteResult{
+		Body:    body,
+		ModelID: model.ModelID,
+		Latency: time.Since(start),
+	}, nil
+}
+
+func (p *AWSBedrockProvider) streamAnthropic(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
+	cfg := p.atomic.Get()
+	endpoint := cfg.AWSBedrock.AnthropicBaseURL
+	if endpoint == "" {
+		return nil, fmt.Errorf("anthropic_base_url not configured for aws-bedrock provider")
+	}
+	apiKey := p.bedrockAPIKey(cfg)
+
+	anthropicReq := transformer.NormalizedToAnthropic(req, model)
+	rawBody, err := json.Marshal(anthropicReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal anthropic request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(rawBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if cfg.AWSBedrock.ProjectID != "" {
+		httpReq.Header.Set("OpenAI-Project", cfg.AWSBedrock.ProjectID)
+	}
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	resp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return nil, &client.APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	}
+
+	return resp.Body, nil
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
 
 // bedrockAPIKey returns the Bedrock-specific API key if configured, otherwise
 // falls back to the global API key pool.

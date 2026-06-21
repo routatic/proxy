@@ -42,8 +42,10 @@ type ModelConfig struct {
 // AWSBedrockConfig holds the upstream AWS Bedrock Mantle API settings.
 type AWSBedrockConfig struct {
 	BaseURL            string `json:"base_url"`
+	AnthropicBaseURL   string `json:"anthropic_base_url,omitempty"`
 	APIKey             string `json:"api_key,omitempty"`
 	ProjectID          string `json:"project_id,omitempty"`
+	WireFormat         string `json:"wire_format,omitempty"` // "openai" (default), "anthropic"
 	TimeoutMs          int    `json:"timeout_ms"`
 	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
 	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
