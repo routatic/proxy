@@ -1,10 +1,40 @@
 // Package config handles application configuration loading and validation.
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
+
+// DBConfig holds database configuration for config provider.
+type DBConfig struct {
+	Driver string `json:"driver" yaml:"driver"`
+	DSN    string `json:"dsn" yaml:"dsn"`
+}
+
+// AuthProviderConfig holds authentication provider configuration.
+type AuthProviderConfig struct {
+	Provider         string        `json:"provider" yaml:"provider"`
+	ConfigPath       string        `json:"config_path" yaml:"config_path"`
+	IntrospectionURL string        `json:"introspection_url" yaml:"introspection_url"`
+	CacheTTL         time.Duration `json:"cache_ttl" yaml:"cache_ttl"`
+}
+
+// ConfigProviderConfig holds configuration provider configuration.
+type ConfigProviderConfig struct {
+	Provider    string        `json:"provider" yaml:"provider"`
+	Path        string        `json:"path" yaml:"path"`
+	DB          DBConfig      `json:"db" yaml:"db"`
+	SnapshotURL string        `json:"snapshot_url" yaml:"snapshot_url"`
+	CacheTTL    time.Duration `json:"cache_ttl" yaml:"cache_ttl"`
+}
 
 // Config holds the complete application configuration.
 type Config struct {
+	Mode       string               `json:"mode" yaml:"mode"` // "standalone" or "managed"
+	Auth       AuthProviderConfig   `json:"auth" yaml:"auth"`
+	ConfigProv ConfigProviderConfig `json:"config" yaml:"config"`
+
 	APIKey                         string                   `json:"api_key"`
 	APIKeys                        []string                 `json:"api_keys"`
 	Host                           string                   `json:"host"`

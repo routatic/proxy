@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/routatic/proxy/internal/auth"
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
@@ -42,6 +43,13 @@ type MessagesHandler struct {
 	requestDedup        *middleware.RequestDeduplicator
 	requestIDGen        *middleware.RequestIDGenerator
 	metrics             *metrics.Metrics
+	// TODO: RuntimeConfig integration with router - router needs updates to accept RuntimeConfig
+	// runtimeConfigHolder stores the effective config during request processing
+	runtimeConfigHolder *config.RuntimeConfig
+	// AuthProvider authenticates incoming requests
+	authProvider auth.AuthProvider
+	// ConfigProvider provides runtime configuration based on authentication
+	configProvider config.ConfigProvider
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -118,6 +126,123 @@ func NewMessagesHandler(
 	tokenCounter *token.Counter,
 	metrics *metrics.Metrics,
 ) *MessagesHandler {
+	return NewMessagesHandlerWithProviders(
+		openCodeClient,
+		providerRegistry,
+		modelRouter,
+		fallbackHandler,
+		tokenCounter,
+		metrics,
+		auth.NewStaticAuthProvider(authNoOpContext()),
+		config.NewStaticConfigProvider(createDefaultRuntimeConfig()),
+	)
+}
+
+// createDefaultRuntimeConfig creates a default RuntimeConfig for backward compatibility.
+// This is used when no explicit config provider is given.
+func createDefaultRuntimeConfig() *config.RuntimeConfig {
+	return &config.RuntimeConfig{
+		WorkspaceID: "default",
+		Version:     "1.0.0",
+		Supermodels: map[string]config.Supermodel{
+			"default": {
+				Name: "default",
+				Default: config.ModelConfig{
+					Provider: "opencode-go",
+					ModelID:  "kimi-k2.6",
+				},
+			},
+		},
+		Providers: map[string]config.ProviderConfig{
+			"opencode-go": {
+				Name: "opencode-go",
+				Type: "opencode-go",
+			},
+		},
+		RoutingPolicies: []config.RoutingPolicy{
+			{
+				Name:     "default",
+				Priority: 0,
+				Conditions: config.RoutingConditions{
+					Streaming: nil,
+				},
+			},
+		},
+		CapabilityIndex: map[string]config.ModelCapabilities{
+			"kimi-k2.6": {
+				ModelID:           "kimi-k2.6",
+				Provider:          "opencode-go",
+				SupportsTools:     true,
+				SupportsStreaming: true,
+			},
+		},
+		LoggingPolicy: config.LoggingPolicy{
+			Level:            "info",
+			LogRequests:      false,
+			LogResponses:     false,
+			LogLatency:       true,
+			LogRateLimits:    false,
+			PIIMasking:       true,
+			SensitiveHeaders: []string{"Authorization", "X-Api-Key"},
+		},
+		Enforcement: config.EnforcementPolicy{
+			RequireAuth:           false,
+			EnforceModelAllowlist: false,
+			EnforceBudgets:        false,
+			EnforceRateLimits:     false,
+		},
+	}
+}
+
+// authNoOpContext returns a permissive AuthContext for backward compatibility.
+func authNoOpContext() *auth.AuthContext {
+	return &auth.AuthContext{
+		Identity: auth.SubjectIdentity{
+			Type: auth.SubjectTypeService,
+			ID:   "legacy",
+			Name: "Legacy Handler",
+		},
+		WorkspaceID:      "default",
+		KeyID:            "",
+		KeyStatus:        auth.KeyStatusActive,
+		AllowedModels:    nil, // Allow all models
+		AllowedProviders: nil, // Allow all providers
+		Roles:            []string{"admin"},
+		RateLimits: auth.RateLimitPolicy{
+			RequestsPerSecond: 0, // No limit
+			RequestsPerMinute: 0,
+			RequestsPerHour:   0,
+		},
+		Billing: auth.BillingPolicy{
+			Plan:             "unlimited",
+			CreditsRemaining: -1, // Unlimited
+			CreditsConsumed:  0,
+		},
+		ConfigRef: auth.ConfigRef{},
+		Metadata:  nil,
+	}
+}
+
+// NewMessagesHandlerWithProviders creates a new messages handler with auth and config providers.
+// This is the recommended constructor for new deployments.
+func NewMessagesHandlerWithProviders(
+	openCodeClient *client.OpenCodeClient,
+	providerRegistry *core.ProviderRegistry,
+	modelRouter *router.ModelRouter,
+	fallbackHandler *router.FallbackHandler,
+	tokenCounter *token.Counter,
+	metrics *metrics.Metrics,
+	authProvider auth.AuthProvider,
+	configProvider config.ConfigProvider,
+) *MessagesHandler {
+	// Handle nil providers with defaults for backward compatibility during migration
+	if authProvider == nil {
+		authProvider = auth.NewStaticAuthProvider(authNoOpContext())
+	}
+	if configProvider == nil {
+		configProvider = config.NewStaticConfigProvider(nil)
+	}
+
 	return &MessagesHandler{
 		client:              openCodeClient,
 		providerRegistry:    providerRegistry,
@@ -133,6 +258,8 @@ func NewMessagesHandler(
 		requestDedup:        nil,
 		requestIDGen:        middleware.NewRequestIDGenerator(),
 		metrics:             metrics,
+		authProvider:        authProvider,
+		configProvider:      configProvider,
 	}
 }
 
@@ -142,6 +269,8 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	ctx := r.Context()
 
 	// Generate or get request ID for correlation.
 	// Cap externally-provided IDs at 256 bytes to prevent header abuse.
@@ -154,7 +283,15 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("X-Request-ID", requestID)
 
-	// Rate limiting
+	// Step 1: Authenticate the request
+	authCtx, err := h.authenticateRequest(ctx, w, r, requestID)
+	if err != nil {
+		// authenticateRequest already sends appropriate error response
+		return
+	}
+
+	// Step 2: Check Rate Limits (if token-based limiting enabled)
+	// TODO: Integrate with authCtx.RateLimits for per-subject rate limiting
 	clientIP := middleware.GetClientIP(r)
 	if !h.rateLimiter.Allow(clientIP) {
 		h.metrics.RecordRateLimited()
@@ -162,6 +299,25 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
+
+	// Step 3: Get Effective Config
+	runtimeConfig, err := h.configProvider.GetEffectiveConfig(ctx, authCtx)
+	if err != nil {
+		h.logger.Error("failed to get effective config",
+			"error", err,
+			"request_id", requestID,
+			"workspace_id", authCtx.WorkspaceID,
+		)
+		h.sendError(w, http.StatusServiceUnavailable, "configuration unavailable", err)
+		return
+	}
+
+	// TODO: Pass RuntimeConfig to router for dynamic routing based on config
+	// The RuntimeConfig contains Supermodels, Providers, RoutingPolicies, etc.
+	// The router needs to be updated to accept RuntimeConfig for scenario detection
+	// and model selection. For now, we store it but don't pass it to preserve
+	// backward compatibility.
+	h.runtimeConfigHolder = runtimeConfig
 
 	// Read the raw request body with a size limit to prevent memory exhaustion.
 	const maxBodySize = 104857600 // 100 MB
@@ -197,6 +353,17 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	// Validate request
 	if err := anthropicReq.Validate(); err != nil {
 		h.sendError(w, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+
+	// Enforce model allowlist from auth context
+	if !authCtx.IsAllowedModel(anthropicReq.Model) {
+		h.logger.Warn("model access denied",
+			"model", anthropicReq.Model,
+			"workspace_id", authCtx.WorkspaceID,
+			"request_id", requestID,
+		)
+		h.sendError(w, http.StatusForbidden, "model not allowed for this subject", auth.ErrModelNotAllowed)
 		return
 	}
 
@@ -1120,4 +1287,92 @@ func (h *MessagesHandler) sendError(w http.ResponseWriter, statusCode int, messa
 
 	errorResp := transformer.TransformErrorResponse(statusCode, message)
 	_ = json.NewEncoder(w).Encode(errorResp)
+}
+
+// authenticateRequest authenticates the incoming HTTP request and returns
+// an AuthContext. It handles authentication errors and sends appropriate
+// HTTP responses. Returns nil and sends error response on failure.
+func (h *MessagesHandler) authenticateRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, requestID string) (*auth.AuthContext, error) {
+	// Handle nil authProvider (shouldn't happen due to constructor defaults)
+	if h.authProvider == nil {
+		h.logger.Error("auth provider not configured", "request_id", requestID)
+		h.sendError(w, http.StatusInternalServerError, "authentication provider not configured", nil)
+		return nil, fmt.Errorf("authentication provider not configured")
+	}
+
+	authCtx, err := h.authProvider.Authenticate(ctx, r)
+	if err != nil {
+		h.determineAndSendAuthError(w, err, requestID)
+		return nil, err
+	}
+
+	h.logger.Debug("request authenticated",
+		"request_id", requestID,
+		"workspace_id", authCtx.WorkspaceID,
+		"subject_id", authCtx.Identity.ID,
+		"subject_type", authCtx.Identity.Type,
+	)
+
+	return authCtx, nil
+}
+
+// determineAndSendAuthError determines the appropriate HTTP status code
+// based on the authentication error and sends the error response.
+func (h *MessagesHandler) determineAndSendAuthError(w http.ResponseWriter, err error, requestID string) {
+	var statusCode int
+	var message string
+
+	switch {
+	case errors.Is(err, auth.ErrAuthenticationFailed):
+		statusCode = http.StatusUnauthorized
+		message = "authentication failed: invalid or missing credentials"
+	case errors.Is(err, auth.ErrKeyRevoked):
+		statusCode = http.StatusUnauthorized
+		message = "authentication failed: API key has been revoked"
+	case errors.Is(err, auth.ErrKeySuspended):
+		statusCode = http.StatusUnauthorized
+		message = "authentication failed: API key is suspended"
+	case errors.Is(err, auth.ErrKeyExpired):
+		statusCode = http.StatusUnauthorized
+		message = "authentication failed: API key has expired"
+	case errors.Is(err, auth.ErrRateLimitExceeded):
+		statusCode = http.StatusTooManyRequests
+		message = "rate limit exceeded"
+	case errors.Is(err, auth.ErrInsufficientCredits):
+		statusCode = http.StatusPaymentRequired // 402
+		message = "insufficient credits"
+	case errors.Is(err, auth.ErrProviderNotAllowed):
+		statusCode = http.StatusForbidden
+		message = "provider not allowed for this subject"
+	case errors.Is(err, auth.ErrModelNotAllowed):
+		statusCode = http.StatusForbidden
+		message = "model not allowed for this subject"
+	default:
+		// Generic authentication error
+		statusCode = http.StatusUnauthorized
+		message = "authentication failed"
+	}
+
+	// TODO: Add auth failure metric
+	// h.metrics.RecordAuthFailure()
+	h.logger.Warn("authentication failed",
+		"request_id", requestID,
+		"error", err,
+		"status_code", statusCode,
+	)
+
+	h.sendError(w, statusCode, message, err)
+}
+
+// enforceModelAccessChecks performs all access control checks for the request.
+// This is a placeholder for future RBAC enforcement.
+// TODO: Integrate RuntimeConfig.EnforcementPolicy checks here.
+//
+//lint:ignore U1000 Intentionally unused - will be hooked up in Phase 2
+func (h *MessagesHandler) enforceModelAccessChecks(authCtx *auth.AuthContext, modelID string, requestID string) error {
+	// TODO: When RuntimeConfig integration is complete, check:
+	// - EnforcementPolicy.EnforceModelAllowlist
+	// - EnforcementPolicy.RequireAuth
+	// - Subject rate limits
+	return nil
 }

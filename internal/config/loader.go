@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -24,6 +25,12 @@ const (
 	defaultZenAnthropicBaseURL = "https://opencode.ai/zen/v1/messages"
 	defaultZenResponsesBaseURL = "https://opencode.ai/zen/v1/responses"
 	defaultZenGeminiBaseURL    = "https://opencode.ai/zen/v1/models"
+
+	// Default cloud endpoints for Routatic Cloud.
+	// These can be overridden via ROUTATIC_CLOUD_BASE_URL environment variable.
+	defaultRoutaticCloudBaseURL          = "https://api.routatic.cloud"
+	defaultRoutaticAuthIntrospectionPath = "/v1/auth/introspect"
+	defaultRoutaticConfigSnapshotPath    = "/v1/config/snapshot"
 )
 
 // envVarPattern matches ${ENV_VAR} placeholders in config values.
@@ -56,6 +63,21 @@ func LoadFromPath(path string) (*Config, error) {
 		return nil, fmt.Errorf("loading config from %s: %w", path, err)
 	}
 
+	applyEnvOverrides(cfg)
+	applyDefaults(cfg)
+
+	if err := validate(cfg); err != nil {
+		return nil, fmt.Errorf("validating config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// LoadFromEnv creates a configuration entirely from environment variables.
+// This is used for serverless deployments where no config file exists.
+// All settings are sourced from env vars with sensible defaults.
+func LoadFromEnv() (*Config, error) {
+	cfg := &Config{}
 	applyEnvOverrides(cfg)
 	applyDefaults(cfg)
 
@@ -148,6 +170,46 @@ func applyEnvOverrides(cfg *Config) {
 	if v := envValue("ROUTATIC_PROXY_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v
 	}
+
+	// Cloud provider settings for serverless deployments
+	if v := envValue("ROUTATIC_PROXY_MODE"); v != "" {
+		cfg.Mode = v
+	}
+	if v := envValue("ROUTATIC_PROXY_AUTH_PROVIDER"); v != "" {
+		cfg.Auth.Provider = v
+	}
+
+	// Support ROUTATIC_CLOUD_BASE_URL for setting both introspection and snapshot URLs at once
+	cloudBaseURL := envValue("ROUTATIC_CLOUD_BASE_URL")
+	if cloudBaseURL == "" {
+		cloudBaseURL = defaultRoutaticCloudBaseURL
+	}
+
+	if v := envValue("ROUTATIC_PROXY_AUTH_INTROSPECTION_URL"); v != "" {
+		cfg.Auth.IntrospectionURL = v
+	}
+	if cfg.Auth.IntrospectionURL == "" && cfg.Mode == "managed" {
+		cfg.Auth.IntrospectionURL = cloudBaseURL + defaultRoutaticAuthIntrospectionPath
+	}
+	if v := envValue("ROUTATIC_PROXY_AUTH_CACHE_TTL"); v != "" {
+		if ttl, err := time.ParseDuration(v); err == nil {
+			cfg.Auth.CacheTTL = ttl
+		}
+	}
+	if v := envValue("ROUTATIC_PROXY_CONFIG_PROVIDER"); v != "" {
+		cfg.ConfigProv.Provider = v
+	}
+	if v := envValue("ROUTATIC_PROXY_CONFIG_SNAPSHOT_URL"); v != "" {
+		cfg.ConfigProv.SnapshotURL = v
+	}
+	if cfg.ConfigProv.SnapshotURL == "" && cfg.Mode == "managed" {
+		cfg.ConfigProv.SnapshotURL = cloudBaseURL + defaultRoutaticConfigSnapshotPath
+	}
+	if v := envValue("ROUTATIC_PROXY_CONFIG_CACHE_TTL"); v != "" {
+		if ttl, err := time.ParseDuration(v); err == nil {
+			cfg.ConfigProv.CacheTTL = ttl
+		}
+	}
 }
 
 func envValue(name string) string {
@@ -214,6 +276,19 @@ func applyDefaults(cfg *Config) {
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = defaultLogLevel
 	}
+	// For serverless/cloud deployments: if no mode is set but cloud provider env vars are present,
+	// default to managed mode with cloud providers.
+	if cfg.Mode == "" {
+		if os.Getenv("ROUTATIC_PROXY_SERVICE_TOKEN") != "" {
+			cfg.Mode = "managed"
+			if cfg.Auth.Provider == "" {
+				cfg.Auth.Provider = "cloud"
+			}
+			if cfg.ConfigProv.Provider == "" {
+				cfg.ConfigProv.Provider = "cloud_snapshot"
+			}
+		}
+	}
 	if cfg.Fallbacks == nil {
 		cfg.Fallbacks = make(map[string][]ModelConfig)
 	}
@@ -222,10 +297,31 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
+// isCloudManagedMode returns true if the config is in managed mode with cloud config provider.
+// In this mode, API keys and model configuration come from the cloud snapshot,
+// so they are not required in the local bootstrap config.
+// NOTE: This only checks the config provider, not the auth provider.
+// The auth provider only validates tokens - API keys come from the config provider's snapshot.
+func isCloudManagedMode(cfg *Config) bool {
+	if cfg.Mode != "managed" {
+		return false
+	}
+	// Check if using cloud config provider.
+	// API keys and model configuration come from the config provider's cloud snapshot.
+	if cfg.ConfigProv.Provider == "cloud_snapshot" || cfg.ConfigProv.Provider == "cloud" {
+		return true
+	}
+	return false
+}
+
 // validate checks that all required configuration fields are present.
 func validate(cfg *Config) error {
-	if cfg.APIKey == "" && len(cfg.APIKeys) == 0 {
-		return fmt.Errorf("api_key or api_keys is required (set via config file or ROUTATIC_PROXY_API_KEY env var; OC_GO_CC_API_KEY is still supported)")
+	// In managed mode with cloud config provider, API keys come from the cloud snapshot
+	// and are not required in the bootstrap config.
+	if !isCloudManagedMode(cfg) {
+		if cfg.APIKey == "" && len(cfg.APIKeys) == 0 {
+			return fmt.Errorf("api_key or api_keys is required (set via config file or ROUTATIC_PROXY_API_KEY env var; OC_GO_CC_API_KEY is still supported)")
+		}
 	}
 
 	if err := validateAPIKeys(cfg.APIKeys); err != nil {
@@ -236,16 +332,20 @@ func validate(cfg *Config) error {
 		return err
 	}
 
-	if err := validateModelOverrides(cfg.ModelOverrides); err != nil {
-		return err
-	}
+	// In cloud managed mode, model configuration comes from the cloud snapshot
+	// so local validation can be skipped.
+	if !isCloudManagedMode(cfg) {
+		if err := validateModelOverrides(cfg.ModelOverrides); err != nil {
+			return err
+		}
 
-	if err := validateAnthropicToolsDisabled(cfg); err != nil {
-		return err
-	}
+		if err := validateAnthropicToolsDisabled(cfg); err != nil {
+			return err
+		}
 
-	if err := validateVisionModels(cfg); err != nil {
-		return err
+		if err := validateVisionModels(cfg); err != nil {
+			return err
+		}
 	}
 
 	return nil

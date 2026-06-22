@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/routatic/proxy/internal/auth"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/daemon"
 	"github.com/routatic/proxy/internal/server"
@@ -64,109 +66,7 @@ func serveCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Start the proxy server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Handle background mode: fork and exit parent
-			if background && !daemonize {
-				opts := daemon.BackgroundOpts{
-					ConfigPath: configPath,
-					Port:       port,
-				}
-				return daemon.ForkIntoBackground(opts)
-			}
-
-			// Override config path if provided.
-			if configPath != "" {
-				_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
-			}
-
-			cfg, err := config.Load()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
-			// Override port if provided via flag.
-			if port != 0 {
-				cfg.Port = port
-			}
-
-			pidPath := getPIDPath()
-
-			// Check if already running before writing this process' PID.
-			if !daemonize {
-				if pid, err := daemon.GetPID(pidPath); err == nil {
-					// Check if process is still running.
-					if daemon.IsProcessRunning(pid) {
-						return fmt.Errorf("server is already running (PID %d)", pid)
-					}
-					// Stale PID file, clean up.
-					_ = os.Remove(pidPath)
-				}
-			}
-
-			// Daemonize setup (child process after re-exec).
-			if daemonize {
-				paths, err := daemon.DefaultPaths()
-				if err != nil {
-					return err
-				}
-				if err := paths.EnsureConfigDir(); err != nil {
-					return err
-				}
-				if err := daemon.DaemonizeSetup(paths); err != nil {
-					return err
-				}
-			} else {
-				// Ensure config directory exists before writing PID file.
-				paths, err := daemon.DefaultPaths()
-				if err != nil {
-					return err
-				}
-				if err := paths.EnsureConfigDir(); err != nil {
-					return err
-				}
-				// Write PID file for foreground mode.
-				if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
-					return fmt.Errorf("failed to write PID file: %w", err)
-				}
-			}
-			defer func() { _ = os.Remove(pidPath) }()
-
-			// Create atomic config for hot reload support.
-			atomicCfg := config.NewAtomicConfig(cfg, config.ResolveConfigPath())
-
-			// Re-apply CLI port override on every reload so it persists.
-			if port != 0 {
-				atomicCfg.OnReload(func(newCfg *config.Config) {
-					newCfg.Port = port
-				})
-			}
-
-			// Create and start server.
-			srv, err := server.NewServer(atomicCfg)
-			if err != nil {
-				return fmt.Errorf("failed to create server: %w", err)
-			}
-
-			// Start config watcher for hot reload (only if enabled in config).
-			if cfg.HotReload {
-				watchCtx, watchCancel := context.WithCancel(context.Background())
-				defer watchCancel()
-				go func() {
-					if err := config.WatchConfig(watchCtx, atomicCfg); err != nil && err != context.Canceled {
-						slog.Error("config watcher failed", "error", err)
-					}
-				}()
-			}
-
-			fmt.Printf("Starting %s v%s\n", appName, version)
-			fmt.Printf("Listening on %s:%d\n", cfg.Host, cfg.Port)
-			fmt.Printf("Forwarding to: %s\n", cfg.OpenCodeGo.BaseURL)
-			fmt.Println()
-			fmt.Println("Configure Claude Code with:")
-			fmt.Printf("  export ANTHROPIC_BASE_URL=http://%s:%d\n", cfg.Host, cfg.Port)
-			fmt.Println("  export ANTHROPIC_AUTH_TOKEN=unused")
-			fmt.Println()
-
-			return srv.Start()
+			return runServe(configPath, port, background, daemonize)
 		},
 	}
 
@@ -177,6 +77,312 @@ func serveCmd() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("_daemonize")
 
 	return cmd
+}
+
+// runServe contains the actual serve logic, extracted for testability.
+func runServe(configPath string, port int, background, daemonize bool) error {
+	// Handle background mode: fork and exit parent
+	if background && !daemonize {
+		opts := daemon.BackgroundOpts{
+			ConfigPath: configPath,
+			Port:       port,
+		}
+		return daemon.ForkIntoBackground(opts)
+	}
+
+	// Override config path if provided.
+	if configPath != "" {
+		_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
+	}
+
+	var cfg *config.Config
+	var err error
+
+	// Check if a config file exists; if not, load entirely from environment.
+	// This supports serverless deployments (Railway, etc.) where no config file exists.
+	configFilePath := config.ResolveConfigPath()
+	if _, statErr := os.Stat(configFilePath); statErr == nil {
+		cfg, err = config.Load()
+	} else {
+		// Config file doesn't exist - try loading from environment via ROUTATIC_PROXY_SERVICE_TOKEN
+		// and other cloud-specific environment variables
+		cfg, err = config.LoadFromEnv()
+	}
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Override port if provided via flag.
+	if port != 0 {
+		cfg.Port = port
+	}
+
+	pidPath := getPIDPath()
+
+	// Skip PID file operations in serverless/cloud environments
+	// Detection: no local config file + mode is managed
+	isServerless := cfg.Mode == "managed" && cfg.ConfigProv.Provider == "cloud_snapshot"
+
+	if !isServerless && !daemonize {
+		if pid, err := daemon.GetPID(pidPath); err == nil {
+			// Check if process is still running.
+			if daemon.IsProcessRunning(pid) {
+				return fmt.Errorf("server is already running (PID %d)", pid)
+			}
+			// Stale PID file, clean up.
+			_ = os.Remove(pidPath)
+		}
+	}
+
+	// Daemonize setup (child process after re-exec).
+	// Skip PID/config directory operations in serverless mode.
+	if !isServerless {
+		if daemonize {
+			paths, err := daemon.DefaultPaths()
+			if err != nil {
+				return err
+			}
+			if err := paths.EnsureConfigDir(); err != nil {
+				return err
+			}
+			if err := daemon.DaemonizeSetup(paths); err != nil {
+				return err
+			}
+		} else {
+			// Ensure config directory exists before writing PID file.
+			paths, err := daemon.DefaultPaths()
+			if err != nil {
+				return err
+			}
+			if err := paths.EnsureConfigDir(); err != nil {
+				return err
+			}
+			// Write PID file for foreground mode.
+			if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
+				return fmt.Errorf("failed to write PID file: %w", err)
+			}
+		}
+		defer func() { _ = os.Remove(pidPath) }()
+	}
+
+	// Initialize providers based on mode.
+	authProvider, configProvider, err := initProviders(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize providers: %w", err)
+	}
+
+	// Close providers on shutdown.
+	defer func() {
+		if authProvider != nil {
+			if c, ok := authProvider.(interface{ Close() error }); ok {
+				_ = c.Close()
+			}
+		}
+		if configProvider != nil {
+			// FileConfigProvider has StopWatching method
+			if c, ok := configProvider.(interface{ StopWatching() error }); ok {
+				_ = c.StopWatching()
+			}
+		}
+	}()
+
+	// Create atomic config for hot reload support.
+	atomicCfg := config.NewAtomicConfig(cfg, config.ResolveConfigPath())
+
+	// Re-apply CLI port override on every reload so it persists.
+	if port != 0 {
+		atomicCfg.OnReload(func(newCfg *config.Config) {
+			newCfg.Port = port
+		})
+	}
+
+	// Create and start server with providers.
+	// Note: The server currently doesn't use these providers directly (auth/config
+	// are handled via middleware and RuntimeConfig), but we initialize them here
+	// for future extensibility and health checks.
+	srv, err := server.NewServer(atomicCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	// Register providers with server for health checks.
+	server.RegisterHealthCheckers(srv, authProvider, configProvider)
+
+	// Start config watcher for hot reload (only if enabled in config).
+	if cfg.HotReload {
+		watchCtx, watchCancel := context.WithCancel(context.Background())
+		defer watchCancel()
+		go func() {
+			if err := config.WatchConfig(watchCtx, atomicCfg); err != nil && err != context.Canceled {
+				slog.Error("config watcher failed", "error", err)
+			}
+		}()
+	}
+
+	fmt.Printf("Starting %s v%s\n", appName, version)
+	fmt.Printf("Listening on %s:%d\n", cfg.Host, cfg.Port)
+	fmt.Printf("Forwarding to: %s\n", cfg.OpenCodeGo.BaseURL)
+	fmt.Println()
+	fmt.Println("Configure Claude Code with:")
+	fmt.Printf("  export ANTHROPIC_BASE_URL=http://%s:%d\n", cfg.Host, cfg.Port)
+	fmt.Println("  export ANTHROPIC_AUTH_TOKEN=unused")
+	fmt.Println()
+
+	return srv.Start()
+}
+
+// initProviders initializes the authentication and configuration providers
+// based on the server mode configuration.
+//
+// Mode "standalone": Uses local file-based config and local key auth (backward compatible).
+// Mode "managed": Uses cloud snapshot or DB-based config with cloud auth.
+func initProviders(cfg *config.Config) (auth.AuthProvider, config.ConfigProvider, error) {
+	authProvider, err := initAuthProvider(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("auth provider: %w", err)
+	}
+
+	configProvider, err := initConfigProvider(cfg)
+	if err != nil {
+		if c, ok := authProvider.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+		return nil, nil, fmt.Errorf("config provider: %w", err)
+	}
+
+	return authProvider, configProvider, nil
+}
+
+// initAuthProvider creates an AuthProvider based on the configuration.
+// Supported providers: "local_keys", "cloud", "none".
+func initAuthProvider(cfg *config.Config) (auth.AuthProvider, error) {
+	provider := cfg.Auth.Provider
+	if provider == "" {
+		// Default to "none" for backward compatibility
+		provider = "none"
+	}
+
+	switch provider {
+	case "local_keys":
+		if cfg.Auth.ConfigPath == "" {
+			return nil, fmt.Errorf("local_keys auth requires config_path")
+		}
+		return auth.NewLocalKeyAuthProvider(cfg.Auth.ConfigPath)
+
+	case "cloud":
+		if cfg.Auth.IntrospectionURL == "" {
+			return nil, fmt.Errorf("cloud auth requires introspection_url")
+		}
+		ttl := cfg.Auth.CacheTTL
+		if ttl <= 0 {
+			ttl = 30 * time.Second
+		}
+		// Get optional service token from environment
+		serviceToken := os.Getenv("ROUTATIC_PROXY_SERVICE_TOKEN")
+		return auth.NewCloudAuthProvider(cfg.Auth.IntrospectionURL, ttl, serviceToken), nil
+
+	case "none":
+		workspaceID := "local"
+		if cfg.Mode == "standalone" && cfg.APIKey != "" {
+			// Use a stable workspace ID based on first API key hash
+			workspaceID = hashAPIKeyForWorkspace(cfg.APIKey)
+		}
+		return auth.NewNoAuthProvider(workspaceID), nil
+
+	default:
+		return nil, fmt.Errorf("unknown auth provider: %s", provider)
+	}
+}
+
+// initConfigProvider creates a ConfigProvider based on the configuration.
+// Supported providers: "file", "db", "cloud_snapshot", "" (autodetect).
+func initConfigProvider(cfg *config.Config) (config.ConfigProvider, error) {
+	provider := cfg.ConfigProv.Provider
+
+	var underlying config.ConfigProvider
+	var err error
+
+	switch provider {
+	case "":
+		// No explicit config provider - autodetect based on whether config file exists.
+		// If config file exists, use file provider for hot reload.
+		// Otherwise, use static bootstrap config (for simple/serverless deployments).
+		configPath := cfg.ConfigProv.Path
+		if configPath == "" {
+			configPath = config.ResolveConfigPath()
+		}
+		if _, statErr := os.Stat(configPath); statErr == nil {
+			// Config file exists - use file provider for hot reload support
+			underlying, err = config.NewFileConfigProvider(configPath)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			// No config file - use static bootstrap config
+			underlying = config.NewStaticConfigProvider(config.CreateBootstrapRuntimeConfig(cfg))
+		}
+
+	case "file":
+		path := cfg.ConfigProv.Path
+		if path == "" {
+			// Use default config path
+			path = config.ResolveConfigPath()
+		}
+		underlying, err = config.NewFileConfigProvider(path)
+		if err != nil {
+			return nil, err
+		}
+
+	case "db":
+		if cfg.ConfigProv.DB.Driver == "" {
+			return nil, fmt.Errorf("db provider requires driver")
+		}
+		if cfg.ConfigProv.DB.DSN == "" {
+			return nil, fmt.Errorf("db provider requires dsn")
+		}
+		// Note: DBConfigProvider is not yet implemented in this version
+		return nil, fmt.Errorf("db config provider not implemented: driver=%s", cfg.ConfigProv.DB.Driver)
+
+	case "cloud_snapshot":
+		if cfg.ConfigProv.SnapshotURL == "" {
+			return nil, fmt.Errorf("cloud_snapshot provider requires snapshot_url")
+		}
+		ttl := cfg.ConfigProv.CacheTTL
+		if ttl <= 0 {
+			ttl = 15 * time.Second
+		}
+		// Get optional service token from environment
+		serviceToken := os.Getenv("ROUTATIC_PROXY_SERVICE_TOKEN")
+		underlying = config.NewCloudSnapshotConfigProvider(cfg.ConfigProv.SnapshotURL, ttl, serviceToken)
+
+	default:
+		return nil, fmt.Errorf("unknown config provider: %s", provider)
+	}
+
+	// Wrap with cache for providers that benefit from it:
+	// - Static bootstrap config: cache to avoid recreating RuntimeConfig on every request
+	// - Cloud snapshot: cache to avoid hitting cloud API on every request
+	// - File provider: has its own internal caching via hot reload, don't wrap
+	needsCache := provider == "" || provider == "cloud_snapshot" || provider == "db"
+	if needsCache {
+		ttl := cfg.ConfigProv.CacheTTL
+		if ttl <= 0 {
+			ttl = 15 * time.Second
+		}
+		underlying = config.NewCachedConfigProvider(underlying, ttl)
+	}
+
+	return underlying, nil
+}
+
+// hashAPIKeyForWorkspace creates a stable workspace ID from an API key.
+// This is used for the "none" auth provider in standalone mode to provide
+// a stable identity for logging and metrics.
+func hashAPIKeyForWorkspace(apiKey string) string {
+	if len(apiKey) <= 8 {
+		return apiKey
+	}
+	return "wk_" + apiKey[:8]
 }
 
 // stopCmd returns the command to stop the proxy server.

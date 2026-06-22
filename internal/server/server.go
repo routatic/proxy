@@ -181,3 +181,24 @@ func parseLogLevel(level string) slog.Level {
 		return slog.LevelInfo
 	}
 }
+
+// externalHealthChecker is an interface for health checking external providers.
+// This is a minimal interface to avoid circular imports.
+type externalHealthChecker interface {
+	HealthCheck(ctx context.Context) error
+}
+
+// RegisterHealthCheckers registers external auth and config providers for health checks.
+// These providers will be checked as part of the server health endpoint.
+// This is a placeholder for future extensibility - the current health handler
+// doesn't use these directly, but they are initialized and closed properly.
+func RegisterHealthCheckers(srv *Server, authProvider, configProvider externalHealthChecker) {
+	// Providers are registered but not directly used yet.
+	// Future: expose auth/config health status via health endpoint.
+	if authProvider != nil {
+		srv.logger.Debug("auth provider registered for health checks")
+	}
+	if configProvider != nil {
+		srv.logger.Debug("config provider registered for health checks")
+	}
+}

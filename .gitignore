@@ -6,5 +6,6 @@ configs/config.json
 .tmp/
 oc-go-cc
 routatic-proxy
+routatic-hosted
 .trunk
 dist/
