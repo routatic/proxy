@@ -44,8 +44,23 @@ func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "kimi k2.7-code uses openai endpoint",
+			modelID: "kimi-k2.7-code",
+			want:    false,
+		},
+		{
 			name:    "glm-5.1 uses openai endpoint",
 			modelID: "glm-5.1",
+			want:    false,
+		},
+		{
+			name:    "glm-5.2 uses openai endpoint",
+			modelID: "glm-5.2",
+			want:    false,
+		},
+		{
+			name:    "glm-5 uses openai endpoint",
+			modelID: "glm-5",
 			want:    false,
 		},
 		{
@@ -255,6 +270,11 @@ func TestClassifyEndpoint(t *testing.T) {
 			expected: EndpointChatCompletions,
 		},
 		{
+			name:     "kimi-k2.7-code uses chat completions endpoint",
+			modelID:  "kimi-k2.7-code",
+			expected: EndpointChatCompletions,
+		},
+		{
 			name:     "kimi-k2.5 uses chat completions endpoint",
 			modelID:  "kimi-k2.5",
 			expected: EndpointChatCompletions,
@@ -272,6 +292,16 @@ func TestClassifyEndpoint(t *testing.T) {
 		{
 			name:     "glm-5.1 uses chat completions endpoint",
 			modelID:  "glm-5.1",
+			expected: EndpointChatCompletions,
+		},
+		{
+			name:     "glm-5.2 uses chat completions endpoint",
+			modelID:  "glm-5.2",
+			expected: EndpointChatCompletions,
+		},
+		{
+			name:     "glm-5 uses chat completions endpoint",
+			modelID:  "glm-5",
 			expected: EndpointChatCompletions,
 		},
 		{
@@ -335,12 +365,22 @@ func TestIsGeminiModel(t *testing.T) {
 		modelID string
 		want    bool
 	}{
+		// Gemini models
 		{"gemini-3.5-flash", true},
 		{"gemini-3.1-pro", true},
 		{"gemini-3-flash", true},
+		// Non-Gemini models
 		{"kimi-k2.6", false},
+		{"kimi-k2.7-code", false},
 		{"glm-5.1", false},
+		{"glm-5.2", false},
+		{"glm-5", false},
 		{"gpt-5.5", false},
+		{"gpt-5", false},
+		{"claude-sonnet-4-5", false},
+		{"qwen3.7-plus", false},
+		{"deepseek-v4-pro", false},
+		{"mimo-v2.5", false},
 	}
 
 	for _, tt := range tests {
@@ -357,32 +397,92 @@ func TestIsResponsesModel(t *testing.T) {
 		modelID string
 		want    bool
 	}{
+		// GPT 5.5 series
 		{"gpt-5.5", true},
 		{"gpt-5.5-pro", true},
+		{"gpt-5.5-mini", true},
+		{"gpt-5.5-nano", true},
+		// GPT 5.4 series
 		{"gpt-5.4", true},
 		{"gpt-5.4-pro", true},
 		{"gpt-5.4-mini", true},
 		{"gpt-5.4-nano", true},
+		// GPT 5.3 series
 		{"gpt-5.3-codex", true},
 		{"gpt-5.3-codex-spark", true},
+		// GPT 5.2 series
 		{"gpt-5.2", true},
 		{"gpt-5.2-codex", true},
+		// GPT 5.1 series
 		{"gpt-5.1", true},
 		{"gpt-5.1-codex", true},
 		{"gpt-5.1-codex-max", true},
 		{"gpt-5.1-codex-mini", true},
+		// GPT 5 series
 		{"gpt-5", true},
 		{"gpt-5-codex", true},
 		{"gpt-5-nano", true},
+		// Non-GPT models
 		{"kimi-k2.6", false},
+		{"kimi-k2.7-code", false},
 		{"glm-5.1", false},
+		{"glm-5.2", false},
+		{"glm-5", false},
 		{"gemini-3.5-flash", false},
+		{"gemini-3.1-pro", false},
+		{"gemini-3-flash", false},
+		{"claude-sonnet-4-5", false},
+		{"qwen3.7-plus", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.modelID, func(t *testing.T) {
 			if got := isResponsesModel(tt.modelID); got != tt.want {
 				t.Fatalf("isResponsesModel(%q) = %v, want %v", tt.modelID, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsZenAnthropicModel(t *testing.T) {
+	tests := []struct {
+		modelID string
+		want    bool
+	}{
+		// Claude models on Zen use Anthropic endpoint
+		{"claude-sonnet-4-5", true},
+		{"claude-opus-4-7", true},
+		{"claude-haiku-4-5", true},
+		{"claude-3-5-haiku", true},
+		{"claude-3-5-sonnet", true},
+		{"claude-3-opus", true},
+		// Qwen models on Zen use Anthropic endpoint
+		{"qwen3.7-max", true},
+		{"qwen3.7-plus", true},
+		{"qwen3.6-plus", true},
+		{"qwen3.5-plus", true},
+		{"qwen3.5", true},
+		// Non-Anthropic models
+		{"kimi-k2.6", false},
+		{"kimi-k2.7-code", false},
+		{"glm-5.1", false},
+		{"glm-5.2", false},
+		{"glm-5", false},
+		{"gemini-3.5-flash", false},
+		{"gemini-3.1-pro", false},
+		{"gpt-5.5", false},
+		{"gpt-5", false},
+		{"minimax-m2.5", false},
+		{"minimax-m2.7", false},
+		{"minimax-m3", false},
+		{"deepseek-v4-pro", false},
+		{"mimo-v2.5", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.modelID, func(t *testing.T) {
+			if got := isZenAnthropicModel(tt.modelID); got != tt.want {
+				t.Fatalf("isZenAnthropicModel(%q) = %v, want %v", tt.modelID, got, tt.want)
 			}
 		})
 	}

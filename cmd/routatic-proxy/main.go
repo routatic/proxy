@@ -410,8 +410,10 @@ func modelsCmd() *cobra.Command {
 			fmt.Println()
 			fmt.Println("  Model ID                   Endpoint Type")
 			fmt.Println("  ──────────────────────────────────────────────")
+			fmt.Println("  glm-5.2                    OpenAI-compatible")
 			fmt.Println("  glm-5.1                    OpenAI-compatible")
-			fmt.Println("  glm-5                      OpenAI-compatible")
+			fmt.Println("  glm-5                      OpenAI-compatible (deprecated)")
+			fmt.Println("  kimi-k2.7-code             OpenAI-compatible")
 			fmt.Println("  kimi-k2.6                  OpenAI-compatible")
 			fmt.Println("  kimi-k2.5                  OpenAI-compatible")
 			fmt.Println("  mimo-v2.5-pro              OpenAI-compatible")
@@ -421,8 +423,8 @@ func modelsCmd() *cobra.Command {
 			fmt.Println("  minimax-m2.5               Anthropic-compatible")
 			fmt.Println("  deepseek-v4-pro            OpenAI-compatible")
 			fmt.Println("  deepseek-v4-flash          OpenAI-compatible")
-			fmt.Println("  qwen3.7-plus               Anthropic-compatible")
 			fmt.Println("  qwen3.7-max                Anthropic-compatible")
+			fmt.Println("  qwen3.7-plus               Anthropic-compatible")
 			fmt.Println("  qwen3.6-plus               Anthropic-compatible")
 			fmt.Println("  qwen3.5-plus               Anthropic-compatible")
 			fmt.Println()
@@ -597,6 +599,30 @@ func getDefaultConfig() string {
       "model_id": "qwen3.6-plus",
       "temperature": 0.7,
       "max_tokens": 4096
+    },
+    "glm-5.2": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.2",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "kimi-k2.7-code": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.7-code",
+      "temperature": 0.7,
+      "max_tokens": 32768
+    },
+    "qwen3.7-plus": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-plus",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "qwen3.7-max": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-max",
+      "temperature": 0.7,
+      "max_tokens": 8192
     }
   },
   "fallbacks": {
@@ -623,6 +649,22 @@ func getDefaultConfig() string {
     "fast": [
       { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
       { "provider": "opencode-go", "model_id": "minimax-m2.5" }
+    ],
+    "glm-5.2": [
+      { "provider": "opencode-go", "model_id": "glm-5.1" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
+    ],
+    "kimi-k2.7-code": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
+      { "provider": "opencode-go", "model_id": "glm-5.1" }
+    ],
+    "qwen3.7-plus": [
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
+    ],
+    "qwen3.7-max": [
+      { "provider": "opencode-go", "model_id": "qwen3.7-plus" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
     ]
   },
   "model_overrides": {
@@ -671,6 +713,60 @@ func getDefaultConfig() string {
       "model_id": "nemotron-3-ultra-free",
       "temperature": 0.7,
       "max_tokens": 4096
+    },
+    "claude-fable-5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-fable-5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-8": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-8",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-6": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-6",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-1": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-1",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-sonnet-4": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "gemini-3.5-flash": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3.5-flash",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "gemini-3.1-pro": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3.1-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "gemini-3-flash": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3-flash",
+      "temperature": 0.7,
+      "max_tokens": 8192
     }
   },
   "opencode_go": {

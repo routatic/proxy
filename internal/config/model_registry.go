@@ -12,6 +12,9 @@ type ModelMetadata struct {
 var modelMetadata = map[string]ModelMetadata{
 	"deepseek-v4-pro":   {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 	"deepseek-v4-flash": {ContextWindow: 1000000, MaxOutputTokens: 4096, Vision: false, SupportsTools: true},
+	"glm-5.2":           {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
+	"glm-5.1":           {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
+	"glm-5":             {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 	"kimi-k2.7-code":    {ContextWindow: 256000, MaxOutputTokens: 32768, Vision: true, SupportsTools: true},
 	"kimi-k2.6":         {ContextWindow: 256000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
 	"kimi-k2.5":         {ContextWindow: 256000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
@@ -20,10 +23,10 @@ var modelMetadata = map[string]ModelMetadata{
 	"minimax-m3":        {ContextWindow: 1000000, MaxOutputTokens: 128000, Vision: false, SupportsTools: true},
 	"minimax-m2.7":      {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 	"minimax-m2.5":      {ContextWindow: 200000, MaxOutputTokens: 4096, Vision: false, SupportsTools: true},
+	"qwen3.7-max":       {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
+	"qwen3.7-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
 	"qwen3.6-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
 	"qwen3.5-plus":      {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
-	"glm-5.1":           {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
-	"glm-5":             {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 }
 
 func ResolveModelConfig(model ModelConfig) ModelConfig {

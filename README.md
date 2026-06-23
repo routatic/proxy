@@ -26,6 +26,42 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 - **Background Mode** — Run as daemon detached from terminal
 - **Auto-start on Login** — Launch on system startup via launchd (macOS)
 
+## Supported Models
+
+### OpenCode Go Models
+
+| Model | Context | Best For |
+|-------|---------|----------|
+| **GLM-5.2** | ~200K tokens | Critical architecture, production code review |
+| **Kimi K2.7 Code** | ~256K tokens | Large code generation, 32K max output |
+| **Qwen3.7 Plus** | ~128K tokens | General coding, better quality than Qwen3.6 |
+| **Qwen3.7 Max** | ~128K tokens | Complex coding, Qwen's best quality |
+
+See [MODELS.md](MODELS.md) for the complete model list including costs and routing recommendations.
+
+### OpenCode Zen Models
+
+Zen provides pay-as-you-go access to additional models:
+
+- **Claude Models**: Claude Fable 5, Claude Opus 4.8/4.6/4.5/4.1, Claude Sonnet 4
+- **Gemini Models**: Gemini 3.5 Flash, Gemini 3.1 Pro, Gemini 3 Flash
+- **GPT Models**: GPT 5.5, GPT 5.4, GPT 5.3 Codex, and more
+- **Free Tier**: DeepSeek V4 Pro, Grok Build 0.1, Big Pickle, and others
+
+See [MODELS.md](MODELS.md#opencodes-zen) for the full Zen model list.
+
+### Deprecated Models
+
+The following models are deprecated and will be removed:
+- GPT 5.2/5.1/5 Codex variants (replaced by GPT 5.3 Codex)
+- Claude Sonnet 4 (replaced by Claude Sonnet 4.5/4.6)
+- GLM 5/4.7/4.6 (replaced by GLM 5.1/5.2)
+- MiniMax M2.1 (replaced by MiniMax M2.5/M2.7/M3)
+- Gemini 3 Pro (replaced by Gemini 3.1 Pro)
+- Kimi K2/K2 Thinking (replaced by Kimi K2.5/K2.6/K2.7 Code)
+
+See [MODELS.md](MODELS.md#deprecated-zen-models) for the complete deprecation schedule.
+
 ## Quick Start
 
 ### 1. Install

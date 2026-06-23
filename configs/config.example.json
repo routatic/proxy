@@ -63,6 +63,34 @@
       "max_tokens": 4096,
       "vision": true
     },
+    "glm-5.2": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.2",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": false
+    },
+    "kimi-k2.7-code": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.7-code",
+      "temperature": 0.7,
+      "max_tokens": 32768,
+      "vision": true
+    },
+    "qwen3.7-plus": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-plus",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "qwen3.7-max": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-max",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
     "fast": {
       "provider": "opencode-go",
       "model_id": "qwen3.6-plus",
@@ -96,6 +124,22 @@
     "fast": [
       { "provider": "opencode-go", "model_id": "qwen3.5-plus" },
       { "provider": "opencode-go", "model_id": "minimax-m2.5" }
+    ],
+    "glm-5.2": [
+      { "provider": "opencode-go", "model_id": "glm-5.1" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
+    ],
+    "kimi-k2.7-code": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" },
+      { "provider": "opencode-go", "model_id": "glm-5.1" }
+    ],
+    "qwen3.7-plus": [
+      { "provider": "opencode-go", "model_id": "qwen3.6-plus" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
+    ],
+    "qwen3.7-max": [
+      { "provider": "opencode-go", "model_id": "qwen3.7-plus" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
     ]
   },
 
@@ -169,6 +213,69 @@
       "model_id": "minimax-m3",
       "temperature": 0.7,
       "max_tokens": 4096
+    },
+    "claude-fable-5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-fable-5",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-opus-4-8": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-8",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-opus-4-6": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-6",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-opus-4-5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-5",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-opus-4-1": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-1",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "claude-sonnet-4": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "gemini-3.5-flash": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3.5-flash",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "gemini-3.1-pro": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3.1-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "gemini-3-flash": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3-flash",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
     },
     "deepseek-v4-pro": {
       "provider": "opencode-zen",
