@@ -22,13 +22,13 @@ func TestCaptureLoggerCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	logger := NewCaptureLogger(storage, true)
 	if logger == nil {
 		t.Fatal("expected logger to be created")
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	if !logger.enabled {
 		t.Error("expected logger to be enabled")
@@ -47,12 +47,12 @@ func TestCaptureLoggerDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	logger := NewCaptureLogger(storage, false)
 	if logger != nil {
 		t.Error("expected nil logger when disabled")
-		logger.Close()
+		_ = logger.Close()
 	}
 }
 
@@ -68,13 +68,13 @@ func TestCaptureMethodsAsync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	logger := NewCaptureLogger(storage, true)
 	if logger == nil {
 		t.Fatal("expected logger to be created")
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	// Test CaptureOriginal
 	requestData := []byte(`{"model": "test-model", "messages": [{"role": "user", "content": "hello"}]}`)
@@ -97,7 +97,7 @@ func TestCaptureMethodsAsync(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Close to ensure writes are complete
-	logger.Close()
+	_ = logger.Close()
 
 	// Verify files were created
 	files, err := os.ReadDir(dir)
@@ -122,13 +122,13 @@ func TestProviderTagging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	logger := NewCaptureLogger(storage, true)
 	if logger == nil {
 		t.Fatal("expected logger to be created")
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	// Capture with different providers
 	providers := []string{"opencode-go", "opencode-zen", "aws-bedrock"}
@@ -139,7 +139,7 @@ func TestProviderTagging(t *testing.T) {
 
 	// Give async operations time to complete
 	time.Sleep(100 * time.Millisecond)
-	logger.Close()
+	_ = logger.Close()
 
 	// Verify files were created
 	files, err := os.ReadDir(dir)
@@ -196,7 +196,7 @@ func TestCloseFlushesPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer storage.Close()
+	defer func() { _ = storage.Close() }()
 
 	logger := NewCaptureLogger(storage, true)
 	if logger == nil {

@@ -24,7 +24,7 @@ func TestNewStorageCreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	// Directory should be created
 	info, err := os.Stat(baseDir)
@@ -48,7 +48,7 @@ func TestWriteEntryCreatesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	entry := CaptureEntry{
 		Timestamp: time.Now().UTC(),
@@ -104,7 +104,7 @@ func TestFileRotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	// Write multiple entries to trigger rotation
 	for i := 0; i < 5; i++ {
@@ -145,7 +145,7 @@ func TestMaxFilesDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	// Create more files than maxFiles
 	for i := 0; i < maxFiles+2; i++ {
@@ -196,7 +196,7 @@ func TestJSONLFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	entry := CaptureEntry{
 		Timestamp: time.Now().UTC(),

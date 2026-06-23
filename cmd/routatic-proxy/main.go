@@ -91,7 +91,7 @@ func serveCmd() *cobra.Command {
 					return fmt.Errorf("failed to create debug storage: %w", err)
 				}
 				captureLogger = debug.NewCaptureLogger(storage, true)
-				defer captureLogger.Close()
+				defer func() { _ = captureLogger.Close() }()
 			}
 
 			// Override port if provided via flag.
