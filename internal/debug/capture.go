@@ -59,7 +59,7 @@ func (c *CaptureLogger) worker() {
 // This is called before any transformation occurs.
 // The capture is performed asynchronously via the background worker.
 func (c *CaptureLogger) CaptureOriginal(requestID string, data []byte) {
-	if !c.enabled {
+	if c == nil || !c.enabled {
 		return
 	}
 
@@ -77,7 +77,7 @@ func (c *CaptureLogger) CaptureOriginal(requestID string, data []byte) {
 // The provider parameter indicates which provider this request is being routed to.
 // The capture is performed asynchronously via the background worker.
 func (c *CaptureLogger) CaptureNormalized(requestID string, provider string, data []byte) {
-	if !c.enabled {
+	if c == nil || !c.enabled {
 		return
 	}
 
@@ -96,7 +96,7 @@ func (c *CaptureLogger) CaptureNormalized(requestID string, provider string, dat
 // This is after all transformations have been applied.
 // The capture is performed asynchronously via the background worker.
 func (c *CaptureLogger) CaptureUpstreamRequest(requestID string, provider string, data []byte) {
-	if !c.enabled {
+	if c == nil || !c.enabled {
 		return
 	}
 
@@ -115,7 +115,7 @@ func (c *CaptureLogger) CaptureUpstreamRequest(requestID string, provider string
 // This is before any transformation back to the Anthropic format.
 // The capture is performed asynchronously via the background worker.
 func (c *CaptureLogger) CaptureUpstreamResponse(requestID string, provider string, data []byte) {
-	if !c.enabled {
+	if c == nil || !c.enabled {
 		return
 	}
 
@@ -134,7 +134,7 @@ func (c *CaptureLogger) CaptureUpstreamResponse(requestID string, provider strin
 // This is the response that will be sent back to the client.
 // The capture is performed asynchronously via the background worker.
 func (c *CaptureLogger) CaptureTransformed(requestID string, provider string, data []byte) {
-	if !c.enabled {
+	if c == nil || !c.enabled {
 		return
 	}
 

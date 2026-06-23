@@ -46,7 +46,7 @@ func TestRedactAuthorizationHeader(t *testing.T) {
 func TestRedactMultipleKeys(t *testing.T) {
 	input := `{
 		"api_key": "first-key-123",
-		"x-api-key": "second-key-456",
+		"api-key": "second-key-456",
 		"authorization": "Bearer third-key-789",
 		"model": "gpt-4"
 	}`

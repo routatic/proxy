@@ -90,7 +90,7 @@ func serveCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("failed to create debug storage: %w", err)
 				}
-				captureLogger = debug.NewCaptureLogger(storage, cfg.Logging.DebugCapture.RedactAPIKeys)
+				captureLogger = debug.NewCaptureLogger(storage, true)
 				defer captureLogger.Close()
 			}
 
