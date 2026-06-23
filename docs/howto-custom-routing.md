@@ -68,7 +68,7 @@ Define per-scenario fallback chains:
 {
   "fallbacks": {
     "default": [
-      { "provider": "opencode-go", "model_id": "mimo-v2-pro" },
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
     ],
     "complex": [

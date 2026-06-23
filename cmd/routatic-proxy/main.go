@@ -631,7 +631,7 @@ func getDefaultConfig() string {
       { "provider": "opencode-go", "model_id": "minimax-m2.5" }
     ],
     "default": [
-      { "provider": "opencode-go", "model_id": "mimo-v2-pro" },
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" },
       { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
     ],
     "long_context": [
@@ -640,7 +640,7 @@ func getDefaultConfig() string {
     ],
     "think": [
       { "provider": "opencode-go", "model_id": "kimi-k2.6" },
-      { "provider": "opencode-go", "model_id": "mimo-v2-pro" }
+      { "provider": "opencode-go", "model_id": "mimo-v2.5-pro" }
     ],
     "complex": [
       { "provider": "opencode-go", "model_id": "glm-5.1" },
