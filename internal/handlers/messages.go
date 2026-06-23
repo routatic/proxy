@@ -55,6 +55,13 @@ type responseWriter struct {
 	mu                sync.Mutex
 	wroteHeader       bool
 	ssePayloadWritten bool
+	// usage tracks token usage from message_delta events for logging
+	usage struct {
+		inputTokens              int
+		outputTokens             int
+		cacheReadInputTokens     int
+		cacheCreationInputTokens int
+	}
 }
 
 func (w *responseWriter) WriteHeader(code int) {

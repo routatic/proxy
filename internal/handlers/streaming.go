@@ -10,13 +10,34 @@ import (
 
 	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/transformer"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 // StreamProxy handles SSE stream forwarding from various upstream wire formats
 // to Anthropic-format SSE events. It wraps transformer.StreamHandler and
 // dispatches by WireFormat.
 type StreamProxy struct {
-	handler *transformer.StreamHandler
+	handler         *transformer.StreamHandler
+	usageAccumulator *UsageAccumulator
+}
+
+// UsageAccumulator tracks token usage across streaming requests.
+type UsageAccumulator struct {
+	InputTokens              int
+	OutputTokens             int
+	CacheReadInputTokens     int
+	CacheCreationInputTokens int
+}
+
+// Add adds usage from a types.Usage to the accumulator.
+func (ua *UsageAccumulator) Add(usage *types.Usage) {
+	if usage == nil {
+		return
+	}
+	ua.InputTokens += usage.InputTokens
+	ua.OutputTokens += usage.OutputTokens
+	ua.CacheReadInputTokens += usage.CacheReadInputTokens
+	ua.CacheCreationInputTokens += usage.CacheCreationInputTokens
 }
 
 // NewStreamProxy creates a new StreamProxy.
