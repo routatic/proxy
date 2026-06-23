@@ -15,6 +15,7 @@ type CaptureLogger struct {
 	enabled   bool
 	entryChan chan CaptureEntry
 	wg        sync.WaitGroup
+	closeOnce sync.Once
 }
 
 // NewCaptureLogger creates a new async capture logger.
@@ -178,16 +179,19 @@ func redactIfNeeded(data []byte, redactEnabled bool) json.RawMessage {
 // Close shuts down the capture logger.
 // It closes the entry channel and waits for the background worker to finish.
 // Any entries still in the channel will be processed before Close returns.
+// Safe to call multiple times - only the first call will have effect.
 func (c *CaptureLogger) Close() error {
 	if c == nil {
 		return nil
 	}
 
-	// Close the channel to signal the worker to exit
-	close(c.entryChan)
+	c.closeOnce.Do(func() {
+		// Close the channel to signal the worker to exit
+		close(c.entryChan)
 
-	// Wait for the worker to finish processing remaining entries
-	c.wg.Wait()
+		// Wait for the worker to finish processing remaining entries
+		c.wg.Wait()
+	})
 
 	return nil
 }

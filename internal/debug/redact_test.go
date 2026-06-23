@@ -6,14 +6,12 @@ import (
 )
 
 func TestRedactAPIKey(t *testing.T) {
-	redactor := NewRedactor(true)
-
 	input := `{
 		"api_key": "sk-proj-abc123xyz789",
 		"model": "gpt-4"
 	}`
 
-	result := redactor.Redact([]byte(input))
+	result := RedactSensitive([]byte(input))
 	resultStr := string(result)
 
 	if strings.Contains(resultStr, "sk-proj-abc123xyz789") {
@@ -26,8 +24,6 @@ func TestRedactAPIKey(t *testing.T) {
 }
 
 func TestRedactAuthorizationHeader(t *testing.T) {
-	redactor := NewRedactor(true)
-
 	input := `{
 		"headers": {
 			"Authorization": "Bearer sk-secret-token-12345"
@@ -35,7 +31,7 @@ func TestRedactAuthorizationHeader(t *testing.T) {
 		"body": "test"
 	}`
 
-	result := redactor.Redact([]byte(input))
+	result := RedactSensitive([]byte(input))
 	resultStr := string(result)
 
 	if strings.Contains(resultStr, "sk-secret-token-12345") {
@@ -48,8 +44,6 @@ func TestRedactAuthorizationHeader(t *testing.T) {
 }
 
 func TestRedactMultipleKeys(t *testing.T) {
-	redactor := NewRedactor(true)
-
 	input := `{
 		"api_key": "first-key-123",
 		"x-api-key": "second-key-456",
@@ -57,7 +51,7 @@ func TestRedactMultipleKeys(t *testing.T) {
 		"model": "gpt-4"
 	}`
 
-	result := redactor.Redact([]byte(input))
+	result := RedactSensitive([]byte(input))
 	resultStr := string(result)
 
 	if strings.Contains(resultStr, "first-key-123") {
@@ -74,31 +68,7 @@ func TestRedactMultipleKeys(t *testing.T) {
 	}
 }
 
-func TestNoRedactWhenDisabled(t *testing.T) {
-	redactor := NewRedactor(false)
-
-	sensitiveData := `{
-		"api_key": "sk-secret-abc123",
-		"Authorization": "Bearer token-xyz789"
-	}`
-
-	result := redactor.Redact([]byte(sensitiveData))
-	resultStr := string(result)
-
-	if !strings.Contains(resultStr, "sk-secret-abc123") {
-		t.Error("expected API key to NOT be redacted when disabled")
-	}
-	if !strings.Contains(resultStr, "Bearer token-xyz789") {
-		t.Error("expected authorization to NOT be redacted when disabled")
-	}
-	if strings.Contains(resultStr, "[REDACTED]") {
-		t.Error("expected no redaction placeholder when disabled")
-	}
-}
-
 func TestRedactPreservesJSONStructure(t *testing.T) {
-	redactor := NewRedactor(true)
-
 	input := `{
 		"api_key": "secret-key",
 		"model": "gpt-4",
@@ -107,7 +77,7 @@ func TestRedactPreservesJSONStructure(t *testing.T) {
 		]
 	}`
 
-	result := redactor.Redact([]byte(input))
+	result := RedactSensitive([]byte(input))
 	resultStr := string(result)
 
 	// Verify JSON structure is preserved
@@ -123,21 +93,17 @@ func TestRedactPreservesJSONStructure(t *testing.T) {
 }
 
 func TestRedactHandlesEmptyInput(t *testing.T) {
-	redactor := NewRedactor(true)
-
-	result := redactor.Redact([]byte{})
+	result := RedactSensitive([]byte{})
 	if len(result) != 0 {
 		t.Errorf("expected empty result for empty input, got %q", string(result))
 	}
 }
 
 func TestRedactHandlesInvalidJSON(t *testing.T) {
-	redactor := NewRedactor(true)
-
 	invalidJSON := `{"api_key": "secret", "broken` // incomplete JSON
 
 	// Should not panic and should return original or best-effort result
-	result := redactor.Redact([]byte(invalidJSON))
+	result := RedactSensitive([]byte(invalidJSON))
 	if len(result) == 0 {
 		t.Error("expected non-empty result even for invalid JSON")
 	}
