@@ -34,11 +34,11 @@ This metadata is used by `ResolveModelConfig` to fill in defaults when the model
 
 ## Step 3: Add Endpoint Classification (Zen only)
 
-If the model uses Zen, add it to the appropriate classifier in `internal/client/opencode.go`:
+If the model uses Zen, add it to the appropriate classifier in `internal/models/classifier.go`:
 
 ```go
 // For Anthropic endpoint:
-func isZenAnthropicModel(modelID string) bool {
+func IsZenAnthropicModel(modelID string) bool {
     // ...
     if modelID == "my-new-model" {
         return true
@@ -47,20 +47,18 @@ func isZenAnthropicModel(modelID string) bool {
 }
 
 // For Responses endpoint:
-func isResponsesModel(modelID string) bool {
+func IsResponsesModel(modelID string) bool {
     // ...
-    if modelID == "my-new-model" {
+    case "gpt-5.5", "gpt-5.5-pro", "my-new-model":
         return true
-    }
     // ...
 }
 
 // For Gemini endpoint:
-func isGeminiModel(modelID string) bool {
+func IsGeminiModel(modelID string) bool {
     // ...
-    if modelID == "my-new-model" {
+    case "gemini-3.5-flash", "my-new-model":
         return true
-    }
     // ...
 }
 ```
@@ -71,12 +69,14 @@ If the model uses Go provider and requires the Anthropic endpoint (not Chat Comp
 func IsAnthropicModel(modelID string) bool {
     switch modelID {
     // ...
-    case "my-new-model":
+    case "minimax-m2.5", "my-new-model":
         return true
     // ...
     }
 }
 ```
+
+**Note:** These classification functions are shared between `internal/client` and `internal/provider` packages to ensure consistent routing.
 
 ## Step 4: Add to Config
 

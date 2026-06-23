@@ -45,7 +45,7 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 | MiniMax | Zen | Long context | 1M context window |
 | MiMo | Go | Reasoning | Step-by-step reasoning |
 
-`internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `ClassifyEndpoint()`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
+`internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `models.ClassifyEndpoint()` in `internal/models/classifier.go`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
 
 **Scenario detection priority** (`internal/router/scenarios.go`):
 
