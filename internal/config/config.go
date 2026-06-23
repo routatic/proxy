@@ -19,6 +19,13 @@ type Config struct {
 	OpenCodeGo                     OpenCodeGoConfig         `json:"opencode_go"`
 	OpenCodeZen                    OpenCodeZenConfig        `json:"opencode_zen"`
 	Logging                        LoggingConfig            `json:"logging"`
+	Debug                          DebugConfig              `json:"debug"`
+}
+
+// DebugConfig holds debug-related configuration.
+type DebugConfig struct {
+	CaptureEnabled bool   `json:"capture_enabled"`
+	CaptureDir     string `json:"capture_dir"`
 }
 
 // ModelConfig defines routing rules for a specific model.
@@ -73,8 +80,28 @@ type OpenCodeZenConfig struct {
 
 // LoggingConfig controls application logging behavior.
 type LoggingConfig struct {
-	Level    string `json:"level"`
-	Requests bool   `json:"requests"`
+	Level        string        `json:"level"`
+	Requests     bool          `json:"requests"`
+	DebugCapture *DebugCapture `json:"debug_capture,omitempty"`
+}
+
+// DebugCapture controls request/response capture for debugging.
+type DebugCapture struct {
+	Enabled       bool     `json:"enabled"`
+	Directory     string   `json:"directory"`
+	MaxFiles      int      `json:"max_files"`
+	MaxFileSize   int64    `json:"max_file_size"`
+	CapturePhases []string `json:"capture_phases,omitempty"`
+	RedactAPIKeys bool     `json:"redact_api_keys"`
+}
+
+// EffectiveDebugCapture returns the debug capture configuration with defaults applied.
+// Returns zero value DebugCapture if nil.
+func (lc *LoggingConfig) EffectiveDebugCapture() DebugCapture {
+	if lc.DebugCapture == nil {
+		return DebugCapture{}
+	}
+	return *lc.DebugCapture
 }
 
 // EffectiveAPIKeys returns the pool of API keys for rotation.

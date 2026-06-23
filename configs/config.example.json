@@ -211,6 +211,14 @@
 
   "logging": {
     "level": "info",
-    "requests": true
+    "requests": true,
+    "debug_capture": {
+      "enabled": false,
+      "directory": "~/.config/routatic-proxy/debug/",
+      "max_files": 100,
+      "max_file_size": 104857600,
+      "capture_phases": ["original", "normalized", "upstream-request", "upstream-response", "transformed"],
+      "redact_api_keys": true
+    }
   }
 }

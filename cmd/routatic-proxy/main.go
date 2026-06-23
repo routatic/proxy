@@ -12,6 +12,7 @@ import (
 
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/daemon"
+	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/server"
 	"github.com/spf13/cobra"
 )
@@ -83,6 +84,16 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
+			var captureLogger *debug.CaptureLogger
+			if cfg.Logging.DebugCapture != nil && cfg.Logging.DebugCapture.Enabled {
+				storage, err := debug.NewStorage(*cfg.Logging.DebugCapture)
+				if err != nil {
+					return fmt.Errorf("failed to create debug storage: %w", err)
+				}
+				captureLogger = debug.NewCaptureLogger(storage, cfg.Logging.DebugCapture.RedactAPIKeys)
+				defer captureLogger.Close()
+			}
+
 			// Override port if provided via flag.
 			if port != 0 {
 				cfg.Port = port
@@ -141,7 +152,7 @@ func serveCmd() *cobra.Command {
 			}
 
 			// Create and start server.
-			srv, err := server.NewServer(atomicCfg)
+			srv, err := server.NewServer(atomicCfg, captureLogger)
 			if err != nil {
 				return fmt.Errorf("failed to create server: %w", err)
 			}

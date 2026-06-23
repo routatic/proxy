@@ -18,6 +18,7 @@ import (
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
+	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/middleware"
 	"github.com/routatic/proxy/internal/router"
@@ -42,6 +43,7 @@ type MessagesHandler struct {
 	requestDedup        *middleware.RequestDeduplicator
 	requestIDGen        *middleware.RequestIDGenerator
 	metrics             *metrics.Metrics
+	captureLogger       *debug.CaptureLogger
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -117,6 +119,7 @@ func NewMessagesHandler(
 	fallbackHandler *router.FallbackHandler,
 	tokenCounter *token.Counter,
 	metrics *metrics.Metrics,
+	captureLogger *debug.CaptureLogger,
 ) *MessagesHandler {
 	return &MessagesHandler{
 		client:              openCodeClient,
@@ -133,6 +136,7 @@ func NewMessagesHandler(
 		requestDedup:        nil,
 		requestIDGen:        middleware.NewRequestIDGenerator(),
 		metrics:             metrics,
+		captureLogger:       captureLogger,
 	}
 }
 
@@ -175,6 +179,10 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		}
 		h.sendError(w, http.StatusBadRequest, "invalid request body", err)
 		return
+	}
+
+	if h.captureLogger != nil {
+		h.captureLogger.CaptureOriginal(requestID, rawBody)
 	}
 
 	// Deduplicate - skip duplicate requests. Skip when the deduplicator is
@@ -259,6 +267,12 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 
 	normalizedReq := core.NormalizeRequest(&anthropicReq)
 	normalizedReq.Stream = isStreaming
+
+	if h.captureLogger != nil && len(modelChain) > 0 {
+		provider := modelChain[0].Provider
+		data, _ := json.Marshal(normalizedReq)
+		h.captureLogger.CaptureNormalized(requestID, provider, data)
+	}
 
 	if isStreaming {
 		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody)
