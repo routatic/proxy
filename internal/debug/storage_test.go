@@ -6,13 +6,21 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/routatic/proxy/internal/config"
 )
 
 func TestNewStorageCreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	baseDir := filepath.Join(dir, "debug-captures")
 
-	s, err := NewStorage(baseDir, 10, 1024*1024)
+	cfg := config.DebugCapture{
+		Enabled:   true,
+		Directory: baseDir,
+		MaxFiles:  10,
+	}
+
+	s, err := NewStorage(cfg)
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
@@ -30,7 +38,13 @@ func TestNewStorageCreatesDirectory(t *testing.T) {
 
 func TestWriteEntryCreatesFile(t *testing.T) {
 	dir := t.TempDir()
-	s, err := NewStorage(dir, 10, 1024*1024)
+	cfg := config.DebugCapture{
+		Enabled:   true,
+		Directory: dir,
+		MaxFiles:  10,
+	}
+
+	s, err := NewStorage(cfg)
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
@@ -79,7 +93,14 @@ func TestWriteEntryCreatesFile(t *testing.T) {
 func TestFileRotation(t *testing.T) {
 	dir := t.TempDir()
 	// Set small max size to trigger rotation quickly
-	s, err := NewStorage(dir, 10, 100)
+	cfg := config.DebugCapture{
+		Enabled:   true,
+		Directory: dir,
+		MaxFiles:  10,
+		MaxFileSize: 100,
+	}
+
+	s, err := NewStorage(cfg)
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
@@ -113,7 +134,14 @@ func TestMaxFilesDeletion(t *testing.T) {
 	dir := t.TempDir()
 	maxFiles := 3
 
-	s, err := NewStorage(dir, maxFiles, 1024)
+	cfg := config.DebugCapture{
+		Enabled:     true,
+		Directory:   dir,
+		MaxFiles:    maxFiles,
+		MaxFileSize: 1024,
+	}
+
+	s, err := NewStorage(cfg)
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}
@@ -134,8 +162,16 @@ func TestMaxFilesDeletion(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	// Force rotation check
-	s.rotateIfNeeded()
+	// Force rotation by writing another entry
+	entry := CaptureEntry{
+		Timestamp: time.Now().UTC(),
+		Provider:  "test-provider",
+		Phase:     "request",
+		Data:      json.RawMessage(`{"trigger": "rotation"}`),
+	}
+	if err := s.WriteEntry(entry); err != nil {
+		t.Fatalf("WriteEntry() error = %v", err)
+	}
 
 	// Count files
 	files, err := os.ReadDir(dir)
@@ -150,7 +186,13 @@ func TestMaxFilesDeletion(t *testing.T) {
 
 func TestJSONLFormat(t *testing.T) {
 	dir := t.TempDir()
-	s, err := NewStorage(dir, 10, 1024*1024)
+	cfg := config.DebugCapture{
+		Enabled:   true,
+		Directory: dir,
+		MaxFiles:  10,
+	}
+
+	s, err := NewStorage(cfg)
 	if err != nil {
 		t.Fatalf("NewStorage() error = %v", err)
 	}

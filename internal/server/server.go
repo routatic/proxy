@@ -51,7 +51,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	// Create metrics
 	metrics := metrics.New()
 
-	openCodeClient := client.NewOpenCodeClient(atomic)
+	openCodeClient := client.NewOpenCodeClient(atomic, captureLogger)
 	modelRouter := router.NewModelRouter(atomic)
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
 

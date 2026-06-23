@@ -519,7 +519,7 @@ func TestRequestTimeout_UsesConfiguredTimeout(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
 	timeout := c.RequestTimeout(model)
@@ -535,7 +535,7 @@ func TestRequestTimeout_FallsBackToDefault(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
 	timeout := c.RequestTimeout(model)
@@ -551,7 +551,7 @@ func TestRequestTimeout_ZenProvider(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeZen, ModelID: "claude-sonnet-4.5"}
 	timeout := c.RequestTimeout(model)
@@ -568,7 +568,7 @@ func TestStreamingTimeout_UsesStreamingTimeoutMs(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
 	timeout := c.StreamingTimeout(model)
@@ -585,7 +585,7 @@ func TestStreamingTimeout_FallsBackToTimeoutMs(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
 	timeout := c.StreamingTimeout(model)
@@ -602,7 +602,7 @@ func TestStreamingTimeout_FallsBackToDefault(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
 	timeout := c.StreamingTimeout(model)
@@ -619,7 +619,7 @@ func TestStreamingTimeout_ZenProvider(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeZen, ModelID: "claude-sonnet-4.5"}
 	timeout := c.StreamingTimeout(model)
@@ -636,7 +636,7 @@ func TestStreamingTimeout_SmallConfiguredValue(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "")
-	c := NewOpenCodeClient(atomicCfg)
+	c := NewOpenCodeClient(atomicCfg, nil)
 
 	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "kimi-k2.6"}
 	timeout := c.StreamingTimeout(model)

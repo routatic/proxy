@@ -2,6 +2,7 @@
 package debug
 
 import (
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -65,7 +66,7 @@ func (c *CaptureLogger) CaptureOriginal(requestID string, data []byte) {
 		Timestamp: time.Now(),
 		Phase:     PhaseOriginal,
 		RequestID: requestID,
-		Request:   redactIfNeeded(data, c.storage.config.RedactAPIKeys),
+		Data:      redactIfNeeded(data, c.storage.config.RedactAPIKeys),
 	}
 
 	c.sendEntry(entry)
@@ -84,7 +85,7 @@ func (c *CaptureLogger) CaptureNormalized(requestID string, provider string, dat
 		Phase:     PhaseNormalized,
 		Provider:  provider,
 		RequestID: requestID,
-		Request:   redactIfNeeded(data, c.storage.config.RedactAPIKeys),
+		Data:      redactIfNeeded(data, c.storage.config.RedactAPIKeys),
 	}
 
 	c.sendEntry(entry)
@@ -103,7 +104,7 @@ func (c *CaptureLogger) CaptureUpstreamRequest(requestID string, provider string
 		Phase:     PhaseUpstreamRequest,
 		Provider:  provider,
 		RequestID: requestID,
-		Request:   redactIfNeeded(data, c.storage.config.RedactAPIKeys),
+		Data:      redactIfNeeded(data, c.storage.config.RedactAPIKeys),
 	}
 
 	c.sendEntry(entry)
@@ -122,7 +123,7 @@ func (c *CaptureLogger) CaptureUpstreamResponse(requestID string, provider strin
 		Phase:     PhaseUpstreamResponse,
 		Provider:  provider,
 		RequestID: requestID,
-		Response:  redactIfNeeded(data, c.storage.config.RedactAPIKeys),
+		Data:      redactIfNeeded(data, c.storage.config.RedactAPIKeys),
 	}
 
 	c.sendEntry(entry)
@@ -141,7 +142,7 @@ func (c *CaptureLogger) CaptureTransformed(requestID string, provider string, da
 		Phase:     PhaseTransformed,
 		Provider:  provider,
 		RequestID: requestID,
-		Response:  redactIfNeeded(data, c.storage.config.RedactAPIKeys),
+		Data:      redactIfNeeded(data, c.storage.config.RedactAPIKeys),
 	}
 
 	c.sendEntry(entry)
@@ -163,14 +164,15 @@ func (c *CaptureLogger) sendEntry(entry CaptureEntry) {
 }
 
 // redactIfNeeded applies RedactSensitive to data if redaction is enabled.
-// Returns the original data if redaction is disabled or if redaction fails.
-func redactIfNeeded(data []byte, redactEnabled bool) interface{} {
+// Returns the original data as json.RawMessage if redaction is disabled.
+// Returns the redacted data as json.RawMessage if redaction is enabled.
+func redactIfNeeded(data []byte, redactEnabled bool) json.RawMessage {
 	if !redactEnabled {
-		return data
+		return json.RawMessage(data)
 	}
 
 	redacted := RedactSensitive(data)
-	return redacted
+	return json.RawMessage(redacted)
 }
 
 // Close shuts down the capture logger.

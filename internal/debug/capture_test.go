@@ -6,64 +6,98 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/routatic/proxy/internal/config"
 )
 
 func TestCaptureLoggerCreation(t *testing.T) {
 	dir := t.TempDir()
-	config := CaptureConfig{
+	cfg := config.DebugCapture{
 		Enabled:   true,
 		Directory: dir,
 		MaxFiles:  10,
-		MaxSize:   1024 * 1024,
 	}
 
-	logger, err := NewCaptureLogger(config)
+	storage, err := NewStorage(cfg)
 	if err != nil {
-		t.Fatalf("NewCaptureLogger() error = %v", err)
+		t.Fatalf("NewStorage() error = %v", err)
 	}
-	defer logger.Close()
+	defer storage.Close()
 
+	logger := NewCaptureLogger(storage, true)
 	if logger == nil {
 		t.Fatal("expected logger to be created")
 	}
+	defer logger.Close()
 
-	if !logger.Enabled() {
+	if !logger.enabled {
 		t.Error("expected logger to be enabled")
+	}
+}
+
+func TestCaptureLoggerDisabled(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.DebugCapture{
+		Enabled:   true,
+		Directory: dir,
+		MaxFiles:  10,
+	}
+
+	storage, err := NewStorage(cfg)
+	if err != nil {
+		t.Fatalf("NewStorage() error = %v", err)
+	}
+	defer storage.Close()
+
+	logger := NewCaptureLogger(storage, false)
+	if logger != nil {
+		t.Error("expected nil logger when disabled")
+		logger.Close()
 	}
 }
 
 func TestCaptureMethodsAsync(t *testing.T) {
 	dir := t.TempDir()
-	config := CaptureConfig{
+	cfg := config.DebugCapture{
 		Enabled:   true,
 		Directory: dir,
 		MaxFiles:  10,
-		MaxSize:   1024 * 1024,
 	}
 
-	logger, err := NewCaptureLogger(config)
+	storage, err := NewStorage(cfg)
 	if err != nil {
-		t.Fatalf("NewCaptureLogger() error = %v", err)
+		t.Fatalf("NewStorage() error = %v", err)
+	}
+	defer storage.Close()
+
+	logger := NewCaptureLogger(storage, true)
+	if logger == nil {
+		t.Fatal("expected logger to be created")
 	}
 	defer logger.Close()
 
-	// Test CaptureRequest
-	requestData := json.RawMessage(`{"model": "test-model", "messages": [{"role": "user", "content": "hello"}]}`)
-	logger.CaptureRequest("test-provider", requestData)
+	// Test CaptureOriginal
+	requestData := []byte(`{"model": "test-model", "messages": [{"role": "user", "content": "hello"}]}`)
+	logger.CaptureOriginal("req-123", requestData)
 
-	// Test CaptureResponse
-	responseData := json.RawMessage(`{"choices": [{"message": {"content": "hi"}}]}`)
-	logger.CaptureResponse("test-provider", responseData)
+	// Test CaptureNormalized
+	logger.CaptureNormalized("req-123", "opencode-go", requestData)
 
-	// Test CaptureTransform
-	transformData := json.RawMessage(`{"transformed": true}`)
-	logger.CaptureTransform("test-provider", transformData)
+	// Test CaptureUpstreamRequest
+	logger.CaptureUpstreamRequest("req-123", "opencode-go", requestData)
+
+	// Test CaptureUpstreamResponse
+	responseData := []byte(`{"choices": [{"message": {"content": "hi"}}]}`)
+	logger.CaptureUpstreamResponse("req-123", "opencode-go", responseData)
+
+	// Test CaptureTransformed
+	logger.CaptureTransformed("req-123", "opencode-go", responseData)
 
 	// Give async operations time to complete
 	time.Sleep(100 * time.Millisecond)
 
-	// Flush to ensure writes are complete
-	logger.Flush()
+	// Close to ensure writes are complete
+	logger.Close()
 
 	// Verify files were created
 	files, err := os.ReadDir(dir)
@@ -78,31 +112,36 @@ func TestCaptureMethodsAsync(t *testing.T) {
 
 func TestProviderTagging(t *testing.T) {
 	dir := t.TempDir()
-	config := CaptureConfig{
+	cfg := config.DebugCapture{
 		Enabled:   true,
 		Directory: dir,
 		MaxFiles:  10,
-		MaxSize:   1024 * 1024,
 	}
 
-	logger, err := NewCaptureLogger(config)
+	storage, err := NewStorage(cfg)
 	if err != nil {
-		t.Fatalf("NewCaptureLogger() error = %v", err)
+		t.Fatalf("NewStorage() error = %v", err)
+	}
+	defer storage.Close()
+
+	logger := NewCaptureLogger(storage, true)
+	if logger == nil {
+		t.Fatal("expected logger to be created")
 	}
 	defer logger.Close()
 
 	// Capture with different providers
 	providers := []string{"opencode-go", "opencode-zen", "aws-bedrock"}
 	for _, provider := range providers {
-		data := json.RawMessage(`{"test": "data"}`)
-		logger.CaptureRequest(provider, data)
+		data := []byte(`{"test": "data"}`)
+		logger.CaptureNormalized("req-"+provider, provider, data)
 	}
 
 	// Give async operations time to complete
 	time.Sleep(100 * time.Millisecond)
-	logger.Flush()
+	logger.Close()
 
-	// Read and verify provider tags
+	// Verify files were created
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("failed to read directory: %v", err)
@@ -128,62 +167,46 @@ func TestProviderTagging(t *testing.T) {
 	}
 }
 
-func TestCaptureDisabled(t *testing.T) {
-	dir := t.TempDir()
-	config := CaptureConfig{
-		Enabled:   false,
-		Directory: dir,
-		MaxFiles:  10,
-		MaxSize:   1024 * 1024,
-	}
+func TestCaptureWithNilLogger(t *testing.T) {
+	var logger *CaptureLogger
 
-	logger, err := NewCaptureLogger(config)
+	// These should not panic when logger is nil
+	logger.CaptureOriginal("req-123", []byte(`{"test": "data"}`))
+	logger.CaptureNormalized("req-123", "test-provider", []byte(`{"test": "data"}`))
+	logger.CaptureUpstreamRequest("req-123", "test-provider", []byte(`{"test": "data"}`))
+	logger.CaptureUpstreamResponse("req-123", "test-provider", []byte(`{"test": "data"}`))
+	logger.CaptureTransformed("req-123", "test-provider", []byte(`{"test": "data"}`))
+
+	// Close should not panic when logger is nil
+	err := logger.Close()
 	if err != nil {
-		t.Fatalf("NewCaptureLogger() error = %v", err)
-	}
-	defer logger.Close()
-
-	if logger.Enabled() {
-		t.Error("expected logger to be disabled")
-	}
-
-	// Capture should be no-op when disabled
-	data := json.RawMessage(`{"test": "data"}`)
-	logger.CaptureRequest("test-provider", data)
-	logger.CaptureResponse("test-provider", data)
-	logger.CaptureTransform("test-provider", data)
-
-	// Flush and check no files created
-	logger.Flush()
-
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("failed to read directory: %v", err)
-	}
-
-	if len(files) > 0 {
-		t.Error("expected no files when capture is disabled")
+		t.Errorf("Close() error = %v", err)
 	}
 }
 
 func TestCloseFlushesPending(t *testing.T) {
 	dir := t.TempDir()
-	config := CaptureConfig{
+	cfg := config.DebugCapture{
 		Enabled:   true,
 		Directory: dir,
 		MaxFiles:  10,
-		MaxSize:   1024 * 1024,
 	}
 
-	logger, err := NewCaptureLogger(config)
+	storage, err := NewStorage(cfg)
 	if err != nil {
-		t.Fatalf("NewCaptureLogger() error = %v", err)
+		t.Fatalf("NewStorage() error = %v", err)
+	}
+	defer storage.Close()
+
+	logger := NewCaptureLogger(storage, true)
+	if logger == nil {
+		t.Fatal("expected logger to be created")
 	}
 
 	// Capture multiple entries
 	for i := 0; i < 5; i++ {
-		data := json.RawMessage(`{"test": "data"}`)
-		logger.CaptureRequest("test-provider", data)
+		data := []byte(`{"test": "data"}`)
+		logger.CaptureNormalized("req-"+string(rune('0'+i)), "test-provider", data)
 	}
 
 	// Close should flush pending entries
@@ -212,5 +235,52 @@ func TestCloseFlushesPending(t *testing.T) {
 		if err := json.Unmarshal(content, &entry); err != nil {
 			t.Errorf("expected valid JSONL entry in %s: %v", file.Name(), err)
 		}
+	}
+}
+
+func TestRedactIfNeeded(t *testing.T) {
+	tests := []struct {
+		name          string
+		data          []byte
+		redactEnabled bool
+		wantRedacted  bool
+	}{
+		{
+			name:          "redaction disabled returns original",
+			data:          []byte(`{"api_key": "secret123"}`),
+			redactEnabled: false,
+			wantRedacted:  false,
+		},
+		{
+			name:          "redaction enabled redacts api_key",
+			data:          []byte(`{"api_key": "secret123"}`),
+			redactEnabled: true,
+			wantRedacted:  true,
+		},
+		{
+			name:          "redaction enabled redacts authorization",
+			data:          []byte(`{"authorization": "Bearer token123"}`),
+			redactEnabled: true,
+			wantRedacted:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := redactIfNeeded(tt.data, tt.redactEnabled)
+
+			if tt.wantRedacted {
+				if string(result) == string(tt.data) {
+					t.Error("expected data to be redacted but it was unchanged")
+				}
+				if string(result) == string(tt.data) {
+					t.Logf("result: %s", string(result))
+				}
+			} else {
+				if string(result) != string(tt.data) {
+					t.Errorf("expected data to be unchanged, got %s", string(result))
+				}
+			}
+		})
 	}
 }

@@ -17,6 +17,31 @@ import (
 	"github.com/routatic/proxy/pkg/types"
 )
 
+// extractRequestID converts a context value to a string request ID.
+func extractRequestID(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch s := v.(type) {
+	case string:
+		return s
+	case []byte:
+		return string(s)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// teeReadCloser wraps an io.ReadCloser with a TeeReader for capturing response data.
+type teeReadCloser struct {
+	io.ReadCloser
+	r io.Reader
+}
+
+func (t *teeReadCloser) Read(p []byte) (n int, err error) {
+	return t.r.Read(p)
+}
+
 const (
 	ProviderOpenCodeGo  = "opencode-go"
 	ProviderOpenCodeZen = "opencode-zen"
@@ -306,7 +331,7 @@ func (c *OpenCodeClient) ChatCompletion(
 
 	// Capture upstream request before sending
 	if c.captureLogger != nil {
-		c.captureLogger.CaptureUpstreamRequest(ctx.Value("requestID"), Provider(modelConfig), body)
+		c.captureLogger.CaptureUpstreamRequest(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), body)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
@@ -340,14 +365,11 @@ func (c *OpenCodeClient) ChatCompletion(
 	// Capture upstream response by wrapping the body with a TeeReader
 	if c.captureLogger != nil {
 		pr, pw := io.Pipe()
-		resp.Body = struct {
-			io.ReadCloser
-			io.Reader
-		}{resp.Body, io.TeeReader(resp.Body, pw)}
+		resp.Body = &teeReadCloser{ReadCloser: resp.Body, r: io.TeeReader(resp.Body, pw)}
 		// Async copy to capture
 		go func() {
 			data, _ := io.ReadAll(pr)
-			c.captureLogger.CaptureUpstreamResponse(ctx.Value("requestID"), Provider(modelConfig), data)
+			c.captureLogger.CaptureUpstreamResponse(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), data)
 		}()
 	}
 
@@ -461,7 +483,7 @@ func (c *OpenCodeClient) ResponsesCompletion(
 
 	// Capture upstream request before sending
 	if c.captureLogger != nil {
-		c.captureLogger.CaptureUpstreamRequest(ctx.Value("requestID"), Provider(modelConfig), body)
+		c.captureLogger.CaptureUpstreamRequest(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), body)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
@@ -486,14 +508,11 @@ func (c *OpenCodeClient) ResponsesCompletion(
 	// Capture upstream response by wrapping the body with a TeeReader
 	if c.captureLogger != nil {
 		pr, pw := io.Pipe()
-		resp.Body = struct {
-			io.ReadCloser
-			io.Reader
-		}{resp.Body, io.TeeReader(resp.Body, pw)}
+		resp.Body = &teeReadCloser{ReadCloser: resp.Body, r: io.TeeReader(resp.Body, pw)}
 		// Async copy to capture
 		go func() {
 			data, _ := io.ReadAll(pr)
-			c.captureLogger.CaptureUpstreamResponse(ctx.Value("requestID"), Provider(modelConfig), data)
+			c.captureLogger.CaptureUpstreamResponse(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), data)
 		}()
 	}
 
@@ -561,7 +580,7 @@ func (c *OpenCodeClient) GeminiCompletion(
 
 	// Capture upstream request before sending
 	if c.captureLogger != nil {
-		c.captureLogger.CaptureUpstreamRequest(ctx.Value("requestID"), Provider(modelConfig), body)
+		c.captureLogger.CaptureUpstreamRequest(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), body)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
@@ -586,14 +605,11 @@ func (c *OpenCodeClient) GeminiCompletion(
 	// Capture upstream response by wrapping the body with a TeeReader
 	if c.captureLogger != nil {
 		pr, pw := io.Pipe()
-		resp.Body = struct {
-			io.ReadCloser
-			io.Reader
-		}{resp.Body, io.TeeReader(resp.Body, pw)}
+		resp.Body = &teeReadCloser{ReadCloser: resp.Body, r: io.TeeReader(resp.Body, pw)}
 		// Async copy to capture
 		go func() {
 			data, _ := io.ReadAll(pr)
-			c.captureLogger.CaptureUpstreamResponse(ctx.Value("requestID"), Provider(modelConfig), data)
+			c.captureLogger.CaptureUpstreamResponse(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), data)
 		}()
 	}
 

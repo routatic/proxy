@@ -649,7 +649,7 @@ func TestHandleStreaming_GoAnthropicModel_FallsThroughOnError(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	handler := &MessagesHandler{
 		client:              ocClient,
@@ -701,7 +701,7 @@ func newStreamingTestHandler(t *testing.T, upstreamURL string) *MessagesHandler 
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	return &MessagesHandler{
 		client:              ocClient,
@@ -755,7 +755,7 @@ func TestHandleMessages_StreamingMinimaxM3_UsesAnthropicEndpoint(t *testing.T) {
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
 
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -769,6 +769,7 @@ func TestHandleMessages_StreamingMinimaxM3_UsesAnthropicEndpoint(t *testing.T) {
 		nil, // fallbackHandler
 		tokenCounter,
 		metrics.New(),
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -867,7 +868,7 @@ func TestHandleNonStreaming_GoAnthropicModel_ReplacesModelInBody(t *testing.T) {
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -881,6 +882,7 @@ func TestHandleNonStreaming_GoAnthropicModel_ReplacesModelInBody(t *testing.T) {
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		metrics.New(),
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -982,7 +984,7 @@ func TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody(t *testing.T) 
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -996,6 +998,7 @@ func TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody(t *testing.T) 
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		metrics.New(),
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -1075,7 +1078,7 @@ func TestHandleStreaming_ConfigurableTimeout(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	handler := &MessagesHandler{
 		client:              ocClient,
@@ -1261,7 +1264,7 @@ func TestHandleStreaming_PerModelTimeoutFallback(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	handler := &MessagesHandler{
 		client:              ocClient,
@@ -1343,7 +1346,7 @@ func TestHandleNonStreaming_ParentContextCanceled_No502(t *testing.T) {
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -1358,6 +1361,7 @@ func TestHandleNonStreaming_ParentContextCanceled_No502(t *testing.T) {
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		m,
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -1423,7 +1427,7 @@ func TestHandleNonStreaming_ParentDeadlineExceeded_No502(t *testing.T) {
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -1438,6 +1442,7 @@ func TestHandleNonStreaming_ParentDeadlineExceeded_No502(t *testing.T) {
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		m,
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
