@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -82,8 +83,82 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	}
 	if len(b) > 0 {
 		w.ssePayloadWritten = true
+		// Extract usage from message_delta events
+		w.extractUsageFromSSE(b)
 	}
 	return w.ResponseWriter.Write(b)
+}
+
+// extractUsageFromSSE parses SSE data and extracts usage information from message_delta events.
+// This is done asynchronously to not block the write path.
+func (w *responseWriter) extractUsageFromSSE(b []byte) {
+	// Look for message_delta event with usage data
+	// SSE format: event: message_delta\ndata: {...}\n\n
+	data := string(b)
+	if !strings.Contains(data, "message_delta") {
+		return
+	}
+	if !strings.Contains(data, "usage") {
+		return
+	}
+
+	// Try to extract usage fields using simple string parsing for performance
+	// Full JSON parsing is done only when we have a potential match
+	if idx := strings.Index(data, `"input_tokens":`); idx != -1 {
+		if val, err := parseIntAfter(data, idx+len(`"input_tokens":`)); err == nil {
+			w.usage.inputTokens = val
+		}
+	}
+	if idx := strings.Index(data, `"output_tokens":`); idx != -1 {
+		if val, err := parseIntAfter(data, idx+len(`"output_tokens":`)); err == nil {
+			w.usage.outputTokens = val
+		}
+	}
+	if idx := strings.Index(data, `"cache_read_input_tokens":`); idx != -1 {
+		if val, err := parseIntAfter(data, idx+len(`"cache_read_input_tokens":`)); err == nil {
+			w.usage.cacheReadInputTokens = val
+		}
+	}
+	if idx := strings.Index(data, `"cache_creation_input_tokens":`); idx != -1 {
+		if val, err := parseIntAfter(data, idx+len(`"cache_creation_input_tokens":`)); err == nil {
+			w.usage.cacheCreationInputTokens = val
+		}
+	}
+}
+
+// parseIntAfter parses an integer value starting at the given position in the string.
+func parseIntAfter(s string, start int) (int, error) {
+	if start >= len(s) {
+		return 0, fmt.Errorf("start position beyond string length")
+	}
+	// Skip whitespace
+	for start < len(s) && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	if start >= len(s) {
+		return 0, fmt.Errorf("only whitespace found")
+	}
+	// Parse optional minus sign
+	sign := 1
+	if s[start] == '-' {
+		sign = -1
+		start++
+		if start >= len(s) {
+			return 0, fmt.Errorf("minus sign at end of string")
+		}
+	}
+	// Parse digits
+	val := 0
+	hasDigits := false
+	for start < len(s) && s[start] >= '0' && s[start] <= '9' {
+		val = val*10 + int(s[start]-'0')
+		start++
+		hasDigits = true
+	}
+	if !hasDigits {
+		return 0, fmt.Errorf("no digits found")
+	}
+	return sign * val, nil
 }
 
 // headerWritten returns true if headers have been written to the response.
@@ -444,7 +519,14 @@ func (h *MessagesHandler) handleStreaming(
 			cancelAttempt()
 			latency := time.Since(streamStart)
 			h.metrics.RecordSuccess(model.ModelID, latency)
-			h.logger.Info("streaming completed", "model", model.ModelID, "latency", latency)
+			h.logger.Info("streaming completed",
+				"model", model.ModelID,
+				"latency", latency,
+				"input_tokens", rw.usage.inputTokens,
+				"output_tokens", rw.usage.outputTokens,
+				"cache_read_input_tokens", rw.usage.cacheReadInputTokens,
+				"cache_creation_input_tokens", rw.usage.cacheCreationInputTokens,
+			)
 		}
 
 		// handleStreamError checks the error from a streaming attempt and
