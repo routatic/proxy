@@ -584,7 +584,7 @@ func getDefaultConfig() string {
     },
     "think": {
       "provider": "opencode-go",
-      "model_id": "glm-5",
+      "model_id": "glm-5.1",
       "temperature": 0.7,
       "max_tokens": 8192
     },
@@ -643,7 +643,7 @@ func getDefaultConfig() string {
       { "provider": "opencode-go", "model_id": "mimo-v2-pro" }
     ],
     "complex": [
-      { "provider": "opencode-go", "model_id": "glm-5" },
+      { "provider": "opencode-go", "model_id": "glm-5.1" },
       { "provider": "opencode-go", "model_id": "kimi-k2.6" }
     ],
     "fast": [
