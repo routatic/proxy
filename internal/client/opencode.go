@@ -62,10 +62,10 @@ func (e *APIError) Error() string {
 
 // OpenCodeClient handles communication with OpenCode Go and Zen APIs.
 type OpenCodeClient struct {
-	atomic          *config.AtomicConfig
-	httpClient      *http.Client
-	keyCounter      atomic.Uint64
-	captureLogger   *debug.CaptureLogger
+	atomic        *config.AtomicConfig
+	httpClient    *http.Client
+	keyCounter    atomic.Uint64
+	captureLogger *debug.CaptureLogger
 }
 
 // nextAPIKey returns the next API key in round-robin order from the given key pool.

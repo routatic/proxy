@@ -94,9 +94,9 @@ func TestFileRotation(t *testing.T) {
 	dir := t.TempDir()
 	// Set small max size to trigger rotation quickly
 	cfg := config.DebugCapture{
-		Enabled:   true,
-		Directory: dir,
-		MaxFiles:  10,
+		Enabled:     true,
+		Directory:   dir,
+		MaxFiles:    10,
 		MaxFileSize: 100,
 	}
 
