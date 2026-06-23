@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/debug"
+	"github.com/routatic/proxy/internal/models"
 	"github.com/routatic/proxy/pkg/types"
 )
 
@@ -206,15 +206,7 @@ func IsAnthropicModel(modelID string) bool {
 
 // isZenAnthropicModel returns true for models on Zen that use the Anthropic endpoint.
 func isZenAnthropicModel(modelID string) bool {
-	// Claude models on Zen use the Anthropic endpoint
-	if strings.HasPrefix(modelID, "claude-") {
-		return true
-	}
-	// Qwen models on Zen use the Anthropic endpoint
-	if strings.HasPrefix(modelID, "qwen") {
-		return true
-	}
-	return false
+	return models.IsZenAnthropicModel(modelID)
 }
 
 // Provider returns the provider string for a model config.
@@ -263,25 +255,11 @@ func ClassifyEndpoint(modelID string) EndpointType {
 }
 
 func isGeminiModel(modelID string) bool {
-	switch modelID {
-	case "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash":
-		return true
-	default:
-		return false
-	}
+	return models.IsGeminiModel(modelID)
 }
 
 func isResponsesModel(modelID string) bool {
-	switch modelID {
-	case "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano",
-		"gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano",
-		"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2", "gpt-5.2-codex",
-		"gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini",
-		"gpt-5", "gpt-5-codex", "gpt-5-nano":
-		return true
-	default:
-		return false
-	}
+	return models.IsResponsesModel(modelID)
 }
 
 // getEndpoint returns the appropriate endpoint config for a model.
@@ -291,12 +269,12 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 
 	if IsZen(modelConfig) {
 		zen := cfg.OpenCodeZen
-		switch ClassifyEndpoint(modelID) {
-		case EndpointAnthropic:
+		switch models.ClassifyEndpoint(modelID) {
+		case models.EndpointAnthropic:
 			return endpointConfig{BaseURL: zen.AnthropicBaseURL, APIKey: apiKey}
-		case EndpointResponses:
+		case models.EndpointResponses:
 			return endpointConfig{BaseURL: zen.ResponsesBaseURL, APIKey: apiKey}
-		case EndpointGemini:
+		case models.EndpointGemini:
 			return endpointConfig{BaseURL: zen.GeminiBaseURL + "/" + modelID, APIKey: apiKey}
 		default:
 			return endpointConfig{BaseURL: zen.BaseURL, APIKey: apiKey}
@@ -304,7 +282,7 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 	}
 
 	// Default: OpenCode Go
-	if IsAnthropicModel(modelID) {
+	if models.IsAnthropicModel(modelID) {
 		return endpointConfig{BaseURL: cfg.OpenCodeGo.AnthropicBaseURL, APIKey: apiKey}
 	}
 	return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
@@ -342,7 +320,7 @@ func (c *OpenCodeClient) ChatCompletion(
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	// Anthropic endpoint uses x-api-key; OpenAI endpoint uses Bearer
-	if IsAnthropicModel(modelID) {
+	if models.IsAnthropicModel(modelID) {
 		httpReq.Header.Set("x-api-key", endpoint.APIKey)
 	} else {
 		httpReq.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
