@@ -314,7 +314,7 @@ func TestRouteWithOverride_MissingFallbacksKey_FallsBackToDefault(t *testing.T) 
 		Fallbacks: map[string][]config.ModelConfig{
 			"default": {
 				{Provider: "opencode-go", ModelID: "qwen3.5-plus"},
-				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"},
 			},
 		},
 		// No entry in Fallbacks for "kimi-k2.6" — should fall back to
@@ -330,8 +330,8 @@ func TestRouteWithOverride_MissingFallbacksKey_FallsBackToDefault(t *testing.T) 
 	if len(result.Fallbacks) != 2 {
 		t.Fatalf("expected 2 default fallbacks, got %d: %+v", len(result.Fallbacks), result.Fallbacks)
 	}
-	if result.Fallbacks[0].ModelID != "qwen3.5-plus" || result.Fallbacks[1].ModelID != "mimo-v2-pro" {
-		t.Errorf("expected default fallbacks [qwen3.5-plus, mimo-v2-pro], got %+v", result.Fallbacks)
+	if result.Fallbacks[0].ModelID != "qwen3.5-plus" || result.Fallbacks[1].ModelID != "mimo-v2.5-pro" {
+		t.Errorf("expected default fallbacks [qwen3.5-plus, mimo-v2.5-pro], got %+v", result.Fallbacks)
 	}
 	chain := result.GetModelChain()
 	if len(chain) != 3 {
