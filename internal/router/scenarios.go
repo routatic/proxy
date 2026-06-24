@@ -152,7 +152,18 @@ func AnalyzeRequestFacts(messages []MessageContent) RequestFacts {
 		}
 	}
 
-	facts.NeedsVision = facts.LatestUserHasImage || (facts.AnyHistoricalImage && facts.LatestTextVisualIntent)
+	// Trigger vision routing only when the latest user message actually
+	// contains a new image. The previous heuristic also fired on historical
+	// images + visual-intent keywords in the latest text, but that produces
+	// false positives on ordinary prose that happens to mention "image" /
+	// "screen" / "ui" / "layout" (e.g. "fix the UI layout", "check this
+	// Docker image"), forcing long-running sessions off the requested model
+	// onto a vision-capable one (and onto the larger-context vision
+	// scenario once tokens exceed the long-context threshold) for no
+	// reason. If a user genuinely wants to ask about a previously-attached
+	// image, they can re-attach it; the proxy's job is to route based on
+	// what the latest request actually contains.
+	facts.NeedsVision = facts.LatestUserHasImage
 	return facts
 }
 

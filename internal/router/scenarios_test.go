@@ -169,15 +169,29 @@ func TestDetectScenario_ReturnsToTextRoutingWhenLatestTurnHasHistoricalImageOnly
 	}
 }
 
-func TestDetectScenario_UsesHistoricalImageWhenLatestTextHasVisualIntent(t *testing.T) {
+func TestDetectScenario_LatestTextVisualIntentWithoutNewImageStaysNonVision(t *testing.T) {
+	// Regression test: previously the proxy routed to the vision scenario
+	// whenever the latest user text contained a "visual intent" keyword
+	// (image/screenshot/ui/layout/...) AND any historical message had an
+	// image. That fired false positives on ordinary prose ("check the UI
+	// layout", "fix the Docker image", "look at this screenshot of the
+	// error") for long-running sessions that happened to have an image
+	// in the conversation history, forcing every subsequent turn onto a
+	// vision-capable model (and onto the long-context vision scenario
+	// once tokens crossed the threshold). Vision routing should only
+	// trigger when the LATEST user message actually contains a new image.
+	//
+	// The third user message below is identical to the previous
+	// (intentionally-true) assertion except HasImage is now false. The
+	// expected scenario is the text-or-complex default, not vision.
 	messages := []MessageContent{
 		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
 		{Role: "assistant", Content: "Vedo una schermata."},
-		{Role: "user", Content: "cosa vedi nello screenshot?", HasImage: true, ImageHashes: []string{"img1"}},
+		{Role: "user", Content: "cosa vedi nello screenshot?", HasImage: false},
 	}
 	result := DetectScenario(messages, 100, mockConfig())
-	if result.Scenario != ScenarioVision {
-		t.Errorf("Expected ScenarioVision, got %s", result.Scenario)
+	if result.Scenario == ScenarioVision {
+		t.Errorf("Expected non-vision scenario for text-only latest message, got %s", result.Scenario)
 	}
 }
 
