@@ -323,6 +323,19 @@ func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageReque
 		if nm.Content != "" {
 			blocks = append(blocks, types.ContentBlock{Type: "text", Text: nm.Content})
 		}
+		// Reconstruct image blocks from the normalized representation so the
+		// downstream transformer can decide whether to convert them to
+		// image_url (vision-capable model) or to a [Image] text placeholder.
+		for _, img := range nm.Images {
+			blocks = append(blocks, types.ContentBlock{
+				Type: "image",
+				Source: &types.ImageSource{
+					Type:      "base64",
+					MediaType: img.MediaType,
+					Data:      img.Data,
+				},
+			})
+		}
 		if nm.Thinking != "" {
 			blocks = append(blocks, types.ContentBlock{Type: "thinking", Thinking: nm.Thinking})
 		}

@@ -64,7 +64,17 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 			case "thinking":
 				nm.Thinking += block.Thinking
 			case "image":
-				nm.Content += "[Image]"
+				// Preserve image data so the downstream transformer can convert
+				// to image_url (or append a [Image] placeholder if the model
+				// does not support vision). Previously this was collapsed to
+				// the literal text "[Image]" which destroyed the image bytes
+				// before the transformer could inspect them.
+				if block.Source != nil {
+					nm.Images = append(nm.Images, NormalizedImage{
+						MediaType: block.Source.MediaType,
+						Data:      block.Source.Data,
+					})
+				}
 			}
 		}
 

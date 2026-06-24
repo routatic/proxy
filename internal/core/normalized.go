@@ -6,12 +6,19 @@ type NormalizedToolResult struct {
 	Content    string
 }
 
+// NormalizedImage is a single image attachment in a normalized message.
+type NormalizedImage struct {
+	MediaType string // MIME type (e.g. "image/png")
+	Data      string // Base64-encoded image data
+}
+
 // NormalizedMessage is a single message in the internal canonical format.
 // All wire formats (Anthropic, OpenAI, Responses, Gemini) map to and from
 // this representation.
 type NormalizedMessage struct {
 	Role        string                 // "user", "assistant", "system", "tool"
 	Content     string                 // Concatenated text content
+	Images      []NormalizedImage      // Image attachments (user messages only)
 	ToolCalls   []NormalizedToolCall   // Present on assistant messages
 	ToolResults []NormalizedToolResult // Present on user messages with tool results
 	ToolCallID  string                 // Deprecated: use ToolResults instead. Kept for backward compat.
