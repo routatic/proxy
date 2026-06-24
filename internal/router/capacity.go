@@ -44,11 +44,24 @@ func FilterByCapacity(chain []config.ModelConfig, inputTokens int, requestedMaxT
 			continue
 		}
 
-		sentMax := clampOutputTokens(model, inputTokens, requestedMaxTokens)
-		if sentMax < minimumOutputTokens {
-			decision.Skipped = append(decision.Skipped, SkippedModel{ModelID: model.ModelID, Reason: "context_window_exceeded"})
-			continue
+		// A model is capacity-ineligible only when its own context window is
+		// exhausted below the output floor. A client that requests a small
+		// max_tokens (e.g. the safety classifier asks for 64 tokens to render
+		// a yes/no verdict) must NOT trigger a skip — the model still has
+		// room, it just needs to produce fewer tokens. Skipping on the
+		// clamped value here caused every sub-256-token request to fail with
+		// "no eligible model for request capacity", which the harness surfaces
+		// as "model temporarily unavailable, auto mode cannot determine
+		// safety".
+		if model.ContextWindow > 0 {
+			remaining := model.ContextWindow - inputTokens - model.ContextMargin
+			if remaining < minimumOutputTokens {
+				decision.Skipped = append(decision.Skipped, SkippedModel{ModelID: model.ModelID, Reason: "context_window_exceeded"})
+				continue
+			}
 		}
+
+		sentMax := clampOutputTokens(model, inputTokens, requestedMaxTokens)
 		model.MaxTokens = sentMax
 		if len(decision.Models) == 0 {
 			decision.SelectedMaxTokens = sentMax
