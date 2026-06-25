@@ -394,6 +394,143 @@ func TestEnvOverrides_ProviderSpecificKeysPrecedence(t *testing.T) {
 	}
 }
 
+func TestParseCommaSeparatedKeys(t *testing.T) {
+	tests := []struct {
+		name string
+		input string
+		want []string
+	}{
+		{
+			name:  "single key",
+			input: "key-1",
+			want:  []string{"key-1"},
+		},
+		{
+			name:  "multiple keys",
+			input: "key-1,key-2,key-3",
+			want:  []string{"key-1", "key-2", "key-3"},
+		},
+		{
+			name:  "keys with spaces",
+			input: "key-1 , key-2 , key-3",
+			want:  []string{"key-1", "key-2", "key-3"},
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "only commas",
+			input: ",,,",
+			want:  nil,
+		},
+		{
+			name:  "mixed empty entries",
+			input: "key-1,,key-2,",
+			want:  []string{"key-1", "key-2"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseCommaSeparatedKeys(tt.input)
+			if len(got) != len(tt.want) {
+				t.Errorf("parseCommaSeparatedKeys(%q) = %v, want %v", tt.input, got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("parseCommaSeparatedKeys(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestEnvOverrides_CommaSeparatedProviderKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "global-key",
+		"opencode_go": {
+			"base_url": "https://go.example.com/v1"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	// Set comma-separated keys
+	_ = os.Setenv("ROUTATIC_PROXY_OPENCODE_GO_API_KEYS", "go-key-1,go-key-2,go-key-3")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENCODE_GO_API_KEYS")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Verify APIKeys array is set from env var
+	want := []string{"go-key-1", "go-key-2", "go-key-3"}
+	if len(cfg.OpenCodeGo.APIKeys) != len(want) {
+		t.Errorf("OpenCodeGo.APIKeys = %v, want %v", cfg.OpenCodeGo.APIKeys, want)
+		return
+	}
+	for i := range cfg.OpenCodeGo.APIKeys {
+		if cfg.OpenCodeGo.APIKeys[i] != want[i] {
+			t.Errorf("OpenCodeGo.APIKeys[%d] = %q, want %q", i, cfg.OpenCodeGo.APIKeys[i], want[i])
+		}
+	}
+
+	// Verify APIKey is cleared when API_KEYS env var is set
+	if cfg.OpenCodeGo.APIKey != "" {
+		t.Errorf("OpenCodeGo.APIKey = %q, want empty string", cfg.OpenCodeGo.APIKey)
+	}
+}
+
+func TestEnvOverrides_GlobalCommaSeparatedKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{"api_key": "file-key"}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Setenv("ROUTATIC_PROXY_API_KEYS", "env-key-1,env-key-2")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_API_KEYS")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Verify global APIKeys is set from env var
+	want := []string{"env-key-1", "env-key-2"}
+	if len(cfg.APIKeys) != len(want) {
+		t.Errorf("APIKeys = %v, want %v", cfg.APIKeys, want)
+		return
+	}
+	for i := range cfg.APIKeys {
+		if cfg.APIKeys[i] != want[i] {
+			t.Errorf("APIKeys[%d] = %q, want %q", i, cfg.APIKeys[i], want[i])
+		}
+	}
+
+	// Verify APIKey is cleared when API_KEYS env var is set
+	if cfg.APIKey != "" {
+		t.Errorf("APIKey = %q, want empty string", cfg.APIKey)
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")

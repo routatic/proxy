@@ -772,6 +772,8 @@ func getDefaultConfig() string {
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
+    "api_key": "${ROUTATIC_PROXY_OPENCODE_GO_API_KEY}",
+    "api_keys": [],
     "timeout_ms": 300000
   },
   "opencode_zen": {
@@ -779,6 +781,8 @@ func getDefaultConfig() string {
     "anthropic_base_url": "https://opencode.ai/zen/v1/messages",
     "responses_base_url": "https://opencode.ai/zen/v1/responses",
     "gemini_base_url": "https://opencode.ai/zen/v1/models",
+    "api_key": "${ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY}",
+    "api_keys": [],
     "timeout_ms": 300000
   },
   "logging": {
