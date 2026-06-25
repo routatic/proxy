@@ -225,6 +225,17 @@ func (h *FallbackHandler) ExecuteWithFallback(
 			return nil, nil, errCtx
 		}
 
+		// Usage limit errors should be passed directly to the client instead
+		// of triggering a fallback, as fallback attempts will also encounter
+		// the same usage limit error within a short period.
+		if IsUsageLimitError(err) {
+			h.logger.Warn("usage limit error encountered, passing directly to client",
+				"model", model.ModelID,
+				"error", err,
+			)
+			return nil, nil, err
+		}
+
 		if IsRetryableError(err) {
 			cb.RecordFailure()
 			h.logger.Warn("model failed, trying fallback",
@@ -298,6 +309,21 @@ func IsRetryableError(err error) bool {
 		}
 	}
 	return false
+}
+
+// IsUsageLimitError returns true if the error is a GoUsageLimitError.
+// Usage limit errors should be passed directly to the client instead of
+// triggering a fallback, as fallback attempts will also encounter the
+// same usage limit within a short period.
+func IsUsageLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for GoUsageLimitError in the error message
+	// The error body contains: {"type":"error","error":{"type":"GoUsageLimitError",...}}
+	errStr := err.Error()
+	return strings.Contains(errStr, "GoUsageLimitError")
 }
 
 // GetCircuitStates returns the state of all circuit breakers.

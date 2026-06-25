@@ -418,3 +418,94 @@ func TestExecuteWithFallback_AllModelsFailRecordsFailures(t *testing.T) {
 		t.Error("model-b should have circuit breaker entry")
 	}
 }
+
+func TestIsUsageLimitError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "GoUsageLimitError from API",
+			err:  &client.APIError{StatusCode: 429, Body: `{"type":"error","error":{"type":"GoUsageLimitError","message":"5-hour usage limit reached"}}`},
+			want: true,
+		},
+		{
+			name: "Regular rate limit error",
+			err:  &client.APIError{StatusCode: 429, Body: `{"error": "rate limit exceeded"}`},
+			want: false,
+		},
+		{
+			name: "500 error with GoUsageLimitError in body",
+			err:  &client.APIError{StatusCode: 500, Body: `{"type":"GoUsageLimitError"}`},
+			want: true,
+		},
+		{
+			name: "Non-API error with GoUsageLimitError",
+			err:  errors.New(`API error 429: {"type":"GoUsageLimitError"}`),
+			want: true,
+		},
+		{
+			name: "Generic error",
+			err:  errors.New("something went wrong"),
+			want: false,
+		},
+		{
+			name: "Nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsUsageLimitError(tt.err); got != tt.want {
+				t.Errorf("IsUsageLimitError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteWithFallback_UsageLimitErrorStopsFallback(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	usageLimitErr := &client.APIError{
+		StatusCode: 429,
+		Body:       `{"type":"error","error":{"type":"GoUsageLimitError","message":"5-hour usage limit reached. Resets in 3hr 56min."}}`,
+	}
+
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, usageLimitErr
+		},
+	)
+
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (should stop on usage limit error)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error for usage limit")
+	}
+
+	// The error should be the original usage limit error, not "all models failed"
+	if !IsUsageLimitError(err) {
+		t.Errorf("expected usage limit error, got: %v", err)
+	}
+
+	// Circuit breaker should not be affected by usage limit errors
+	states := handler.GetCircuitStates()
+	if state, ok := states["model-a"]; ok && state == "open" {
+		t.Error("model-a circuit breaker should NOT be open for usage limit error")
+	}
+}
