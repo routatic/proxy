@@ -29,6 +29,26 @@ const (
 // envVarPattern matches ${ENV_VAR} placeholders in config values.
 var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z0-9_]+)\}`)
 
+// parseCommaSeparatedKeys splits a comma-separated string of API keys.
+// Empty entries are filtered out. Returns nil if no valid keys found.
+func parseCommaSeparatedKeys(v string) []string {
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	var keys []string
+	for _, part := range parts {
+		key := strings.TrimSpace(part)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return keys
+}
+
 var legacyEnvNames = map[string]string{
 	"ROUTATIC_PROXY_CONFIG":           "OC_GO_CC_CONFIG",
 	"ROUTATIC_PROXY_API_KEY":          "OC_GO_CC_API_KEY",
@@ -132,19 +152,40 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.APIKey = v
 		cfg.APIKeys = nil // env var overrides both api_key and api_keys
 	}
+	// Global API keys array (comma-separated)
+	if v := envValue("ROUTATIC_PROXY_API_KEYS"); v != "" {
+		cfg.APIKeys = parseCommaSeparatedKeys(v)
+		cfg.APIKey = ""
+	}
 
 	// Provider-specific API keys (new)
+	// Single key
 	if v := envValue("ROUTATIC_PROXY_OPENCODE_GO_API_KEY"); v != "" {
 		cfg.OpenCodeGo.APIKey = v
 		cfg.OpenCodeGo.APIKeys = nil
 	}
+	// Comma-separated keys
+	if v := envValue("ROUTATIC_PROXY_OPENCODE_GO_API_KEYS"); v != "" {
+		cfg.OpenCodeGo.APIKeys = parseCommaSeparatedKeys(v)
+		cfg.OpenCodeGo.APIKey = ""
+	}
+
 	if v := envValue("ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY"); v != "" {
 		cfg.OpenCodeZen.APIKey = v
 		cfg.OpenCodeZen.APIKeys = nil
 	}
+	if v := envValue("ROUTATIC_PROXY_OPENCODE_ZEN_API_KEYS"); v != "" {
+		cfg.OpenCodeZen.APIKeys = parseCommaSeparatedKeys(v)
+		cfg.OpenCodeZen.APIKey = ""
+	}
+
 	if v := envValue("ROUTATIC_PROXY_AWS_BEDROCK_API_KEY"); v != "" {
 		cfg.AWSBedrock.APIKey = v
 		cfg.AWSBedrock.APIKeys = nil
+	}
+	if v := envValue("ROUTATIC_PROXY_AWS_BEDROCK_API_KEYS"); v != "" {
+		cfg.AWSBedrock.APIKeys = parseCommaSeparatedKeys(v)
+		cfg.AWSBedrock.APIKey = ""
 	}
 
 	if v := envValue("ROUTATIC_PROXY_HOST"); v != "" {

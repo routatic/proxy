@@ -306,6 +306,94 @@ func TestEnvOverrides_OC_GO_CC_API_KEY_OverridesAPIKeys(t *testing.T) {
 	}
 }
 
+func TestEnvOverrides_ProviderSpecificAPIKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "global-key",
+		"opencode_go": {
+			"base_url": "https://go.example.com/v1"
+		},
+		"opencode_zen": {
+			"base_url": "https://zen.example.com/v1"
+		},
+		"aws_bedrock": {
+			"base_url": "https://bedrock.example.com/v1"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Setenv("ROUTATIC_PROXY_OPENCODE_GO_API_KEY", "go-env-key")
+	_ = os.Setenv("ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY", "zen-env-key")
+	_ = os.Setenv("ROUTATIC_PROXY_AWS_BEDROCK_API_KEY", "bedrock-env-key")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENCODE_GO_API_KEY")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY")
+		_ = os.Unsetenv("ROUTATIC_PROXY_AWS_BEDROCK_API_KEY")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Verify provider-specific keys are set from env vars
+	if cfg.OpenCodeGo.APIKey != "go-env-key" {
+		t.Errorf("OpenCodeGo.APIKey = %q, want %q", cfg.OpenCodeGo.APIKey, "go-env-key")
+	}
+	if cfg.OpenCodeZen.APIKey != "zen-env-key" {
+		t.Errorf("OpenCodeZen.APIKey = %q, want %q", cfg.OpenCodeZen.APIKey, "zen-env-key")
+	}
+	if cfg.AWSBedrock.APIKey != "bedrock-env-key" {
+		t.Errorf("AWSBedrock.APIKey = %q, want %q", cfg.AWSBedrock.APIKey, "bedrock-env-key")
+	}
+
+	// Verify APIKeys are nilified when env var is set
+	if cfg.OpenCodeGo.APIKeys != nil {
+		t.Errorf("OpenCodeGo.APIKeys = %v, want nil", cfg.OpenCodeGo.APIKeys)
+	}
+}
+
+func TestEnvOverrides_ProviderSpecificKeysPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	// Config has both global and provider-specific keys
+	cfgJSON := `{
+		"api_key": "global-key",
+		"opencode_go": {
+			"api_key": "go-file-key",
+			"base_url": "https://go.example.com/v1"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	// Provider env var should override file value
+	_ = os.Setenv("ROUTATIC_PROXY_OPENCODE_GO_API_KEY", "go-env-key")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENCODE_GO_API_KEY")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Provider env var should take precedence over file
+	if cfg.OpenCodeGo.APIKey != "go-env-key" {
+		t.Errorf("OpenCodeGo.APIKey = %q, want %q", cfg.OpenCodeGo.APIKey, "go-env-key")
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -521,6 +609,120 @@ func TestEffectiveAPIKeys_EmptyReturnsNil(t *testing.T) {
 	keys := cfg.EffectiveAPIKeys()
 	if keys != nil {
 		t.Errorf("EffectiveAPIKeys() = %v, want nil", keys)
+	}
+}
+
+func TestOpenCodeGoConfig_EffectiveAPIKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		config OpenCodeGoConfig
+		want   []string
+	}{
+		{
+			name:   "APIKeys takes precedence",
+			config: OpenCodeGoConfig{APIKeys: []string{"key-1", "key-2"}, APIKey: "single-key"},
+			want:   []string{"key-1", "key-2"},
+		},
+		{
+			name:   "Falls back to APIKey",
+			config: OpenCodeGoConfig{APIKey: "single-key"},
+			want:   []string{"single-key"},
+		},
+		{
+			name:   "Empty returns nil",
+			config: OpenCodeGoConfig{},
+			want:   nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.config.EffectiveAPIKeys()
+			if len(got) != len(tt.want) {
+				t.Errorf("EffectiveAPIKeys() = %v, want %v", got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("EffectiveAPIKeys()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestOpenCodeZenConfig_EffectiveAPIKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		config OpenCodeZenConfig
+		want   []string
+	}{
+		{
+			name:   "APIKeys takes precedence",
+			config: OpenCodeZenConfig{APIKeys: []string{"zen-1", "zen-2"}, APIKey: "zen-single"},
+			want:   []string{"zen-1", "zen-2"},
+		},
+		{
+			name:   "Falls back to APIKey",
+			config: OpenCodeZenConfig{APIKey: "zen-single"},
+			want:   []string{"zen-single"},
+		},
+		{
+			name:   "Empty returns nil",
+			config: OpenCodeZenConfig{},
+			want:   nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.config.EffectiveAPIKeys()
+			if len(got) != len(tt.want) {
+				t.Errorf("EffectiveAPIKeys() = %v, want %v", got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("EffectiveAPIKeys()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestAWSBedrockConfig_EffectiveAPIKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		config AWSBedrockConfig
+		want   []string
+	}{
+		{
+			name:   "APIKeys takes precedence",
+			config: AWSBedrockConfig{APIKeys: []string{"bedrock-1", "bedrock-2"}, APIKey: "bedrock-single"},
+			want:   []string{"bedrock-1", "bedrock-2"},
+		},
+		{
+			name:   "Falls back to APIKey",
+			config: AWSBedrockConfig{APIKey: "bedrock-single"},
+			want:   []string{"bedrock-single"},
+		},
+		{
+			name:   "Empty returns nil",
+			config: AWSBedrockConfig{},
+			want:   nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.config.EffectiveAPIKeys()
+			if len(got) != len(tt.want) {
+				t.Errorf("EffectiveAPIKeys() = %v, want %v", got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("EffectiveAPIKeys()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
 }
 
