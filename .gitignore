@@ -8,3 +8,5 @@ oc-go-cc
 routatic-proxy
 .trunk
 dist/
+brag-output-**
+.DS_Store
