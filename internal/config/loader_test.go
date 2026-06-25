@@ -974,6 +974,84 @@ func TestValidateAPIKeys_RejectsAllEmpty(t *testing.T) {
 	}
 }
 
+func TestValidate_ProviderSpecificAPIKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfgJSON string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid provider keys",
+			cfgJSON: `{"api_key": "global", "opencode_go": {"api_key": "go-key"}}`,
+			wantErr: false,
+		},
+		{
+			name:    "unresolved placeholder in provider api_key",
+			cfgJSON: `{"api_key": "global", "opencode_go": {"api_key": "${UNSET_VAR}"}}`,
+			wantErr: true,
+			errMsg:  "opencode_go.api_key",
+		},
+		{
+			name:    "unresolved placeholder in provider api_keys",
+			cfgJSON: `{"api_key": "global", "opencode_go": {"api_keys": ["key1", "${UNSET_VAR}"]}}`,
+			wantErr: true,
+			errMsg:  "opencode_go.api_keys",
+		},
+		{
+			name:    "empty entry in provider api_keys",
+			cfgJSON: `{"api_key": "global", "opencode_go": {"api_keys": ["key1", ""]}}`,
+			wantErr: true,
+			errMsg:  "opencode_go.api_keys",
+		},
+		{
+			name:    "valid provider api_keys",
+			cfgJSON: `{"api_key": "global", "opencode_go": {"api_keys": ["key1", "key2"]}}`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "config.json")
+
+			if err := os.WriteFile(cfgPath, []byte(tt.cfgJSON), 0644); err != nil {
+				t.Fatalf("failed to write test config: %v", err)
+			}
+
+			_ = os.Setenv("OC_GO_CC_CONFIG", cfgPath)
+			defer func() { _ = os.Unsetenv("OC_GO_CC_CONFIG") }()
+
+			_, err := Load()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Load() expected error containing %q, got nil", tt.errMsg)
+				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+					t.Errorf("Load() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Load() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDefaults_StreamingTimeoutFallback(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")

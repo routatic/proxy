@@ -293,6 +293,28 @@ func validate(cfg *Config) error {
 		return err
 	}
 
+	// Validate provider-specific API keys
+	if err := validateSingleAPIKey(cfg.OpenCodeGo.APIKey); err != nil {
+		return fmt.Errorf("opencode_go.api_key: %w", err)
+	}
+	if err := validateAPIKeys(cfg.OpenCodeGo.APIKeys); err != nil {
+		return fmt.Errorf("opencode_go.api_keys: %w", err)
+	}
+
+	if err := validateSingleAPIKey(cfg.OpenCodeZen.APIKey); err != nil {
+		return fmt.Errorf("opencode_zen.api_key: %w", err)
+	}
+	if err := validateAPIKeys(cfg.OpenCodeZen.APIKeys); err != nil {
+		return fmt.Errorf("opencode_zen.api_keys: %w", err)
+	}
+
+	if err := validateSingleAPIKey(cfg.AWSBedrock.APIKey); err != nil {
+		return fmt.Errorf("aws_bedrock.api_key: %w", err)
+	}
+	if err := validateAPIKeys(cfg.AWSBedrock.APIKeys); err != nil {
+		return fmt.Errorf("aws_bedrock.api_keys: %w", err)
+	}
+
 	if err := validateModelOverrides(cfg.ModelOverrides); err != nil {
 		return err
 	}
