@@ -801,7 +801,7 @@ func TestGetProviderAPIKeys_ProviderSpecificKeys(t *testing.T) {
 
 func TestGetProviderAPIKeys_FallbackToGlobal(t *testing.T) {
 	cfg := &config.Config{
-		APIKeys: []string{"global-key-1", "global-key-2"},
+		APIKeys:    []string{"global-key-1", "global-key-2"},
 		OpenCodeGo: config.OpenCodeGoConfig{
 			// No provider-specific keys
 		},
@@ -846,7 +846,7 @@ func TestGetProviderAPIKeys_ProviderKeysPrecedence(t *testing.T) {
 
 func TestGetProviderAPIKeys_EmptyReturnsGlobal(t *testing.T) {
 	cfg := &config.Config{
-		APIKey: "global-single-key",
+		APIKey:     "global-single-key",
 		OpenCodeGo: config.OpenCodeGoConfig{
 			// No keys configured
 		},

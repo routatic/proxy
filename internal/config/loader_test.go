@@ -396,9 +396,9 @@ func TestEnvOverrides_ProviderSpecificKeysPrecedence(t *testing.T) {
 
 func TestParseCommaSeparatedKeys(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
-		want []string
+		want  []string
 	}{
 		{
 			name:  "single key",
