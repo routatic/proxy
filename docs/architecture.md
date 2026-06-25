@@ -35,8 +35,9 @@ OpenCode Go / OpenCode Zen
 | `internal/handlers` | HTTP request handling, message parsing, orchestration |
 | `internal/router` | Scenario detection, model selection, fallback chains |
 | `internal/transformer` | Anthropic ↔ OpenAI/Responses/Gemini format conversion |
-| `internal/client` | Upstream HTTP client, endpoint classification |
+| `internal/client` | Upstream HTTP client, provider detection utilities |
 | `internal/config` | JSON config loading, hot reload, atomic access |
+| `internal/models` | Model classification utilities (endpoint type detection) |
 | `internal/provider` | Provider-based dispatch (new path, replaces legacy client) |
 | `internal/token` | Token counting via tiktoken |
 | `internal/daemon` | Background mode, PID management, autostart |
@@ -67,6 +68,8 @@ Claude Code sends Anthropic Messages API format. The proxy transforms to the pro
 | OpenCode Zen (Claude, Qwen) | Anthropic Messages | `/v1/messages` |
 | OpenCode Zen (GPT models) | OpenAI Responses | `/v1/responses` |
 | OpenCode Zen (Gemini) | Gemini | `/v1/models/{id}` |
+
+**Endpoint classification** is handled by `internal/models.ClassifyEndpoint()`, which is shared between the client and provider packages to ensure consistent routing.
 
 **Key transformation details:**
 

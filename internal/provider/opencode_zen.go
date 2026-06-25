@@ -13,6 +13,7 @@ import (
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
+	"github.com/routatic/proxy/internal/models"
 	"github.com/routatic/proxy/internal/transformer"
 	"github.com/routatic/proxy/pkg/types"
 )
@@ -66,49 +67,15 @@ func (p *OpenCodeZenProvider) ModelCapabilities(modelID string) (core.ProviderCa
 // WireFormat returns the wire format for the given model on Zen.
 // This replaces the old client.ClassifyEndpoint function.
 func (p *OpenCodeZenProvider) WireFormat(modelID string) core.WireFormat {
-	switch {
-	case isZenAnthropicModel(modelID):
+	switch models.ClassifyEndpoint(modelID) {
+	case models.EndpointAnthropic:
 		return core.WireFormatAnthropic
-	case isGeminiModel(modelID):
+	case models.EndpointGemini:
 		return core.WireFormatGemini
-	case isResponsesModel(modelID):
+	case models.EndpointResponses:
 		return core.WireFormatOpenAIResponses
 	default:
 		return core.WireFormatOpenAIChat
-	}
-}
-
-// isZenAnthropicModel returns true for Zen models that use the Anthropic endpoint.
-func isZenAnthropicModel(modelID string) bool {
-	if strings.HasPrefix(modelID, "claude-") {
-		return true
-	}
-	if strings.HasPrefix(modelID, "qwen") {
-		return true
-	}
-	return false
-}
-
-// isGeminiModel returns true for models using the Gemini endpoint.
-func isGeminiModel(modelID string) bool {
-	switch modelID {
-	case "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash":
-		return true
-	default:
-		return false
-	}
-}
-
-// isResponsesModel returns true for models using the OpenAI Responses endpoint.
-func isResponsesModel(modelID string) bool {
-	switch modelID {
-	case "gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano",
-		"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2", "gpt-5.2-codex",
-		"gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini",
-		"gpt-5", "gpt-5-codex", "gpt-5-nano":
-		return true
-	default:
-		return false
 	}
 }
 

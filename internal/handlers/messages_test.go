@@ -33,12 +33,12 @@ func TestAppendUniqueModels_DedupsByModelID(t *testing.T) {
 	}
 	extra := []config.ModelConfig{
 		{Provider: "opencode-go", ModelID: "kimi-k2.6"}, // dup of base[0]
-		{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+		{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"},
 		{Provider: "opencode-go", ModelID: "glm-5"}, // dup of base[1]
 	}
 
 	got := appendUniqueModels(base, extra)
-	wantIDs := []string{"kimi-k2.6", "glm-5", "mimo-v2-pro"}
+	wantIDs := []string{"kimi-k2.6", "glm-5", "mimo-v2.5-pro"}
 
 	if len(got) != len(wantIDs) {
 		t.Fatalf("got %d models, want %d (got=%+v)", len(got), len(wantIDs), got)
@@ -140,7 +140,7 @@ func TestBuildModelChain_NoOverride_UsesScenarioRoute(t *testing.T) {
 		},
 		Fallbacks: map[string][]config.ModelConfig{
 			"default": {
-				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"},
 				{Provider: "opencode-go", ModelID: "qwen3.6-plus"},
 			},
 		},
@@ -151,7 +151,7 @@ func TestBuildModelChain_NoOverride_UsesScenarioRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{"kimi-k2.6", "mimo-v2-pro", "qwen3.6-plus"}
+	want := []string{"kimi-k2.6", "mimo-v2.5-pro", "qwen3.6-plus"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("chain = %v, want %v", got, want)
 	}
@@ -169,7 +169,7 @@ func TestBuildModelChain_Override_AppendsScenarioChainDeduped(t *testing.T) {
 		},
 		Fallbacks: map[string][]config.ModelConfig{
 			"default": {
-				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"},
 				{Provider: "opencode-go", ModelID: "qwen3.6-plus"},
 			},
 		},
@@ -190,8 +190,8 @@ func TestBuildModelChain_Override_AppendsScenarioChainDeduped(t *testing.T) {
 	}
 
 	// Order: [override.primary=kimi-k2.6, scenario.primary=kimi-k2.6 (DROPPED), scenario.fallbacks...]
-	// Final chain: [kimi-k2.6, mimo-v2-pro, qwen3.6-plus]
-	want := []string{"kimi-k2.6", "mimo-v2-pro", "qwen3.6-plus"}
+	// Final chain: [kimi-k2.6, mimo-v2.5-pro, qwen3.6-plus]
+	want := []string{"kimi-k2.6", "mimo-v2.5-pro", "qwen3.6-plus"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("chain = %v, want %v (dedup must drop scenario.primary that overlaps override.primary)", got, want)
 	}
@@ -215,7 +215,7 @@ func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
 		},
 		Fallbacks: map[string][]config.ModelConfig{
 			"default": {
-				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"},
 			},
 		},
 		ModelOverrides: map[string]config.ModelConfig{
@@ -233,11 +233,11 @@ func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
 	}
 	// Chain construction:
 	//   1. override primary       = claude-sonnet-4.5
-	//   2. default fallbacks      = [mimo-v2-pro]            (from fallbacks["default"])
+	//   2. default fallbacks      = [mimo-v2.5-pro]            (from fallbacks["default"])
 	//   3. scenario safety-net:
 	//        scenario primary      = kimi-k2.6                 (new)
-	//        scenario fallbacks    = [mimo-v2-pro]            (dup, dropped)
-	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "kimi-k2.6"}
+	//        scenario fallbacks    = [mimo-v2.5-pro]            (dup, dropped)
+	want := []string{"claude-sonnet-4.5", "mimo-v2.5-pro", "kimi-k2.6"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("chain = %v, want %v", got, want)
 	}
@@ -256,7 +256,7 @@ func TestBuildModelChain_Override_NoMatchingFallbacksKey(t *testing.T) {
 		},
 		Fallbacks: map[string][]config.ModelConfig{
 			"default": {
-				{Provider: "opencode-go", ModelID: "mimo-v2-pro"},
+				{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"},
 			},
 		},
 		ModelOverrides: map[string]config.ModelConfig{
@@ -269,11 +269,11 @@ func TestBuildModelChain_Override_NoMatchingFallbacksKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Expected: [override primary, default fallback (mimo-v2-pro), scenario primary (kimi-k2.6)]
-	// Note: mimo-v2-pro is in BOTH the default fallback and NOT in the scenario
+	// Expected: [override primary, default fallback (mimo-v2.5-pro), scenario primary (kimi-k2.6)]
+	// Note: mimo-v2.5-pro is in BOTH the default fallback and NOT in the scenario
 	// chain here, so dedup is exercised on the override primary not overlapping
 	// the scenario primary.
-	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "kimi-k2.6"}
+	want := []string{"claude-sonnet-4.5", "mimo-v2.5-pro", "kimi-k2.6"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("chain = %v, want %v (override -> default fallback -> scenario primary)", got, want)
 	}
@@ -289,7 +289,7 @@ func TestBuildModelChain_StreamingFlag_UsesStreamingRoute(t *testing.T) {
 			"fast":    {Provider: "opencode-go", ModelID: "qwen3.6-plus"},
 		},
 		Fallbacks: map[string][]config.ModelConfig{
-			"default": {{ModelID: "mimo-v2-pro"}},
+			"default": {{ModelID: "mimo-v2.5-pro"}},
 			"fast":    {{ModelID: "qwen3.5-plus"}},
 		},
 		ModelOverrides: map[string]config.ModelConfig{
@@ -305,10 +305,10 @@ func TestBuildModelChain_StreamingFlag_UsesStreamingRoute(t *testing.T) {
 	}
 
 	// Streaming: override still wins, but the safety-net uses fast route.
-	// Chain: [claude-sonnet-4.5 (override), mimo-v2-pro (default fallback),
+	// Chain: [claude-sonnet-4.5 (override), mimo-v2.5-pro (default fallback),
 	//         qwen3.6-plus (fast scenario primary), qwen3.5-plus (fast scenario fallback)]
 	chain, _, _ := h.buildModelChain("claude-sonnet-4.5", nil, 100, true, 4096, false, false)
-	want := []string{"claude-sonnet-4.5", "mimo-v2-pro", "qwen3.6-plus", "qwen3.5-plus"}
+	want := []string{"claude-sonnet-4.5", "mimo-v2.5-pro", "qwen3.6-plus", "qwen3.5-plus"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("streaming chain = %v, want %v (safety-net should use RouteForStreaming)", got, want)
 	}
@@ -323,7 +323,7 @@ func TestBuildModelChain_UnknownModel_FallsThroughToScenarioRoute(t *testing.T) 
 			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
 		},
 		Fallbacks: map[string][]config.ModelConfig{
-			"default": {{ModelID: "mimo-v2-pro"}},
+			"default": {{ModelID: "mimo-v2.5-pro"}},
 		},
 		ModelOverrides: map[string]config.ModelConfig{
 			"some-other-model": {Provider: "opencode-zen", ModelID: "some-other-model"},
@@ -335,7 +335,7 @@ func TestBuildModelChain_UnknownModel_FallsThroughToScenarioRoute(t *testing.T) 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{"kimi-k2.6", "mimo-v2-pro"}
+	want := []string{"kimi-k2.6", "mimo-v2.5-pro"}
 	if got := chainIDs(chain); !equalStrings(got, want) {
 		t.Errorf("chain = %v, want %v", got, want)
 	}
@@ -649,7 +649,7 @@ func TestHandleStreaming_GoAnthropicModel_FallsThroughOnError(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	handler := &MessagesHandler{
 		client:              ocClient,
@@ -701,7 +701,7 @@ func newStreamingTestHandler(t *testing.T, upstreamURL string) *MessagesHandler 
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	return &MessagesHandler{
 		client:              ocClient,
@@ -755,7 +755,7 @@ func TestHandleMessages_StreamingMinimaxM3_UsesAnthropicEndpoint(t *testing.T) {
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
 
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -769,6 +769,7 @@ func TestHandleMessages_StreamingMinimaxM3_UsesAnthropicEndpoint(t *testing.T) {
 		nil, // fallbackHandler
 		tokenCounter,
 		metrics.New(),
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -867,7 +868,7 @@ func TestHandleNonStreaming_GoAnthropicModel_ReplacesModelInBody(t *testing.T) {
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -881,6 +882,7 @@ func TestHandleNonStreaming_GoAnthropicModel_ReplacesModelInBody(t *testing.T) {
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		metrics.New(),
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -982,7 +984,7 @@ func TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody(t *testing.T) 
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -996,6 +998,7 @@ func TestHandleNonStreaming_ZenAnthropicModel_ReplacesModelInBody(t *testing.T) 
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		metrics.New(),
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -1075,7 +1078,7 @@ func TestHandleStreaming_ConfigurableTimeout(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	handler := &MessagesHandler{
 		client:              ocClient,
@@ -1261,7 +1264,7 @@ func TestHandleStreaming_PerModelTimeoutFallback(t *testing.T) {
 		},
 	}
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 
 	handler := &MessagesHandler{
 		client:              ocClient,
@@ -1343,7 +1346,7 @@ func TestHandleNonStreaming_ParentContextCanceled_No502(t *testing.T) {
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -1358,6 +1361,7 @@ func TestHandleNonStreaming_ParentContextCanceled_No502(t *testing.T) {
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		m,
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 
@@ -1423,7 +1427,7 @@ func TestHandleNonStreaming_ParentDeadlineExceeded_No502(t *testing.T) {
 	}
 
 	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
-	ocClient := client.NewOpenCodeClient(atomicCfg)
+	ocClient := client.NewOpenCodeClient(atomicCfg, nil)
 	modelRouter := router.NewModelRouter(atomicCfg)
 	tokenCounter, err := token.NewCounter()
 	if err != nil {
@@ -1438,6 +1442,7 @@ func TestHandleNonStreaming_ParentDeadlineExceeded_No502(t *testing.T) {
 		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
 		tokenCounter,
 		m,
+		nil, // captureLogger
 	)
 	handler.logger = slog.Default()
 

@@ -29,17 +29,36 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 - OpenAI endpoint (`/v1/chat/completions`) — used by most models (GLM, Kimi, MiMo, Qwen)
 - Anthropic endpoint (`/v1/messages`) — used only by MiniMax models
 
-`internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `ClassifyEndpoint()`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
+**Available models:**
+
+| Model | Provider | Type | Best For |
+|-------|----------|------|----------|
+| GLM-5.2 | Go | Premium | Complex reasoning, architecture decisions (new) |
+| GLM-5.1 | Go | Standard | Complex patterns, tool operations |
+| GLM-5 | Go | Standard | Reasoning tasks (deprecated May 14, 2026) |
+| Kimi K2.7 Code | Go | Code specialist | Code generation, 32K output context (new) |
+| Kimi K2.6 | Go | Standard | General purpose, default fallback |
+| Qwen3.7 Plus | Go | Fast | Streaming, low-latency (new) |
+| Qwen3.7 Max | Go | Fast | Background tasks (new) |
+| Qwen3.6 Plus | Go | Fast | Streaming fallback |
+| Qwen3.5 Plus | Go | Fast | Simple read-only ops |
+| MiniMax | Zen | Long context | 1M context window |
+| MiMo | Go | Reasoning | Step-by-step reasoning |
+
+`internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `models.ClassifyEndpoint()` in `internal/models/classifier.go`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
 
 **Scenario detection priority** (`internal/router/scenarios.go`):
 
 1. Long Context (>80K tokens, configurable) → MiniMax (1M context)
-2. Complex (architectural patterns, tool operations) → GLM-5.1
-3. Think (reasoning keywords in system prompt) → GLM-5
-4. Background (simple read-only ops, no tools) → Qwen3.5 Plus
+2. Complex (architectural patterns, tool operations) → GLM-5.2
+3. Think (reasoning keywords in system prompt) → GLM-5.1
+4. Background (simple read-only ops, no tools) → Qwen3.7 Max
 5. Default → Kimi K2.6
 
-For streaming, the router downgrades to fast models (Qwen3.6 Plus) for better TTFT.
+For streaming, the router downgrades to fast models (Qwen3.7 Plus) for better TTFT.
+
+**Deprecated models:**
+- GLM-5 — deprecated May 14, 2026; use GLM-5.1 or GLM-5.2
 
 **Polymorphic field handling:** Anthropic's `system` and `content` fields accept both strings and arrays. `pkg/types/` uses `json.RawMessage` with accessor methods (`SystemText()`, `ContentBlocks()`) to handle both formats.
 

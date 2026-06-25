@@ -8,13 +8,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/debug"
+	"github.com/routatic/proxy/internal/models"
 	"github.com/routatic/proxy/pkg/types"
 )
+
+// extractRequestID converts a context value to a string request ID.
+func extractRequestID(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch s := v.(type) {
+	case string:
+		return s
+	case []byte:
+		return string(s)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// teeReadCloser wraps an io.ReadCloser with a TeeReader for capturing response data.
+type teeReadCloser struct {
+	io.ReadCloser
+	r io.Reader
+}
+
+func (t *teeReadCloser) Read(p []byte) (n int, err error) {
+	return t.r.Read(p)
+}
 
 const (
 	ProviderOpenCodeGo  = "opencode-go"
@@ -36,9 +62,10 @@ func (e *APIError) Error() string {
 
 // OpenCodeClient handles communication with OpenCode Go and Zen APIs.
 type OpenCodeClient struct {
-	atomic     *config.AtomicConfig
-	httpClient *http.Client
-	keyCounter atomic.Uint64
+	atomic        *config.AtomicConfig
+	httpClient    *http.Client
+	keyCounter    atomic.Uint64
+	captureLogger *debug.CaptureLogger
 }
 
 // nextAPIKey returns the next API key in round-robin order from the given key pool.
@@ -54,7 +81,7 @@ func (c *OpenCodeClient) nextAPIKey(keys []string) string {
 }
 
 // NewOpenCodeClient creates a new OpenCode client.
-func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
+func NewOpenCodeClient(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) *OpenCodeClient {
 	transport := &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 20,
@@ -69,6 +96,7 @@ func NewOpenCodeClient(atomic *config.AtomicConfig) *OpenCodeClient {
 		httpClient: &http.Client{
 			Transport: transport,
 		},
+		captureLogger: captureLogger,
 	}
 }
 
@@ -178,15 +206,7 @@ func IsAnthropicModel(modelID string) bool {
 
 // isZenAnthropicModel returns true for models on Zen that use the Anthropic endpoint.
 func isZenAnthropicModel(modelID string) bool {
-	// Claude models on Zen use the Anthropic endpoint
-	if strings.HasPrefix(modelID, "claude-") {
-		return true
-	}
-	// Qwen models on Zen use the Anthropic endpoint
-	if strings.HasPrefix(modelID, "qwen") {
-		return true
-	}
-	return false
+	return models.IsZenAnthropicModel(modelID)
 }
 
 // Provider returns the provider string for a model config.
@@ -235,24 +255,11 @@ func ClassifyEndpoint(modelID string) EndpointType {
 }
 
 func isGeminiModel(modelID string) bool {
-	switch modelID {
-	case "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash":
-		return true
-	default:
-		return false
-	}
+	return models.IsGeminiModel(modelID)
 }
 
 func isResponsesModel(modelID string) bool {
-	switch modelID {
-	case "gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano",
-		"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2", "gpt-5.2-codex",
-		"gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini",
-		"gpt-5", "gpt-5-codex", "gpt-5-nano":
-		return true
-	default:
-		return false
-	}
+	return models.IsResponsesModel(modelID)
 }
 
 // getEndpoint returns the appropriate endpoint config for a model.
@@ -262,12 +269,12 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 
 	if IsZen(modelConfig) {
 		zen := cfg.OpenCodeZen
-		switch ClassifyEndpoint(modelID) {
-		case EndpointAnthropic:
+		switch models.ClassifyEndpoint(modelID) {
+		case models.EndpointAnthropic:
 			return endpointConfig{BaseURL: zen.AnthropicBaseURL, APIKey: apiKey}
-		case EndpointResponses:
+		case models.EndpointResponses:
 			return endpointConfig{BaseURL: zen.ResponsesBaseURL, APIKey: apiKey}
-		case EndpointGemini:
+		case models.EndpointGemini:
 			return endpointConfig{BaseURL: zen.GeminiBaseURL + "/" + modelID, APIKey: apiKey}
 		default:
 			return endpointConfig{BaseURL: zen.BaseURL, APIKey: apiKey}
@@ -275,7 +282,7 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 	}
 
 	// Default: OpenCode Go
-	if IsAnthropicModel(modelID) {
+	if models.IsAnthropicModel(modelID) {
 		return endpointConfig{BaseURL: cfg.OpenCodeGo.AnthropicBaseURL, APIKey: apiKey}
 	}
 	return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
@@ -301,6 +308,11 @@ func (c *OpenCodeClient) ChatCompletion(
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Capture upstream request before sending
+	if c.captureLogger != nil {
+		c.captureLogger.CaptureUpstreamRequest(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), body)
+	}
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -308,7 +320,7 @@ func (c *OpenCodeClient) ChatCompletion(
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	// Anthropic endpoint uses x-api-key; OpenAI endpoint uses Bearer
-	if IsAnthropicModel(modelID) {
+	if models.IsAnthropicModel(modelID) {
 		httpReq.Header.Set("x-api-key", endpoint.APIKey)
 	} else {
 		httpReq.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
@@ -327,6 +339,17 @@ func (c *OpenCodeClient) ChatCompletion(
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	}
+
+	// Capture upstream response by wrapping the body with a TeeReader
+	if c.captureLogger != nil {
+		pr, pw := io.Pipe()
+		resp.Body = &teeReadCloser{ReadCloser: resp.Body, r: io.TeeReader(resp.Body, pw)}
+		// Async copy to capture
+		go func() {
+			data, _ := io.ReadAll(pr)
+			c.captureLogger.CaptureUpstreamResponse(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), data)
+		}()
 	}
 
 	return resp, nil
@@ -437,6 +460,11 @@ func (c *OpenCodeClient) ResponsesCompletion(
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Capture upstream request before sending
+	if c.captureLogger != nil {
+		c.captureLogger.CaptureUpstreamRequest(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), body)
+	}
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -454,6 +482,17 @@ func (c *OpenCodeClient) ResponsesCompletion(
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	}
+
+	// Capture upstream response by wrapping the body with a TeeReader
+	if c.captureLogger != nil {
+		pr, pw := io.Pipe()
+		resp.Body = &teeReadCloser{ReadCloser: resp.Body, r: io.TeeReader(resp.Body, pw)}
+		// Async copy to capture
+		go func() {
+			data, _ := io.ReadAll(pr)
+			c.captureLogger.CaptureUpstreamResponse(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), data)
+		}()
 	}
 
 	return resp, nil
@@ -518,6 +557,11 @@ func (c *OpenCodeClient) GeminiCompletion(
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Capture upstream request before sending
+	if c.captureLogger != nil {
+		c.captureLogger.CaptureUpstreamRequest(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), body)
+	}
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.BaseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -535,6 +579,17 @@ func (c *OpenCodeClient) GeminiCompletion(
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(bodyBytes)}
+	}
+
+	// Capture upstream response by wrapping the body with a TeeReader
+	if c.captureLogger != nil {
+		pr, pw := io.Pipe()
+		resp.Body = &teeReadCloser{ReadCloser: resp.Body, r: io.TeeReader(resp.Body, pw)}
+		// Async copy to capture
+		go func() {
+			data, _ := io.ReadAll(pr)
+			c.captureLogger.CaptureUpstreamResponse(extractRequestID(ctx.Value("requestID")), Provider(modelConfig), data)
+		}()
 	}
 
 	return resp, nil

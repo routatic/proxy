@@ -14,6 +14,7 @@ import (
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
+	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/handlers"
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/provider"
@@ -31,7 +32,7 @@ type Server struct {
 }
 
 // NewServer creates a new proxy server.
-func NewServer(atomic *config.AtomicConfig) (*Server, error) {
+func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) (*Server, error) {
 	cfg := atomic.Get()
 	levelVar := new(slog.LevelVar)
 	levelVar.Set(parseLogLevel(cfg.Logging.Level))
@@ -50,7 +51,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 	// Create metrics
 	metrics := metrics.New()
 
-	openCodeClient := client.NewOpenCodeClient(atomic)
+	openCodeClient := client.NewOpenCodeClient(atomic, captureLogger)
 	modelRouter := router.NewModelRouter(atomic)
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
 
@@ -71,6 +72,7 @@ func NewServer(atomic *config.AtomicConfig) (*Server, error) {
 		fallbackHandler,
 		tokenCounter,
 		metrics,
+		captureLogger,
 	)
 	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics, statusStore)
 
