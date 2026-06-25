@@ -69,7 +69,7 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 				// does not support vision). Previously this was collapsed to
 				// the literal text "[Image]" which destroyed the image bytes
 				// before the transformer could inspect them.
-				if block.Source != nil {
+				if block.Source != nil && block.Source.Data != "" {
 					nm.Images = append(nm.Images, NormalizedImage{
 						MediaType: block.Source.MediaType,
 						Data:      block.Source.Data,

@@ -41,8 +41,6 @@ type MessageContent struct {
 type RequestFacts struct {
 	LatestUserText          string
 	LatestUserHasImage      bool
-	AnyHistoricalImage      bool
-	LatestTextVisualIntent  bool
 	LatestTextComplexIntent bool
 	NeedsVision             bool
 }
@@ -142,15 +140,7 @@ func AnalyzeRequestFacts(messages []MessageContent) RequestFacts {
 	latest := messages[latestIdx]
 	facts.LatestUserText = latest.Content
 	facts.LatestUserHasImage = latest.HasImage && imageHashesAreNewForLatest(messages, latestIdx)
-	facts.LatestTextVisualIntent = hasVisualIntent(latest.Content)
 	facts.LatestTextComplexIntent = hasComplexPattern([]MessageContent{latest}) || hasThinkingPattern([]MessageContent{latest})
-
-	for i, msg := range messages {
-		if i != latestIdx && msg.Role == "user" && msg.HasImage {
-			facts.AnyHistoricalImage = true
-			break
-		}
-	}
 
 	// Trigger vision routing only when the latest user message actually
 	// contains a new image. The previous heuristic also fired on historical
@@ -193,20 +183,6 @@ func latestUserMessages(messages []MessageContent) []MessageContent {
 		}
 	}
 	return nil
-}
-
-func hasVisualIntent(content string) bool {
-	visualKeywords := []string{
-		"image", "screenshot", "screen", "schermata", "immagine", "foto",
-		"allegato", "[image", "vedi", "visual", "ui", "layout",
-	}
-	lower := strings.ToLower(content)
-	for _, kw := range visualKeywords {
-		if strings.Contains(lower, kw) {
-			return true
-		}
-	}
-	return false
 }
 
 // hasComplexPattern looks for complex operations that need more capable models.
