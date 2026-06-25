@@ -48,34 +48,75 @@ type ModelConfig struct {
 
 // AWSBedrockConfig holds the upstream AWS Bedrock Mantle API settings.
 type AWSBedrockConfig struct {
-	BaseURL            string `json:"base_url"`
-	AnthropicBaseURL   string `json:"anthropic_base_url,omitempty"`
-	APIKey             string `json:"api_key,omitempty"`
-	ProjectID          string `json:"project_id,omitempty"`
-	WireFormat         string `json:"wire_format,omitempty"` // "openai" (default), "anthropic"
-	TimeoutMs          int    `json:"timeout_ms"`
-	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
-	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
+	BaseURL            string   `json:"base_url"`
+	AnthropicBaseURL   string   `json:"anthropic_base_url,omitempty"`
+	APIKey             string   `json:"api_key,omitempty"`
+	APIKeys            []string `json:"api_keys,omitempty"`
+	ProjectID          string   `json:"project_id,omitempty"`
+	WireFormat         string   `json:"wire_format,omitempty"` // "openai" (default), "anthropic"
+	TimeoutMs          int      `json:"timeout_ms"`
+	StreamTimeoutMs    int      `json:"stream_timeout_ms"`
+	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
+}
+
+// EffectiveAPIKeys returns the pool of API keys for AWS Bedrock.
+// APIKeys takes precedence; falls back to the single APIKey field.
+func (c *AWSBedrockConfig) EffectiveAPIKeys() []string {
+	if len(c.APIKeys) > 0 {
+		return c.APIKeys
+	}
+	if c.APIKey != "" {
+		return []string{c.APIKey}
+	}
+	return nil
 }
 
 // OpenCodeGoConfig holds the upstream OpenCode Go API settings.
 type OpenCodeGoConfig struct {
-	BaseURL            string `json:"base_url"`
-	AnthropicBaseURL   string `json:"anthropic_base_url"`
-	TimeoutMs          int    `json:"timeout_ms"`
-	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
-	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
+	BaseURL            string   `json:"base_url"`
+	AnthropicBaseURL   string   `json:"anthropic_base_url"`
+	APIKey             string   `json:"api_key,omitempty"`
+	APIKeys            []string `json:"api_keys,omitempty"`
+	TimeoutMs          int      `json:"timeout_ms"`
+	StreamTimeoutMs    int      `json:"stream_timeout_ms"`
+	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
+}
+
+// EffectiveAPIKeys returns the pool of API keys for OpenCode Go.
+// APIKeys takes precedence; falls back to the single APIKey field.
+func (c *OpenCodeGoConfig) EffectiveAPIKeys() []string {
+	if len(c.APIKeys) > 0 {
+		return c.APIKeys
+	}
+	if c.APIKey != "" {
+		return []string{c.APIKey}
+	}
+	return nil
 }
 
 // OpenCodeZenConfig holds the upstream OpenCode Zen API settings.
 type OpenCodeZenConfig struct {
-	BaseURL            string `json:"base_url"`
-	AnthropicBaseURL   string `json:"anthropic_base_url"`
-	ResponsesBaseURL   string `json:"responses_base_url"`
-	GeminiBaseURL      string `json:"gemini_base_url"`
-	TimeoutMs          int    `json:"timeout_ms"`
-	StreamTimeoutMs    int    `json:"stream_timeout_ms"`
-	StreamingTimeoutMs int    `json:"streaming_timeout_ms,omitempty"`
+	BaseURL            string   `json:"base_url"`
+	AnthropicBaseURL   string   `json:"anthropic_base_url"`
+	ResponsesBaseURL   string   `json:"responses_base_url"`
+	GeminiBaseURL      string   `json:"gemini_base_url"`
+	APIKey             string   `json:"api_key,omitempty"`
+	APIKeys            []string `json:"api_keys,omitempty"`
+	TimeoutMs          int      `json:"timeout_ms"`
+	StreamTimeoutMs    int      `json:"stream_timeout_ms"`
+	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
+}
+
+// EffectiveAPIKeys returns the pool of API keys for OpenCode Zen.
+// APIKeys takes precedence; falls back to the single APIKey field.
+func (c *OpenCodeZenConfig) EffectiveAPIKeys() []string {
+	if len(c.APIKeys) > 0 {
+		return c.APIKeys
+	}
+	if c.APIKey != "" {
+		return []string{c.APIKey}
+	}
+	return nil
 }
 
 // LoggingConfig controls application logging behavior.

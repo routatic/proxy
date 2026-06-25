@@ -80,6 +80,30 @@ func (c *OpenCodeClient) nextAPIKey(keys []string) string {
 	return keys[(old-1)%n]
 }
 
+// getProviderAPIKeys returns the API keys for a specific provider.
+// It checks provider-specific keys first, then falls back to global keys for backward compatibility.
+func (c *OpenCodeClient) getProviderAPIKeys(modelConfig config.ModelConfig) []string {
+	cfg := c.atomic.Get()
+
+	switch {
+	case IsBedrock(modelConfig):
+		if keys := cfg.AWSBedrock.EffectiveAPIKeys(); len(keys) > 0 {
+			return keys
+		}
+	case IsZen(modelConfig):
+		if keys := cfg.OpenCodeZen.EffectiveAPIKeys(); len(keys) > 0 {
+			return keys
+		}
+	default:
+		if keys := cfg.OpenCodeGo.EffectiveAPIKeys(); len(keys) > 0 {
+			return keys
+		}
+	}
+
+	// Fallback to global keys for backward compatibility
+	return cfg.EffectiveAPIKeys()
+}
+
 // NewOpenCodeClient creates a new OpenCode client.
 func NewOpenCodeClient(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) *OpenCodeClient {
 	transport := &http.Transport{
@@ -265,7 +289,7 @@ func isResponsesModel(modelID string) bool {
 // getEndpoint returns the appropriate endpoint config for a model.
 func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelConfig) endpointConfig {
 	cfg := c.atomic.Get()
-	apiKey := c.nextAPIKey(cfg.EffectiveAPIKeys())
+	apiKey := c.nextAPIKey(c.getProviderAPIKeys(modelConfig))
 
 	if IsZen(modelConfig) {
 		zen := cfg.OpenCodeZen
@@ -410,7 +434,7 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 	modelConfig config.ModelConfig,
 ) (*http.Response, error) {
 	cfg := c.atomic.Get()
-	apiKey := c.nextAPIKey(cfg.EffectiveAPIKeys())
+	apiKey := c.nextAPIKey(c.getProviderAPIKeys(modelConfig))
 
 	var baseURL string
 	if IsZen(modelConfig) {

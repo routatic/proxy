@@ -127,10 +127,26 @@ func interpolateEnvVars(s string) string {
 
 // applyEnvOverrides applies environment variable overrides to the config.
 func applyEnvOverrides(cfg *Config) {
+	// Global API keys (backward compatibility)
 	if v := envValue("ROUTATIC_PROXY_API_KEY"); v != "" {
 		cfg.APIKey = v
 		cfg.APIKeys = nil // env var overrides both api_key and api_keys
 	}
+
+	// Provider-specific API keys (new)
+	if v := envValue("ROUTATIC_PROXY_OPENCODE_GO_API_KEY"); v != "" {
+		cfg.OpenCodeGo.APIKey = v
+		cfg.OpenCodeGo.APIKeys = nil
+	}
+	if v := envValue("ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY"); v != "" {
+		cfg.OpenCodeZen.APIKey = v
+		cfg.OpenCodeZen.APIKeys = nil
+	}
+	if v := envValue("ROUTATIC_PROXY_AWS_BEDROCK_API_KEY"); v != "" {
+		cfg.AWSBedrock.APIKey = v
+		cfg.AWSBedrock.APIKeys = nil
+	}
+
 	if v := envValue("ROUTATIC_PROXY_HOST"); v != "" {
 		cfg.Host = v
 	}

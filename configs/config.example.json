@@ -293,6 +293,7 @@
     "base_url": "https://bedrock-mantle.us-east-1.api.aws/v1/chat/completions",
     "anthropic_base_url": "",
     "api_key": "",
+    "api_keys": [],
     "project_id": "",
     "wire_format": "openai",
     "timeout_ms": 300000,
@@ -303,6 +304,8 @@
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
+    "api_key": "",
+    "api_keys": [],
     "timeout_ms": 300000,
     "streaming_timeout_ms": 600000
   },
@@ -312,6 +315,8 @@
     "anthropic_base_url": "https://opencode.ai/zen/v1/messages",
     "responses_base_url": "https://opencode.ai/zen/v1/responses",
     "gemini_base_url": "https://opencode.ai/zen/v1/models",
+    "api_key": "",
+    "api_keys": [],
     "timeout_ms": 300000,
     "streaming_timeout_ms": 600000
   },

@@ -744,3 +744,121 @@ func TestStreamingTimeout_SmallConfiguredValue(t *testing.T) {
 		t.Errorf("StreamingTimeout = %v, want 100ms", timeout)
 	}
 }
+
+func TestGetProviderAPIKeys_ProviderSpecificKeys(t *testing.T) {
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			APIKeys: []string{"go-key-1", "go-key-2"},
+		},
+		OpenCodeZen: config.OpenCodeZenConfig{
+			APIKey: "zen-specific-key",
+		},
+		AWSBedrock: config.AWSBedrockConfig{
+			APIKeys: []string{"bedrock-key-1", "bedrock-key-2"},
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	tests := []struct {
+		name     string
+		provider string
+		want     []string
+	}{
+		{
+			name:     "OpenCode Go uses its own keys",
+			provider: ProviderOpenCodeGo,
+			want:     []string{"go-key-1", "go-key-2"},
+		},
+		{
+			name:     "OpenCode Zen uses its own key",
+			provider: ProviderOpenCodeZen,
+			want:     []string{"zen-specific-key"},
+		},
+		{
+			name:     "AWS Bedrock uses its own keys",
+			provider: ProviderAWSBedrock,
+			want:     []string{"bedrock-key-1", "bedrock-key-2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := config.ModelConfig{Provider: tt.provider, ModelID: "test-model"}
+			got := c.getProviderAPIKeys(model)
+			if len(got) != len(tt.want) {
+				t.Errorf("getProviderAPIKeys() = %v, want %v", got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("getProviderAPIKeys()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetProviderAPIKeys_FallbackToGlobal(t *testing.T) {
+	cfg := &config.Config{
+		APIKeys: []string{"global-key-1", "global-key-2"},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			// No provider-specific keys
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "test-model"}
+	got := c.getProviderAPIKeys(model)
+
+	want := []string{"global-key-1", "global-key-2"}
+	if len(got) != len(want) {
+		t.Errorf("getProviderAPIKeys() = %v, want %v (fallback to global)", got, want)
+		return
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("getProviderAPIKeys()[%d] = %q, want %q (fallback to global)", i, got[i], want[i])
+		}
+	}
+}
+
+func TestGetProviderAPIKeys_ProviderKeysPrecedence(t *testing.T) {
+	cfg := &config.Config{
+		APIKeys: []string{"global-key"},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			APIKeys: []string{"go-specific-key"},
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "test-model"}
+	got := c.getProviderAPIKeys(model)
+
+	// Should use provider-specific keys, not global
+	want := []string{"go-specific-key"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("getProviderAPIKeys() = %v, want %v (provider keys should take precedence)", got, want)
+	}
+}
+
+func TestGetProviderAPIKeys_EmptyReturnsGlobal(t *testing.T) {
+	cfg := &config.Config{
+		APIKey: "global-single-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			// No keys configured
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "test-model"}
+	got := c.getProviderAPIKeys(model)
+
+	want := []string{"global-single-key"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("getProviderAPIKeys() = %v, want %v (should fallback to global)", got, want)
+	}
+}
