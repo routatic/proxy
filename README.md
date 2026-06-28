@@ -25,6 +25,7 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 - **Hot Reload** — Watch config file for changes and reload automatically (off by default)
 - **Background Mode** — Run as daemon detached from terminal
 - **Auto-start on Login** — Launch on system startup via launchd (macOS)
+- **Self-Update** — Check and install the latest release with one command
 
 ## Supported Models
 
@@ -140,6 +141,9 @@ routatic-proxy models             List all available models (Go, Zen, Bedrock)
 routatic-proxy autostart enable   Enable auto-start on login
 routatic-proxy autostart disable  Disable auto-start on login
 routatic-proxy autostart status   Check autostart status
+routatic-proxy update              Update to the latest release
+routatic-proxy update --check      Show if an update is available
+routatic-proxy update --yes        Update without prompting
 routatic-proxy --version          Show version
 ```
 

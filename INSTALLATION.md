@@ -91,3 +91,24 @@ docker run -d --restart unless-stopped --name routatic-proxy --env-file .env -p 
 - An [OpenCode Go](https://opencode.ai/auth) subscription and API key
 - Go 1.21+ (only needed if building from source)
 - Docker (only needed for Docker setup)
+
+## Updating
+
+If you installed via `go install` or downloaded a release binary directly, you can self-update with the built-in command:
+
+```bash
+# See whether a newer release is available without changing anything
+routatic-proxy update --check
+
+# Download, verify checksum, and replace the running binary in place
+routatic-proxy update
+
+# Skip the confirmation prompt (useful in scripts)
+routatic-proxy update --yes
+```
+
+The updater queries the [routatic/proxy releases on GitHub](https://github.com/routatic/proxy/releases), picks the asset that matches your OS/arch, verifies its SHA256 against `checksums.txt` when available, and writes a `.old` backup of the previous binary next to the running executable before replacing it. On Windows the `.old` backup is scheduled for deletion after the process exits because the running executable is locked until then.
+
+A `dev` build (e.g. when compiled from source without a version tag) refuses to update unless you pass `--force`.
+
+If you installed via **Homebrew** (`brew upgrade routatic-proxy`) or **Scoop** (`scoop update routatic-proxy`), prefer your package manager — it tracks the same releases and handles uninstall/reinstall cleanly.

@@ -57,6 +57,8 @@ func ForkIntoBackground(opts BackgroundOpts) error {
 	cmd.Dir = paths.ConfigDir // Run from a stable directory to avoid caller cwd issues
 
 	if err := cmd.Start(); err != nil {
+		// Write the error to the log file so login-time failures are not lost.
+		_, _ = fmt.Fprintf(logFile, "failed to start background process: %v\n", err)
 		return fmt.Errorf("failed to start background process: %w", err)
 	}
 
