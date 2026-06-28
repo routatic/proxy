@@ -11,3 +11,4 @@ oc-go-cc
 dist/
 brag-output-**
 .DS_Store
+.kimchi
