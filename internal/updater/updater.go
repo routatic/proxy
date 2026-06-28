@@ -23,6 +23,15 @@ const (
 
 var defaultClient = &http.Client{Timeout: 30 * time.Second}
 
+// userAgent builds a User-Agent header value. If version is non-empty it is
+// appended to the product name as required by the GitHub API spec.
+func userAgent(version string) string {
+	if version == "" {
+		return "routatic-proxy"
+	}
+	return "routatic-proxy/" + version
+}
+
 // ReleaseInfo holds the data we need from the GitHub release API.
 type ReleaseInfo struct {
 	TagName     string
@@ -53,17 +62,17 @@ type Options struct {
 
 // Check fetches the latest release from GitHub.
 func Check(ctx context.Context) (*ReleaseInfo, error) {
-	return checkWithClient(ctx, defaultClient)
+	return checkWithClient(ctx, defaultClient, "")
 }
 
-func checkWithClient(ctx context.Context, client *http.Client) (*ReleaseInfo, error) {
+func checkWithClient(ctx context.Context, client *http.Client, version string) (*ReleaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", Owner, Repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "routatic-proxy")
+	req.Header.Set("User-Agent", userAgent(version))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -235,15 +244,15 @@ func AssetName() (string, error) {
 
 // Download fetches the release asset and returns the path to the temporary file.
 func Download(ctx context.Context, info *ReleaseInfo, dir string) (string, error) {
-	return downloadWithClient(ctx, defaultClient, info, dir)
+	return downloadWithClient(ctx, defaultClient, "", info, dir)
 }
 
-func downloadWithClient(ctx context.Context, client *http.Client, info *ReleaseInfo, dir string) (string, error) {
+func downloadWithClient(ctx context.Context, client *http.Client, version string, info *ReleaseInfo, dir string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.AssetURL, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "routatic-proxy")
+	req.Header.Set("User-Agent", userAgent(version))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -288,10 +297,10 @@ func downloadWithClient(ctx context.Context, client *http.Client, info *ReleaseI
 
 // VerifyChecksum verifies the downloaded file against checksums.txt.
 func VerifyChecksum(ctx context.Context, info *ReleaseInfo, assetPath string) error {
-	return verifyChecksumWithClient(ctx, defaultClient, info, assetPath)
+	return verifyChecksumWithClient(ctx, defaultClient, "", info, assetPath)
 }
 
-func verifyChecksumWithClient(ctx context.Context, client *http.Client, info *ReleaseInfo, assetPath string) error {
+func verifyChecksumWithClient(ctx context.Context, client *http.Client, version string, info *ReleaseInfo, assetPath string) error {
 	if info.ChecksumURL == "" {
 		return fmt.Errorf("no checksums.txt available")
 	}
@@ -300,7 +309,7 @@ func verifyChecksumWithClient(ctx context.Context, client *http.Client, info *Re
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "routatic-proxy")
+	req.Header.Set("User-Agent", userAgent(version))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -378,7 +387,7 @@ func Apply(ctx context.Context, opts Options) (*Result, error) {
 		client = defaultClient
 	}
 
-	info, err := checkWithClient(ctx, client)
+	info, err := checkWithClient(ctx, client, opts.CurrentVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -396,13 +405,13 @@ func Apply(ctx context.Context, opts Options) (*Result, error) {
 		}, nil
 	}
 
-	tempPath, err := downloadWithClient(ctx, client, info, "")
+	tempPath, err := downloadWithClient(ctx, client, opts.CurrentVersion, info, "")
 	if err != nil {
 		return nil, err
 	}
 
 	if !opts.SkipChecksum && info.ChecksumURL != "" {
-		if err := verifyChecksumWithClient(ctx, client, info, tempPath); err != nil {
+		if err := verifyChecksumWithClient(ctx, client, opts.CurrentVersion, info, tempPath); err != nil {
 			_ = os.Remove(tempPath)
 			return nil, err
 		}
