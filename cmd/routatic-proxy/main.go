@@ -26,6 +26,7 @@ const (
 var version = "dev"
 
 func main() {
+	setupDefaultCommand()
 	rootCmd := &cobra.Command{
 		Use:     appName,
 		Aliases: []string{"oc-go-cc"},
@@ -49,6 +50,7 @@ Legacy ~/.config/oc-go-cc/config.json and OC_GO_CC_* environment variables are s
 	rootCmd.AddCommand(modelsCmd())
 	rootCmd.AddCommand(autostartCmd())
 	rootCmd.AddCommand(updateCmd())
+	addPlatformCommands(rootCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

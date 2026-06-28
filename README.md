@@ -1,10 +1,37 @@
-# routatic-proxy (prev OC-GO-CC) [Join us on Discord](https://discord.gg/pUrfwfTFxM)
+# routatic-proxy
+
+[Join us on Discord](https://discord.gg/pUrfwfTFxM)
+
+**[English](./README.md)** | [中文](./README-zh.md)
 
 A Go CLI proxy that lets you route [Claude Code](https://docs.anthropic.com/en/docs/claude-code) requests through multiple upstream providers — [OpenCode Go](https://opencode.ai/docs/go/), [OpenCode Zen](https://opencode.ai/docs/zen/), and [AWS Bedrock](https://aws.amazon.com/bedrock/) — with automatic model selection and format transformation.
 
 `routatic-proxy` sits between Claude Code and your chosen providers, intercepting Anthropic API requests, transforming them to the appropriate format (OpenAI, Anthropic, Responses, or Gemini), and forwarding them upstream. Claude Code thinks it's talking to Anthropic — but your requests go to the models and providers you configure.
 
 `oc-go-cc` remains available as a compatibility alias, and existing `OC_GO_CC_*` environment variables and `~/.config/oc-go-cc/config.json` files are still recognized.
+
+---
+
+## macOS GUI Version
+
+This repository provides a native macOS GUI (System Tray + Console Dashboard) for `routatic-proxy`.
+
+### Features
+
+- **System Tray Icon** — Control the proxy server directly from the macOS status bar (Start, Stop, Autostart, Quit)
+- **Interactive Dashboard** — A beautiful native console window to view real-time request history, model usage metrics, and easily edit/save your API keys without editing JSON files
+- **App DMG Installer** — Package into a standard macOS app with custom icons and launch support
+
+### How to Run
+
+Download the compiled `.dmg` from the **Releases** page of this repository, or run the following command directly:
+
+```bash
+# Launch with native macOS GUI
+routatic-proxy ui
+```
+
+---
 
 ## Why?
 
@@ -31,12 +58,12 @@ OpenCode Go gives you access to powerful open coding models for **$5/month** (th
 
 ### OpenCode Go Models
 
-| Model | Context | Best For |
-|-------|---------|----------|
-| **GLM-5.2** | ~200K tokens | Critical architecture, production code review |
-| **Kimi K2.7 Code** | ~256K tokens | Large code generation, 32K max output |
-| **Qwen3.7 Plus** | ~128K tokens | General coding, better quality than Qwen3.6 |
-| **Qwen3.7 Max** | ~128K tokens | Complex coding, Qwen's best quality |
+| Model              | Context      | Best For                                      |
+| ------------------ | ------------ | --------------------------------------------- |
+| **GLM-5.2**        | ~200K tokens | Critical architecture, production code review |
+| **Kimi K2.7 Code** | ~256K tokens | Large code generation, 32K max output         |
+| **Qwen3.7 Plus**   | ~128K tokens | General coding, better quality than Qwen3.6   |
+| **Qwen3.7 Max**    | ~128K tokens | Complex coding, Qwen's best quality           |
 
 See [MODELS.md](MODELS.md) for the complete model list including costs and routing recommendations.
 
@@ -54,6 +81,7 @@ See [MODELS.md](MODELS.md#opencodes-zen) for the full Zen model list.
 ### Deprecated Models
 
 The following models are deprecated and will be removed:
+
 - GPT 5.2/5.1/5 Codex variants (replaced by GPT 5.3 Codex)
 - Claude Sonnet 4 (replaced by Claude Sonnet 4.5/4.6)
 - GLM 5/4.7/4.6 (replaced by GLM 5.1/5.2)

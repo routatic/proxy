@@ -81,10 +81,29 @@ Precedence: `*_API_KEYS` → `*_API_KEY` → global `API_KEYS` → global `API_K
 ## Key Files
 
 - `cmd/routatic-proxy/main.go` — CLI entry point (cobra). Default config template is generated here.
+- `cmd/routatic-proxy/ui_darwin.go` — macOS GUI entry point (`routatic-proxy ui`), webview + tray integration (darwin-only build tag).
 - `internal/config/` — Config types and JSON loader with `${VAR}` env interpolation.
 - `internal/transformer/` — Request/response format conversion (Anthropic ↔ OpenAI).
 - `internal/router/fallback.go` — Circuit breaker per model (3 failures = 30s skip).
 - `configs/config.example.json` — Reference config with all options documented.
+- `internal/gui/` — Embedded HTTP server for the webview dashboard (serves static assets + API endpoints).
+- `internal/gui/assets/` — HTML/CSS/JS for the dashboard (Overview, History, Settings tabs).
+- `internal/tray/` — macOS system tray icon and menu (darwin-only build tag).
+- `internal/history/` — In-memory ring buffer (1000 entries, O(1) insert, thread-safe).
+- `internal/metrics/` — In-process request counters (received, streamed, success, failed, model distribution).
+
+### GUI Config Editing
+
+The Settings tab exposes all config fields as editable form inputs. On save, only changed fields are sent to the backend as a JSON patch. The backend reads the current config from disk, merges the patch, writes back, and reloads atomically — the running proxy picks up changes immediately without restart.
+
+**Partial update flow:**
+1. Frontend builds a patch object with only fields the user changed (compared to the last loaded config)
+2. Backend reads current config from disk via `config.LoadFromPath()`
+3. Backend merges patch fields onto current config via JSON marshal/unmarshal
+4. Backend validates essential fields (host, port)
+5. Backend writes merged config to disk and calls `atomicCfg.Reload()`
+
+**Nil safety:** The `/api/metrics` and `/api/history` handlers handle nil dependencies gracefully — they return zero values instead of panicking if the history or metrics instance is unavailable.
 
 ## Skill routing
 

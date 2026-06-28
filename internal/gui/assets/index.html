@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>routatic-proxy Console</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- SVG Symbols for reusable icons -->
+<svg style="display: none;">
+  <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+    <circle cx="12" cy="12" r="3"></circle>
+  </symbol>
+</svg>
+<div class="app">
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg class="logo-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        <span class="logo-text">routatic-proxy</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-badge" id="status-badge" role="status" aria-live="polite">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <span id="status-text" data-i18n="status.checking">Checking...</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview" data-i18n="tab.overview">Overview</button>
+    <button class="tab" data-tab="history" data-i18n="tab.history">History</button>
+    <button class="tab" data-tab="settings" data-i18n="tab.settings">Settings</button>
+  </nav>
+
+  <!-- Overview Tab -->
+  <div class="tab-content active" id="tab-overview">
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label" data-i18n="metric.total">Total Requests</div>
+        <div class="metric-value" id="m-total">--</div>
+      </div>
+      <div class="metric-card success">
+        <div class="metric-label" data-i18n="metric.success">Success</div>
+        <div class="metric-value" id="m-success">--</div>
+      </div>
+      <div class="metric-card error">
+        <div class="metric-label" data-i18n="metric.failed">Failed</div>
+        <div class="metric-value" id="m-failed">--</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label" data-i18n="metric.streamed">Streamed</div>
+        <div class="metric-value" id="m-streamed">--</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title" data-i18n="section.modelDist">Model Distribution</div>
+      <div class="model-list" id="model-list">
+        <div class="empty-state" data-i18n="empty.noData">No data yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Tab -->
+  <div class="tab-content" id="tab-history">
+    <div class="history-toolbar">
+      <div class="history-search">
+        <input type="text" id="history-search" placeholder="Search requests..." aria-label="Search history">
+        <span class="search-shortcut">⌘F</span>
+      </div>
+      <select class="filter-select" id="model-filter" aria-label="Filter by model">
+        <option value="" data-i18n="filter.allModels">All Models</option>
+      </select>
+      <span class="history-count" id="history-count" aria-live="polite"></span>
+    </div>
+    <div class="table-wrap">
+      <table class="history-table" role="grid">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="time" data-i18n="th.time" aria-sort="none">Time <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="model" data-i18n="th.model" aria-sort="none">Model <span class="sort-icon">↕</span></th>
+            <th data-i18n="th.scenario">Scenario</th>
+            <th class="sortable" data-sort="input_tokens" data-i18n="th.inputTokens" aria-sort="none">Input Tokens <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="output_tokens" data-i18n="th.outputTokens" aria-sort="none">Output Tokens <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="duration_ms" data-i18n="th.duration" aria-sort="none">Duration <span class="sort-icon">↕</span></th>
+            <th data-i18n="th.status">Status</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody">
+          <tr><td colspan="7" class="empty-state" data-i18n="empty.noHistory">No history yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- History Detail Modal -->
+  <div class="modal-overlay" id="history-modal" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-title">Request Details</h3>
+        <button class="modal-close" id="modal-close" aria-label="Close modal">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Palette -->
+  <div class="command-palette-overlay" id="command-palette" role="dialog" aria-label="Command palette">
+    <div class="command-palette">
+      <input type="text" class="command-palette-input" id="command-input" placeholder="Type a command or search..." aria-label="Command search" aria-autocomplete="list" aria-controls="command-list" aria-activedescendant="">
+      <div class="command-palette-list" id="command-list" role="listbox" aria-activedescendant="">
+        <div class="command-item" data-action="start-proxy" role="option" id="cmd-start-proxy">
+          <span class="command-item-label">Start Proxy</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Enter">Enter</kbd></span>
+        </div>
+        <div class="command-item" data-action="stop-proxy" role="option" id="cmd-stop-proxy">
+          <span class="command-item-label">Stop Proxy</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Enter">Enter</kbd></span>
+        </div>
+        <div class="command-item" data-action="goto-overview" role="option" id="cmd-goto-overview">
+          <span class="command-item-label">Go to Overview</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+1">⌘1</kbd></span>
+        </div>
+        <div class="command-item" data-action="goto-history" role="option" id="cmd-goto-history">
+          <span class="command-item-label">Go to History</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+2">⌘2</kbd></span>
+        </div>
+        <div class="command-item" data-action="goto-settings" role="option" id="cmd-goto-settings">
+          <span class="command-item-label">Go to Settings</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+3">⌘3</kbd></span>
+        </div>
+        <div class="command-item" data-action="refresh" role="option" id="cmd-refresh">
+          <span class="command-item-label">Refresh Data</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+R">⌘R</kbd></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Tab -->
+  <div class="tab-content" id="tab-settings">
+    <div class="settings-header">
+      <div class="settings-list">
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.proxy">Proxy Service</div>
+            <div class="setting-desc" data-i18n="setting.proxyDesc">Start or stop the proxy HTTP service</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-proxy" onchange="toggleProxy(this)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.autostart">Start on Boot</div>
+            <div class="setting-desc" data-i18n="setting.autostartDesc">Auto-start routatic-proxy at login (launchd)</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-autostart" onchange="toggleAutostart(this)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.notify">Desktop Notifications</div>
+            <div class="setting-desc" data-i18n="setting.notifyDesc">Notify on failures or model switches</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-notify" onchange="toggleNotify(this)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.language">Language</div>
+            <div class="setting-desc" data-i18n="setting.languageDesc">Switch interface language</div>
+          </div>
+          <button class="btn btn-small" id="btn-lang-toggle" onclick="toggleLanguage()">
+            <span data-i18n="lang.toggle">Chinese</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-title" style="margin: 20px 0 8px; font-size: 13px; font-weight: 600;">Proxy Configuration</div>
+    <div class="settings-form">
+      <fieldset class="form-section">
+        <legend>OpenCode Go</legend>
+        <div class="form-group">
+          <label for="cfg-go-base-url">Base URL</label>
+          <input type="text" id="cfg-go-base-url" placeholder="https://opencode.ai/zen/go/v1/chat/completions">
+        </div>
+        <div class="form-group">
+          <label for="cfg-go-anthropic-url">Anthropic Base URL</label>
+          <input type="text" id="cfg-go-anthropic-url" placeholder="https://opencode.ai/zen/go/v1/messages">
+        </div>
+        <div class="form-group">
+          <label for="cfg-go-api-key">API Key</label>
+          <div class="input-with-btn">
+            <input type="password" id="cfg-go-api-key" placeholder="Use env var or leave empty">
+            <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-go-api-key')" aria-label="Toggle password visibility">
+              <svg width="14" height="14"><use href="#icon-eye"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="cfg-go-timeout">Timeout (ms)</label>
+            <input type="number" id="cfg-go-timeout" placeholder="300000">
+          </div>
+          <div class="form-group half">
+            <label for="cfg-go-stream-timeout">Stream Timeout (ms)</label>
+            <input type="number" id="cfg-go-stream-timeout" placeholder="">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend>OpenCode Zen</legend>
+        <div class="form-group">
+          <label for="cfg-zen-base-url">Base URL</label>
+          <input type="text" id="cfg-zen-base-url" placeholder="https://opencode.ai/zen/v1/chat/completions">
+        </div>
+        <div class="form-group">
+          <label for="cfg-zen-anthropic-url">Anthropic Base URL</label>
+          <input type="text" id="cfg-zen-anthropic-url" placeholder="https://opencode.ai/zen/v1/messages">
+        </div>
+        <div class="form-group">
+          <label for="cfg-zen-responses-url">Responses Base URL</label>
+          <input type="text" id="cfg-zen-responses-url" placeholder="https://opencode.ai/zen/v1/responses">
+        </div>
+        <div class="form-group">
+          <label for="cfg-zen-gemini-url">Gemini Base URL</label>
+          <input type="text" id="cfg-zen-gemini-url" placeholder="https://opencode.ai/zen/v1/models">
+        </div>
+        <div class="form-group">
+          <label for="cfg-zen-api-key">API Key</label>
+          <div class="input-with-btn">
+            <input type="password" id="cfg-zen-api-key" placeholder="Use env var or leave empty">
+            <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-zen-api-key')" aria-label="Toggle password visibility">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="cfg-zen-timeout">Timeout (ms)</label>
+            <input type="number" id="cfg-zen-timeout" placeholder="300000">
+          </div>
+          <div class="form-group half">
+            <label for="cfg-zen-stream-timeout">Stream Timeout (ms)</label>
+            <input type="number" id="cfg-zen-stream-timeout" placeholder="">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend>AWS Bedrock</legend>
+        <div class="form-group">
+          <label for="cfg-bedrock-base-url">Base URL</label>
+          <input type="text" id="cfg-bedrock-base-url" placeholder="">
+        </div>
+        <div class="form-group">
+          <label for="cfg-bedrock-anthropic-url">Anthropic Base URL</label>
+          <input type="text" id="cfg-bedrock-anthropic-url" placeholder="">
+        </div>
+        <div class="form-group">
+          <label for="cfg-bedrock-api-key">API Key</label>
+          <div class="input-with-btn">
+            <input type="password" id="cfg-bedrock-api-key" placeholder="Use env var or leave empty">
+            <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-bedrock-api-key')" aria-label="Toggle password visibility">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-bedrock-project-id">Project ID</label>
+          <input type="text" id="cfg-bedrock-project-id" placeholder="">
+        </div>
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="cfg-bedrock-timeout">Timeout (ms)</label>
+            <input type="number" id="cfg-bedrock-timeout" placeholder="300000">
+          </div>
+          <div class="form-group half">
+            <label for="cfg-bedrock-stream-timeout">Stream Timeout (ms)</label>
+            <input type="number" id="cfg-bedrock-stream-timeout" placeholder="">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend>Server</legend>
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="cfg-host">Listen Host</label>
+            <input type="text" id="cfg-host" placeholder="127.0.0.1">
+          </div>
+          <div class="form-group half">
+            <label for="cfg-port">Listen Port</label>
+            <input type="number" id="cfg-port" placeholder="3456">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-global-key">Global API Key</label>
+          <div class="input-with-btn">
+            <input type="password" id="cfg-global-key" placeholder="Not configured">
+            <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-global-key')" aria-label="Toggle password visibility">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="cfg-hot-reload"> Hot Reload
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend>Logging</legend>
+        <div class="form-group">
+          <label for="cfg-log-level">Log Level</label>
+          <select id="cfg-log-level">
+            <option value="debug">debug</option>
+            <option value="info" selected>info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <button class="btn btn-primary" id="btn-save-cfg" onclick="saveProxyConfig()" style="margin-top: 16px; width: 100%;">Save &amp; Apply Config</button>
+      <div id="save-status" class="save-status"></div>
+    </div>
+
+    <div class="settings-footer">
+      <div class="port-info" id="port-info">Listening port: --</div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

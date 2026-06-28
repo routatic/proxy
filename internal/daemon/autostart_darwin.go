@@ -180,10 +180,11 @@ func AutostartStatus() error {
 
 func loadPlist(plistPath string) error {
 	uid := strconv.Itoa(os.Getuid())
-	target := "gui/" + uid + "/" + LaunchAgent
+	domain := "gui/" + uid
+	target := domain + "/" + LaunchAgent
 
 	_ = exec.Command("launchctl", "bootout", target).Run()
-	return exec.Command("launchctl", "bootstrap", target, plistPath).Run()
+	return exec.Command("launchctl", "bootstrap", domain, plistPath).Run()
 }
 
 func unloadPlist(plistPath string) error {

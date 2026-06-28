@@ -5,8 +5,8 @@ bin/
 configs/config.json
 .tmp/
 oc-go-cc
-routatic-proxy
-routatic-hosted
+/routatic-proxy
+/routatic-hosted
 .trunk
 dist/
 brag-output-**

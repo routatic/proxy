@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/handlers"
+	"github.com/routatic/proxy/internal/history"
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/provider"
 	"github.com/routatic/proxy/internal/router"
@@ -27,8 +29,12 @@ import (
 type Server struct {
 	atomic   *config.AtomicConfig
 	httpSrv  *http.Server
+	mux      http.Handler
+	mu       sync.Mutex
 	logger   *slog.Logger
 	levelVar *slog.LevelVar
+	History  *history.History // exported so the ui command can read it
+	metrics  *metrics.Metrics // stored for Metrics() getter
 }
 
 // NewServer creates a new proxy server.
@@ -64,6 +70,9 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	// Create status store for the statusline endpoint.
 	statusStore := status.NewStore(0)
 
+	// Create history ring buffer (1000 entries, in-memory).
+	hist := history.New(1000)
+
 	// Create handlers.
 	messagesHandler := handlers.NewMessagesHandler(
 		openCodeClient,
@@ -73,6 +82,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 		tokenCounter,
 		metrics,
 		captureLogger,
+		hist,
 	)
 	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics, statusStore)
 
@@ -104,8 +114,11 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	srv := &Server{
 		atomic:   atomic,
 		httpSrv:  httpSrv,
+		mux:      mux,
 		logger:   logger,
 		levelVar: levelVar,
+		History:  hist,
+		metrics:  metrics,
 	}
 
 	// Register callback to update log level on config reload
@@ -117,6 +130,11 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	return srv, nil
 }
 
+// Metrics returns the in-process metrics collector.
+func (s *Server) Metrics() *metrics.Metrics {
+	return s.metrics
+}
+
 // Start starts the server with graceful shutdown.
 func (s *Server) Start() error {
 	cfg := s.atomic.Get()
@@ -125,6 +143,17 @@ func (s *Server) Start() error {
 		"port", cfg.Port,
 		"base_url", cfg.OpenCodeGo.BaseURL,
 	)
+
+	s.mu.Lock()
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	s.httpSrv = &http.Server{
+		Addr:         addr,
+		Handler:      s.mux,
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 0,
+		IdleTimeout:  300 * time.Second,
+	}
+	s.mu.Unlock()
 
 	// Graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -137,16 +166,39 @@ func (s *Server) Start() error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
-			s.logger.Error("server shutdown failed", "error", err)
+		s.mu.Lock()
+		srvToShutdown := s.httpSrv
+		s.mu.Unlock()
+
+		if srvToShutdown != nil {
+			if err := srvToShutdown.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("server shutdown failed", "error", err)
+			}
 		}
 	}()
 
-	if err := s.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	s.mu.Lock()
+	srvToStart := s.httpSrv
+	s.mu.Unlock()
+
+	if err := srvToStart.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server failed: %w", err)
 	}
 
 	s.logger.Info("server stopped")
+	return nil
+}
+
+// Shutdown gracefully shuts down the proxy server.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.logger.Info("programmatic shutdown requested")
+	s.mu.Lock()
+	srvToShutdown := s.httpSrv
+	s.mu.Unlock()
+
+	if srvToShutdown != nil {
+		return srvToShutdown.Shutdown(ctx)
+	}
 	return nil
 }
 

@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -13,9 +15,9 @@ jobs:
     name: Test & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0      - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
 
@@ -31,21 +33,22 @@ jobs:
       - name: Build (sanity check)
         run: go build -o /dev/null ./cmd/routatic-proxy
 
-  # ── Stage 2: Create Release ──────────────────────────────────────
+  # ── Stage 2: Build & Release (macOS runner for DMG support) ──────
   release:
-    name: Create Release
+    name: Build & Release
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0      - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          cache: true
 
       - name: Determine version
         id: version
@@ -82,18 +85,14 @@ jobs:
 
           LDFLAGS="-X main.version=${VERSION}"
 
-          # Define target platforms
-          declare -A TARGETS=(
-            ["darwin-amd64"]="darwin/amd64"
-            ["darwin-arm64"]="darwin/arm64"
-            ["linux-amd64"]="linux/amd64"
-            ["linux-arm64"]="linux/arm64"
-            ["windows-amd64"]="windows/amd64"
-            ["windows-arm64"]="windows/arm64"
-          )
+          # Define target platforms (bash 3 compatible — macOS default)
+          TARGETS="darwin-amd64:darwin/amd64 darwin-arm64:darwin/arm64 linux-amd64:linux/amd64 linux-arm64:linux/arm64 windows-amd64:windows/amd64 windows-arm64:windows/arm64"
 
-          for NAME in "${!TARGETS[@]}"; do
-            IFS='/' read -r GOOS GOARCH <<< "${TARGETS[$NAME]}"
+          for TARGET in $TARGETS; do
+            NAME="${TARGET%%:*}"
+            PAIR="${TARGET##*:}"
+            GOOS="${PAIR%/*}"
+            GOARCH="${PAIR#*/}"
             EXT=""
             [ "$GOOS" = "windows" ] && EXT=".exe"
 
@@ -114,6 +113,19 @@ jobs:
           sha256sum routatic-proxy_* > checksums.txt
           cat checksums.txt
 
+      - name: Build CGO-enabled binary (for DMG)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          CGO_ENABLED=1 go build -tags darwin -ldflags "-X main.version=${VERSION}" -o bin/routatic-proxy ./cmd/routatic-proxy
+
+      - name: Build macOS DMG
+        env:
+          VERSION: ${{ steps.version.outputs.tag }}
+        run: |
+          brew install create-dmg
+          make dmg VERSION=${{ env.VERSION }}
+
       - name: Generate AI Changelog
         id: changelog
         env:
@@ -122,7 +134,7 @@ jobs:
           OPENROUTER_TEMPERATURE: ${{ secrets.OPENROUTER_TEMPERATURE }}
           OPENROUTER_MAX_TOKENS: ${{ secrets.OPENROUTER_MAX_TOKENS }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq jq curl
+          brew install jq
 
           # Configuration with defaults
           MODEL="${OPENROUTER_MODEL:-openai/gpt-4o-mini}"
@@ -205,7 +217,7 @@ jobs:
 
       # GITHUB_TOKEN works here — same repo
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Release ${{ steps.version.outputs.tag }}
@@ -215,6 +227,7 @@ jobs:
           files: |
             dist/routatic-proxy_*
             dist/checksums.txt
+            bin/RoutaticProxy.dmg
 
   # ── Stage 3: Publish Docker Image ───────────────────────────────
   docker:
@@ -226,19 +239,19 @@ jobs:
     if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0      - uses: docker/setup-qemu-action@v3
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0      - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0      - uses: docker/metadata-action@v5
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
@@ -254,7 +267,7 @@ jobs:
           TAG: ${{ needs.release.outputs.tag }}
         run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2      - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -272,7 +285,7 @@ jobs:
     if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
 
       - name: Download release assets
         env:
@@ -404,7 +417,7 @@ jobs:
     if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
 
       - name: Download release assets
         env:

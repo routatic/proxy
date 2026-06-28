@@ -41,6 +41,10 @@ OpenCode Go / OpenCode Zen
 | `internal/provider` | Provider-based dispatch (new path, replaces legacy client) |
 | `internal/token` | Token counting via tiktoken |
 | `internal/daemon` | Background mode, PID management, autostart |
+| `internal/gui` | Embedded HTTP server for the webview dashboard (macOS only) |
+| `internal/tray` | macOS system tray icon and menu (macOS only) |
+| `internal/history` | In-memory ring buffer of recent proxy requests |
+| `internal/metrics` | In-process request metrics collector |
 
 ## Scenario-Based Routing
 
@@ -91,6 +95,99 @@ Closed (normal) → 3 failures → Open (skip) → 30s timeout → Half-Open (te
 - Only 5xx errors and network failures trigger the circuit breaker
 - 4xx errors (bad request, rate limit) skip the breaker — retrying won't help
 - Per-model tracking: each model has its own circuit breaker
+
+## macOS GUI Architecture
+
+The macOS GUI (`routatic-proxy ui`) runs the proxy and a dashboard in a single process:
+
+```
+┌──────────────────────────────────────────────────┐
+│  routatic-proxy (single process)                 │
+│                                                   │
+│  ┌──────────────┐   ┌──────────────────────────┐ │
+│  │ Proxy Server  │   │  GUI Server              │ │
+│  │ :3456         │   │  :random localhost port  │ │
+│  │               │   │                          │ │
+│  │ /v1/messages  │   │  / (static assets)       │ │
+│  │ /health       │   │  /api/metrics            │ │
+│  │ /statusline   │   │  /api/history            │ │
+│  └──────┬───────┘   │  /api/config             │ │
+│         │            │  /api/proxy/config       │ │
+│         │            │  /api/proxy/start        │ │
+│         │            │  /api/proxy/stop         │ │
+│         │            └──────────┬───────────────┘ │
+│         │                       │                  │
+│         ▼                       ▼                  │
+│  ┌──────────────┐   ┌──────────────────────────┐ │
+│  │  History     │   │  Metrics                 │ │
+│  │  (ring buf)  │   │  (counters)              │ │
+│  └──────────────┘   └──────────────────────────┘ │
+│         ▲                       ▲                 │
+│         │   shared references   │                 │
+│         └───────────────────────┘                 │
+│                                                   │
+│  ┌──────────────────────────────────────────┐    │
+│  │  System Tray (systray)                    │    │
+│  │  ● Open Console                           │    │
+│  │  ● Start / Stop Proxy                     │    │
+│  │  ● Start on Boot (checkbox)               │    │
+│  │  ● Quit                                   │    │
+│  └──────────────────────────────────────────┘    │
+│                                                   │
+│  ┌──────────────────────────────────────────┐    │
+│  │  WebView (webview_go)                     │    │
+│  │  Native macOS window with embedded HTML   │    │
+│  │  Loads GUI server URL                     │    │
+│  └──────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+- **Single process**: The proxy and GUI share the same process, so History and Metrics instances are passed by reference — no IPC or shared memory needed.
+- **Localhost-only GUI server**: The dashboard HTTP server binds to `127.0.0.1:0` (random available port), so only local processes can reach it.
+- **Security headers**: All GUI server responses include `X-Content-Type-Options: nosniff` and `Content-Security-Policy` headers.
+- **Partial config saves**: The Settings tab sends only changed fields as a JSON patch. The backend reads the current config from disk, merges the patch, and writes back — unchanged fields are preserved.
+- **Nil-safe handlers**: The `/api/metrics` and `/api/history` endpoints handle nil dependencies gracefully (return zero values instead of panicking).
+
+### GUI API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/metrics` | GET | Proxy running state, request counts, model distribution |
+| `/api/history` | GET | Last 200 request records (newest first) |
+| `/api/config` | GET/POST | GUI-level settings (autostart, notifications) |
+| `/api/proxy/config` | GET/POST | Full proxy configuration (partial merge on POST) |
+| `/api/proxy/start` | POST | Start the proxy server |
+| `/api/proxy/stop` | POST | Stop the proxy server |
+
+### Config Editing
+
+The Settings tab exposes 28 config fields across 5 sections:
+
+1. **Server** — listen host, listen port, global API key, hot reload toggle
+2. **OpenCode Go** — base URL, Anthropic URL, API key, timeouts
+3. **OpenCode Zen** — base URL, Anthropic URL, Responses URL, Gemini URL, API key, timeouts
+4. **AWS Bedrock** — base URL, Anthropic URL, API key, project ID, timeouts
+5. **Logging** — log level (debug/info/warn/error)
+
+On save, only changed fields are sent to the server. The server merges them onto the current config from disk, writes the merged result, and reloads atomically — the running proxy picks up changes immediately.
+
+### History Ring Buffer
+
+The `internal/history` package maintains an in-memory ring buffer of the last 1000 request records. Each record includes:
+
+- Request ID, model, provider, scenario
+- Start time and duration
+- Input/output token counts
+- Streaming flag and success/failure status
+- Error message (on failure)
+
+The ring buffer uses head/tail indices for O(1) insert and returns a copy of each record on read (no shared reference to internal state).
+
+### Scenario Tracking
+
+Every history record now includes the routing scenario (e.g. "default", "complex", "think", "long_context", "background") that was selected for the request. This is threaded from the router's `RouteResult.Scenario` through the streaming and non-streaming handlers into the `history.RequestRecord`.
 
 ## Streaming Architecture
 
