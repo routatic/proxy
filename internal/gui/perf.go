@@ -77,8 +77,11 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePerformanceAggregate(w http.ResponseWriter, r *http.Request) {
-	rangeParam := r.URL.Query().Get("range")
-	_ = rangeParam
+	// TODO: rangeParam is ignored because metrics.Snapshot stores aggregated
+	// latency samples without timestamps. To honor time ranges, we'd need to
+	// store (latency, timestamp) pairs or store samples in a rolling window
+	// per time bucket. For now, we return the aggregate over all available samples.
+	_ = r.URL.Query().Get("range")
 
 	type aggregate struct {
 		TotalRequests int64 `json:"total_requests"`
