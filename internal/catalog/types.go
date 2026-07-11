@@ -79,14 +79,19 @@ func ProviderFromModelKey(key string) string {
 	return key[:idx]
 }
 
-// modelNameFromKey extracts the model name portion from a model key
+// ModelNameFromKey extracts the model name portion from a model key
 // of the form "provider/model-name". Returns the full key if no separator.
-func modelNameFromKey(key string) string {
+func ModelNameFromKey(key string) string {
 	idx := strings.IndexByte(key, '/')
 	if idx < 0 {
 		return key
 	}
 	return key[idx+1:]
+}
+
+// modelNameFromKey is an alias for internal use.
+func modelNameFromKey(key string) string {
+	return ModelNameFromKey(key)
 }
 
 // Scenario describes a workload that selects a model by capability.

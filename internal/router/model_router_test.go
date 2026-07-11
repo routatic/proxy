@@ -11,7 +11,6 @@ import (
 )
 
 func boolPtr(b bool) *bool { return &b }
-
 func writeTestCatalog(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -34,42 +33,49 @@ func writeTestCatalog(t *testing.T) string {
     }
   },
   "models": {
-    "deepseek-v4-flash": {
-      "name": "deepseek-v4-flash",
-      "display_name": "DeepSeek V4 Flash",
-      "providers": ["opencode-go"],
-      "context_window": 1000000,
-      "cost_input_per_m": 0.0,
-      "cost_output_per_m": 0.0,
-      "tools": true,
-      "vision": false,
-      "reasoning": false
+    "opencode-go/deepseek-v4-flash": {
+      "id": "opencode-go/deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "limit": {"context": 1000000},
+      "rates": {"input": 0.0, "output": 0.0},
+      "tool_call": true,
+      "modalities": {"input": ["text"], "output": ["text"]}
     },
-    "kimi-k2.6": {
-      "name": "kimi-k2.6",
-      "display_name": "Kimi K2.6",
-      "providers": ["opencode-go", "openrouter"],
-      "context_window": 256000,
-      "cost_input_per_m": 0.0,
-      "cost_output_per_m": 0.0,
-      "tools": true,
-      "vision": true,
-      "reasoning": false
+    "opencode-go/kimi-k2.6": {
+      "id": "opencode-go/kimi-k2.6",
+      "name": "Kimi K2.6",
+      "limit": {"context": 256000},
+      "rates": {"input": 0.0, "output": 0.0},
+      "tool_call": true,
+      "modalities": {"input": ["text", "image"], "output": ["text"]}
     },
-    "glm-5": {
-      "name": "glm-5",
-      "display_name": "GLM 5",
-      "providers": ["opencode-go", "openrouter"],
-      "context_window": 200000,
-      "cost_input_per_m": 0.0,
-      "cost_output_per_m": 0.0,
-      "tools": true,
-      "vision": false,
-      "reasoning": false
+    "openrouter/kimi-k2.6": {
+      "id": "openrouter/kimi-k2.6",
+      "name": "Kimi K2.6",
+      "limit": {"context": 256000},
+      "rates": {"input": 0.0, "output": 0.0},
+      "tool_call": true,
+      "modalities": {"input": ["text", "image"], "output": ["text"]}
+    },
+    "opencode-go/glm-5": {
+      "id": "opencode-go/glm-5",
+      "name": "GLM 5",
+      "limit": {"context": 200000},
+      "rates": {"input": 0.0, "output": 0.0},
+      "tool_call": true,
+      "modalities": {"input": ["text"], "output": ["text"]}
+    },
+    "openrouter/glm-5": {
+      "id": "openrouter/glm-5",
+      "name": "GLM 5",
+      "limit": {"context": 200000},
+      "rates": {"input": 0.0, "output": 0.0},
+      "tool_call": true,
+      "modalities": {"input": ["text"], "output": ["text"]}
     }
-  },
-  "scenarios": {}
+  }
 }`)
+
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatalf("failed to write test catalog: %v", err)
 	}

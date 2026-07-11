@@ -51,6 +51,7 @@ type Server struct {
 	srv               *http.Server
 	logger            *slog.Logger
 	catalogMu         sync.Mutex
+	logBuffer         *LogBuffer
 }
 
 // Options configures the GUI server.
@@ -72,15 +73,16 @@ func New(opts Options) *Server {
 		opts.Logger = slog.Default()
 	}
 	s := &Server{
-		hist:             opts.History,
-		met:              opts.Metrics,
-		atomicCfg:        opts.AtomicConfig,
-		proxyPort:        opts.ProxyPort,
-		startProxy:       opts.StartProxy,
-		stopProxy:        opts.StopProxy,
-		catalogDir:       opts.CatalogDir,
-		catalogSourceURL: opts.CatalogSourceURL,
-		logger:           opts.Logger,
+		hist:              opts.History,
+		met:               opts.Metrics,
+		atomicCfg:         opts.AtomicConfig,
+		proxyPort:         opts.ProxyPort,
+		startProxy:        opts.StartProxy,
+		stopProxy:         opts.StopProxy,
+		catalogDir:        opts.CatalogDir,
+		catalogSourceURL:  opts.CatalogSourceURL,
+		logger:            opts.Logger,
+		logBuffer:         NewLogBuffer(1000),
 	}
 	// Check initial autostart state.
 	s.cfg.Autostart = isAutostartEnabled()
@@ -151,6 +153,14 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 	mux.HandleFunc("/api/proxy/stop", s.handleProxyStop)
 	mux.HandleFunc("/api/catalog/lock", s.handleCatalogLock)
 	mux.HandleFunc("/api/catalog/sync", s.handleCatalogSync)
+
+	// New endpoints for advanced GUI features
+	mux.HandleFunc("/api/logs/stream", s.handleLogsStream)
+	mux.HandleFunc("/api/logs/history", s.handleLogsHistory)
+	mux.HandleFunc("/api/config/export", s.handleConfigExport)
+	mux.HandleFunc("/api/config/import", s.handleConfigImport)
+	mux.HandleFunc("/api/perf/models", s.handlePerformance)
+	mux.HandleFunc("/api/perf/aggregate", s.handlePerformanceAggregate)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
