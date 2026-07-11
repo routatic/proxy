@@ -156,8 +156,11 @@ func TestResolve_Canonical(t *testing.T) {
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "opencode-go/deepseek-v4-flash" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/deepseek-v4-flash")
+	if got.ModelID != "deepseek-v4-flash" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "deepseek-v4-flash")
+	}
+	if got.CanonicalName != "opencode-go/deepseek-v4-flash" {
+		t.Errorf("CanonicalName = %q, want %q", got.CanonicalName, "opencode-go/deepseek-v4-flash")
 	}
 	if got.DisplayName != "DeepSeek V4 Flash" {
 		t.Errorf("DisplayName = %q, want %q", got.DisplayName, "DeepSeek V4 Flash")

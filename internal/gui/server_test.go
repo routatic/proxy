@@ -96,7 +96,7 @@ func TestHandleCatalogSync_NotConfigured(t *testing.T) {
 }
 
 func TestHandleCatalogSync_Success(t *testing.T) {
-	body := `{"models":{"gpt-4":{"providers":["openai"]}},"providers":{"openai":{}}}`
+	body := `{"models":{"openai/gpt-4":{"id":"openai/gpt-4","name":"GPT-4"}},"providers":{"openai":{}}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(body))
