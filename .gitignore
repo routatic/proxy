@@ -13,3 +13,7 @@ brag-output-**
 .DS_Store
 .kimchi
 .worktrees/
+
+# Spartan AI config (contains API keys)
+.spartan/ai.env
+.claude

@@ -57,7 +57,7 @@ func TestLoad_EmptyProviders(t *testing.T) {
 	path := writeTempCatalog(t, Catalog{
 		Providers: map[string]Provider{},
 		Models: map[string]Model{
-			"m1": {Name: "m1", Providers: []string{"p1"}},
+			"p1/m1": {ID: "p1/m1", Name: "m1"},
 		},
 	})
 
@@ -93,7 +93,7 @@ func TestLoad_UnknownProvider(t *testing.T) {
 			"known": {Name: "known"},
 		},
 		Models: map[string]Model{
-			"m1": {Name: "m1", Providers: []string{"unknown"}},
+			"unknown/m1": {ID: "unknown/m1", Name: "m1"},
 		},
 	})
 
@@ -103,19 +103,19 @@ func TestLoad_UnknownProvider(t *testing.T) {
 	}
 }
 
-func TestLoad_EmptyProviderName(t *testing.T) {
+func TestLoad_ModelKeyNoProviderPrefix(t *testing.T) {
 	path := writeTempCatalog(t, Catalog{
 		Providers: map[string]Provider{
 			"p1": {Name: "p1"},
 		},
 		Models: map[string]Model{
-			"m1": {Name: "m1", Providers: []string{""}},
+			"no-prefix-model": {ID: "no-prefix-model", Name: "no-prefix-model"},
 		},
 	})
 
 	_, err := Load(path)
 	if err == nil {
-		t.Fatal("expected error for empty provider name")
+		t.Fatal("expected error for model key without provider prefix")
 	}
 }
 
@@ -126,13 +126,13 @@ func TestLoad_ValidCatalog(t *testing.T) {
 			"other":       {Name: "other"},
 		},
 		Models: map[string]Model{
-			"model-a": {
-				Name:      "model-a",
-				Providers: []string{"opencode-go"},
+			"opencode-go/model-a": {
+				ID:   "opencode-go/model-a",
+				Name: "model-a",
 			},
-			"model-b": {
-				Name:      "model-b",
-				Providers: []string{"opencode-go", "other"},
+			"other/model-b": {
+				ID:   "other/model-b",
+				Name: "model-b",
 			},
 		},
 	})
@@ -150,7 +150,7 @@ func TestLoad_ValidCatalog(t *testing.T) {
 	}
 
 	openCodeModels := idx.ModelsForProvider("opencode-go")
-	if got, want := len(openCodeModels), 2; got != want {
+	if got, want := len(openCodeModels), 1; got != want {
 		t.Errorf("len(ModelsForProvider(\"opencode-go\")) = %d, want %d", got, want)
 	}
 

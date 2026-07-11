@@ -30,28 +30,38 @@ func newFixtureCatalog() *IndexedCatalog {
 				},
 			},
 			Models: map[string]Model{
-				"deepseek-v4-flash": {
-					Name:          "deepseek-v4-flash",
-					DisplayName:   "DeepSeek V4 Flash",
-					Providers:     []string{"opencode-go"},
-					ContextWindow: 128000,
-					Tools:         true,
+				"opencode-go/deepseek-v4-flash": {
+					ID:        "opencode-go/deepseek-v4-flash",
+					Name:      "DeepSeek V4 Flash",
+					ToolCall:  true,
+					Reasoning: false,
+					Limit:     &Limit{Context: 128000},
 				},
-				"kimi-k2.6": {
-					Name:          "kimi-k2.6",
-					DisplayName:   "Kimi K2.6",
-					Providers:     []string{"opencode-go", "openrouter"},
-					ContextWindow: 256000,
+				"opencode-go/kimi-k2.6": {
+					ID:        "opencode-go/kimi-k2.6",
+					Name:      "Kimi K2.6",
+					ToolCall:  false,
+					Reasoning: false,
+					Limit:     &Limit{Context: 256000},
 				},
-				"legacy-name": {
-					Name:        "old-model",
-					DisplayName: "Old Model",
-					Providers:   []string{"opencode-go"},
+				"openrouter/kimi-k2.6": {
+					ID:        "openrouter/kimi-k2.6",
+					Name:      "Kimi K2.6",
+					ToolCall:  false,
+					Reasoning: false,
+					Limit:     &Limit{Context: 256000},
 				},
-				"only-disabled": {
-					Name:        "only-disabled",
-					DisplayName: "Only Disabled",
-					Providers:   []string{"disabled-provider"},
+				"opencode-go/legacy-name": {
+					ID:        "opencode-go/legacy-name",
+					Name:      "Old Model",
+					ToolCall:  false,
+					Reasoning: false,
+				},
+				"disabled-provider/only-disabled": {
+					ID:        "disabled-provider/only-disabled",
+					Name:      "Only Disabled",
+					ToolCall:  false,
+					Reasoning: false,
 				},
 			},
 		},
@@ -146,8 +156,8 @@ func TestResolve_Canonical(t *testing.T) {
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "deepseek-v4-flash" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "deepseek-v4-flash")
+	if got.ModelID != "opencode-go/deepseek-v4-flash" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/deepseek-v4-flash")
 	}
 	if got.DisplayName != "DeepSeek V4 Flash" {
 		t.Errorf("DisplayName = %q, want %q", got.DisplayName, "DeepSeek V4 Flash")
@@ -200,23 +210,23 @@ func TestResolveShort_Legacy(t *testing.T) {
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "kimi-k2.6" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "kimi-k2.6")
+	if got.ModelID != "opencode-go/kimi-k2.6" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/kimi-k2.6")
 	}
 }
 
 func TestResolveShort_Name(t *testing.T) {
 	ic := newFixtureCatalog()
 
-	got, err := ic.ResolveShort("old-model")
+	got, err := ic.ResolveShort("Old Model")
 	if err != nil {
-		t.Fatalf("ResolveShort(%q) unexpected error: %v", "old-model", err)
+		t.Fatalf("ResolveShort(%q) unexpected error: %v", "Old Model", err)
 	}
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "legacy-name" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "legacy-name")
+	if got.ModelID != "opencode-go/legacy-name" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/legacy-name")
 	}
 }
 
@@ -242,7 +252,7 @@ func TestListProviderModels(t *testing.T) {
 		ids[i] = m.ModelID
 	}
 	sort.Strings(ids)
-	want := []string{"deepseek-v4-flash", "kimi-k2.6", "legacy-name"}
+	want := []string{"opencode-go/deepseek-v4-flash", "opencode-go/kimi-k2.6", "opencode-go/legacy-name"}
 	for i := range want {
 		if ids[i] != want[i] {
 			t.Errorf("model ids = %v, want %v", ids, want)
@@ -254,9 +264,8 @@ func TestListProviderModels(t *testing.T) {
 		t.Error("ListProviderModels(\"unknown\"): expected nil for unknown provider")
 	}
 
-	// Only-disabled is on disabled-provider, so it should not appear on the enabled opencode-go list.
 	for _, m := range got {
-		if m.ModelID == "only-disabled" {
+		if m.ModelID == "disabled-provider/only-disabled" {
 			t.Errorf("unexpected disabled-only model %q in opencode-go list", m.ModelID)
 		}
 		if m.Provider != "opencode-go" {

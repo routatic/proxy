@@ -29,26 +29,19 @@ func TestFixtureResolve_Canonical(t *testing.T) {
 			name:            "deepseek via opencode-go",
 			ref:             "deepseek/deepseek-v4-flash@opencode-go",
 			wantProvider:    "opencode-go",
-			wantModelID:     "deepseek-v4-flash",
+			wantModelID:     "opencode-go/deepseek-v4-flash",
 			wantDisplayName: "DeepSeek V4 Flash",
 			wantBaseURL:     "https://go.opencode.ai/v1",
 			wantAPIKey:      "go-key",
 			wantTools:       true,
 		},
 		{
-			name:         "kimi via openrouter",
-			ref:          "kimi-k2.6@openrouter",
+			name:         "vision via openrouter",
+			ref:          "vision-model@openrouter",
 			wantProvider: "openrouter",
-			wantModelID:  "kimi-k2.6",
+			wantModelID:  "openrouter/vision-model",
 			wantBaseURL:  "https://openrouter.ai/api/v1",
 			wantAPIKey:   "or-key",
-			wantTools:    true,
-		},
-		{
-			name:         "glm via openrouter",
-			ref:          "glm-5.2@openrouter",
-			wantProvider: "openrouter",
-			wantModelID:  "glm-5.2",
 			wantTools:    true,
 		},
 	}
@@ -133,19 +126,19 @@ func TestFixtureResolveShort(t *testing.T) {
 	}{
 		{
 			name:         "first enabled provider",
-			short:        "kimi-k2.6",
+			short:        "DeepSeek V4 Flash",
 			wantProvider: "opencode-go",
-			wantModelID:  "kimi-k2.6",
+			wantModelID:  "opencode-go/deepseek-v4-flash",
 		},
 		{
-			name:         "resolve by name",
-			short:        "old-model",
+			name:         "resolve by key suffix",
+			short:        "deepseek-v4-flash",
 			wantProvider: "opencode-go",
-			wantModelID:  "legacy-name",
+			wantModelID:  "opencode-go/deepseek-v4-flash",
 		},
 		{
 			name:    "only disabled provider",
-			short:   "only-disabled",
+			short:   "Only Disabled",
 			wantErr: true,
 		},
 	}
@@ -181,12 +174,12 @@ func TestFixtureResolve_ListProviderModels(t *testing.T) {
 		{
 			name:     "opencode-go models",
 			provider: "opencode-go",
-			wantIDs:  []string{"deepseek-v4-flash", "kimi-k2.6", "legacy-name"},
+			wantIDs: []string{"opencode-go/deepseek-v4-flash", "opencode-go/large-context", "opencode-go/tie-small-context"},
 		},
 		{
 			name:     "openrouter models",
 			provider: "openrouter",
-			wantIDs:  []string{"kimi-k2.6", "glm-5.2"},
+			wantIDs:  []string{"openrouter/vision-model", "openrouter/reasoning-model"},
 		},
 		{
 			name:     "unknown provider",
