@@ -153,16 +153,7 @@ func (h *LogHandler) WithGroup(name string) slog.Handler {
 	return h
 }
 
-func writeSSE(w http.ResponseWriter, event string, data any) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		return
-	}
-
+func writeSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
 	jsonData, _ := json.Marshal(data)
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
 	flusher.Flush()

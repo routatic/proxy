@@ -29,6 +29,7 @@ type Config struct {
 	Logging                        LoggingConfig            `json:"logging"`
 	Debug                          DebugConfig              `json:"debug"`
 	Catalog                        CatalogConfig            `json:"catalog"`
+	Storage                        *StorageConfig           `json:"storage,omitempty"`
 }
 
 // CostRoutingConfig controls cost-aware model selection.
@@ -199,6 +200,14 @@ type LoggingConfig struct {
 	Level        string        `json:"level"`
 	Requests     bool          `json:"requests"`
 	DebugCapture *DebugCapture `json:"debug_capture,omitempty"`
+}
+
+// StorageConfig controls persistent storage settings.
+type StorageConfig struct {
+	DatabasePath    string `json:"database_path"`
+	RetentionDays   int    `json:"retention_days"`
+	VacuumOnStartup bool   `json:"vacuum_on_startup"`
+	WALEnabled      bool   `json:"wal_enabled"`
 }
 
 // DebugCapture controls request/response capture for debugging.

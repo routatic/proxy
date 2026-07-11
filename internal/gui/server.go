@@ -467,7 +467,6 @@ func (s *Server) handleCatalogSync(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -479,30 +478,21 @@ func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send initial connection message
-	fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
-	flusher.Flush()
+	writeSSE(w, flusher, "connected", map[string]string{"status": "connected"})
 
-	// Subscribe to logs
 	ch := s.logBuffer.Subscribe()
 	defer s.logBuffer.Unsubscribe(ch)
 
-	// Send last 50 logs
 	lastLogs := s.logBuffer.Last(50)
 	for _, entry := range lastLogs {
-		jsonData, _ := json.Marshal(entry)
-		fmt.Fprintf(w, "event: log\ndata: %s\n\n", jsonData)
+		writeSSE(w, flusher, "log", entry)
 	}
-	flusher.Flush()
 
-	// Stream new logs
 	ctx := r.Context()
 	for {
 		select {
 		case entry := <-ch:
-			jsonData, _ := json.Marshal(entry)
-			fmt.Fprintf(w, "event: log\ndata: %s\n\n", jsonData)
-			flusher.Flush()
+			writeSSE(w, flusher, "log", entry)
 		case <-ctx.Done():
 			return
 		}
