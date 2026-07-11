@@ -134,6 +134,24 @@ Creates a default config at `~/.config/routatic-proxy/config.json`. Edit it to a
 export ROUTATIC_PROXY_API_KEY=sk-opencode-your-key-here
 ```
 
+**Provider-specific initialization** — generate a config pre-configured for your provider:
+
+```bash
+# OpenRouter (unified API for 100+ models)
+routatic-proxy init --provider=openrouter
+
+# AWS Bedrock (run models on your own AWS infrastructure)
+routatic-proxy init --provider=aws-bedrock
+
+# OpenCode Zen (pay-as-you-go Claude, GPT, Gemini)
+routatic-proxy init --provider=opencode-zen
+
+# OpenCode Go subscription (default)
+routatic-proxy init --provider=opencode-go
+```
+
+Each preset configures provider-specific models, fallback chains, and API key placeholders. Run `routatic-proxy init --help` for details.
+
 ### 3. Start the Proxy
 
 ```bash
@@ -179,6 +197,7 @@ routatic-proxy serve --port 8080  Start on a custom port
 routatic-proxy stop               Stop the running proxy server
 routatic-proxy status             Check if the proxy is running
 routatic-proxy init               Create default configuration file
+routatic-proxy init --provider=X  Create provider-specific config
 routatic-proxy validate           Validate configuration file
 routatic-proxy models             List all available models (Go, Zen, Bedrock)
 routatic-proxy autostart enable   Enable auto-start on login
