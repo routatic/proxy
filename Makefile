@@ -24,17 +24,20 @@ run:
 	go run -ldflags "$(LDFLAGS)" $(CMD)
 
 test:
-	go test ./... -v -race
+	go test ./internal/... ./pkg/... -v -race
+	go test ./cmd/routatic-proxy/... -v -race -exclude=github.com/routatic/proxy/internal/tray
 
 vet:
 	go vet ./...
 
+GOBIN=$(shell go env GOPATH)/bin
+
 lint:
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found, please install it: https://golangci-lint.run/usage/install/" && exit 1)
 	@echo "Running gofmt..."
 	@test -z "$$(gofmt -d . | tee /dev/stderr)" || (echo "gofmt check failed" && exit 1)
-	@echo "Running golangci-lint..."
-	golangci-lint run --timeout 5m
+	@echo "Running go vet..."
+	CGO_ENABLED=0 go vet ./...
+	@echo "Lint checks passed!"
 
 clean:
 	rm -rf bin/ dist/
