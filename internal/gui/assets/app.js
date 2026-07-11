@@ -1027,6 +1027,9 @@ function executeCommand(action) {
     case 'goto-history':
       document.querySelector('[data-tab="history"]').click();
       break;
+    case 'goto-performance':
+      document.querySelector('[data-tab="performance"]').click();
+      break;
     case 'goto-settings':
       document.querySelector('[data-tab="settings"]').click();
       break;

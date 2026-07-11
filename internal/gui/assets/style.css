@@ -943,6 +943,143 @@ input:checked + .toggle-slider::before {
   font-family: monospace;
 }
 
+/* ── Log Viewer ─────────────────────────────────────────────────── */
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.log-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+.log-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.log-search-input {
+  flex: 1;
+  min-width: 150px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.log-search-input:focus {
+  border-color: var(--accent);
+}
+
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.log-toggle input {
+  cursor: pointer;
+}
+
+.log-container {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+  font-family: "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.log-entry {
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-time {
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.log-level {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.log-entry.debug .log-level {
+  color: var(--text-muted);
+  background: var(--surface2);
+}
+
+.log-entry.info .log-level {
+  color: var(--accent);
+  background: rgba(0, 113, 227, 0.15);
+}
+
+.log-entry.warn .log-level {
+  color: var(--warning);
+  background: rgba(253, 126, 20, 0.15);
+}
+
+.log-entry.error .log-level {
+  color: var(--error);
+  background: rgba(220, 53, 69, 0.15);
+}
+
+.log-message {
+  color: var(--text);
+  word-break: break-word;
+  flex: 1;
+}
+
+.log-entry.debug .log-message {
+  color: var(--text-muted);
+}
+
+.log-entry.info .log-message {
+  color: var(--text);
+}
+
+.log-entry.warn .log-message {
+  color: var(--warning);
+}
+
+.log-entry.error .log-message {
+  color: var(--error);
+}
+
 /* ── Fallback Chain Editor ──────────────────────────────────────── */
 .fallback-section {
   background: var(--surface);
