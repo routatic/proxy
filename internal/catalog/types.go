@@ -1,5 +1,7 @@
 package catalog
 
+import "strings"
+
 // Catalog is the parsed contents of a models.dev catalog.
 type Catalog struct {
 	Providers map[string]Provider `json:"providers"`
@@ -16,17 +18,75 @@ type Provider struct {
 	AnthropicToolsDisabled bool   `json:"anthropic_tools_disabled"`
 }
 
+// Modalities describes the input/output formats a model supports.
+type Modalities struct {
+	Input  []string `json:"input"`
+	Output []string `json:"output"`
+}
+
+// Limit describes model usage limits.
+type Limit struct {
+	Context int64 `json:"context"`
+	Output  int64 `json:"output"`
+}
+
 // Model describes a model available through one or more providers.
+// The provider is encoded in the model key (e.g. "xai/grok-4.5").
 type Model struct {
-	Name           string   `json:"name"`
-	DisplayName    string   `json:"display_name"`
-	Providers      []string `json:"providers"`
-	ContextWindow  int64    `json:"context_window"`
-	CostInputPerM  float64  `json:"cost_input_per_m"`
-	CostOutputPerM float64  `json:"cost_output_per_m"`
-	Tools          bool     `json:"tools"`
-	Vision         bool     `json:"vision"`
-	Reasoning      bool     `json:"reasoning"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Reasoning   bool       `json:"reasoning"`
+	ToolCall    bool       `json:"tool_call"`
+	Modalities  Modalities `json:"modalities"`
+	Limit       *Limit     `json:"limit,omitempty"`
+}
+
+// DisplayName returns the model's display name.
+func (m Model) DisplayName() string {
+	return m.Name
+}
+
+// SupportsTools returns whether the model supports tool calls.
+func (m Model) SupportsTools() bool {
+	return m.ToolCall
+}
+
+// SupportsVision returns whether the model supports image inputs.
+func (m Model) SupportsVision() bool {
+	for _, mod := range m.Modalities.Input {
+		if mod == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+// ContextWindow returns the model's context window limit, or 0 if unknown.
+func (m Model) ContextWindow() int64 {
+	if m.Limit != nil {
+		return m.Limit.Context
+	}
+	return 0
+}
+
+// providerFromModelKey extracts the provider name from a model key
+// of the form "provider/model-name". Returns "" if no separator found.
+func providerFromModelKey(key string) string {
+	idx := strings.IndexByte(key, '/')
+	if idx < 0 {
+		return ""
+	}
+	return key[:idx]
+}
+
+// modelNameFromKey extracts the model name portion from a model key
+// of the form "provider/model-name". Returns the full key if no separator.
+func modelNameFromKey(key string) string {
+	idx := strings.IndexByte(key, '/')
+	if idx < 0 {
+		return key
+	}
+	return key[idx+1:]
 }
 
 // Scenario describes a workload that selects a model by capability.

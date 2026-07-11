@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const indexFileName = "provider_model_index.json"
@@ -39,12 +40,10 @@ func BuildProviderIndex(catalog Catalog) (*ProviderModelIndex, error) {
 		}
 		enabledCount++
 
-		for modelKey, model := range catalog.Models {
-			for _, mp := range model.Providers {
-				if mp == providerName {
-					providerModels[providerName] = append(providerModels[providerName], modelKey)
-					break
-				}
+		prefix := providerName + "/"
+		for modelKey := range catalog.Models {
+			if strings.HasPrefix(modelKey, prefix) {
+				providerModels[providerName] = append(providerModels[providerName], modelKey)
 			}
 		}
 	}

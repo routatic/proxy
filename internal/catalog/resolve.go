@@ -3,7 +3,6 @@ package catalog
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 )
 
@@ -61,7 +60,7 @@ func (ic *IndexedCatalog) Resolve(sel Selector) (ResolvedModel, error) {
 		return ResolvedModel{}, fmt.Errorf("unknown model %q", sel.Model)
 	}
 
-	if !slices.Contains(model.Providers, sel.Provider) {
+	if providerFromModelKey(modelKey) != sel.Provider {
 		return ResolvedModel{}, fmt.Errorf("model %q is not available on provider %q", modelKey, sel.Provider)
 	}
 
@@ -69,8 +68,7 @@ func (ic *IndexedCatalog) Resolve(sel Selector) (ResolvedModel, error) {
 }
 
 // ResolveShort resolves a legacy short model id to a fully materialized model/provider pair.
-// It first matches by model key, then by model Name. The first enabled provider declared by
-// the model is selected.
+// It first matches by model key, then by model Name.
 func (ic *IndexedCatalog) ResolveShort(short string) (ResolvedModel, error) {
 	if model, ok := ic.Models[short]; ok {
 		return ic.resolveWithFirstEnabledProvider(model, short)
@@ -94,9 +92,10 @@ func (ic *IndexedCatalog) ListProviderModels(provider string) []ResolvedModel {
 		return nil
 	}
 
+	prefix := provider + "/"
 	var result []ResolvedModel
 	for key, model := range ic.Models {
-		if !slices.Contains(model.Providers, provider) {
+		if !strings.HasPrefix(key, prefix) {
 			continue
 		}
 		result = append(result, resolvedModel(providerCfg, key, model))
@@ -108,25 +107,34 @@ func (ic *IndexedCatalog) findModel(sel Selector) (Model, string) {
 	if model, ok := ic.Models[sel.Model]; ok {
 		return model, sel.Model
 	}
+	// Try alias: if user asked "xai/grok-4.5", look it up directly.
 	if sel.Alias != "" {
 		if model, ok := ic.Models[sel.Alias]; ok {
 			return model, sel.Alias
+		}
+	}
+	// Try full key "provider/model-name" built from model name.
+	for key, model := range ic.Models {
+		if modelNameFromKey(key) == sel.Model {
+			return model, key
 		}
 	}
 	return Model{}, ""
 }
 
 func (ic *IndexedCatalog) resolveWithFirstEnabledProvider(model Model, key string) (ResolvedModel, error) {
-	for _, providerName := range model.Providers {
-		provider, ok := ic.Providers[providerName]
-		if !ok {
-			continue
-		}
-		if provider.Enabled == nil || *provider.Enabled {
-			return resolvedModel(provider, key, model), nil
-		}
+	providerName := providerFromModelKey(key)
+	if providerName == "" {
+		return ResolvedModel{}, fmt.Errorf("model key %q has no provider prefix", key)
 	}
-	return ResolvedModel{}, fmt.Errorf("no enabled provider for model %q", key)
+	provider, ok := ic.Providers[providerName]
+	if !ok {
+		return ResolvedModel{}, fmt.Errorf("provider %q from model key %q not found in catalog", providerName, key)
+	}
+	if provider.Enabled != nil && !*provider.Enabled {
+		return ResolvedModel{}, fmt.Errorf("provider %q for model %q is disabled", providerName, key)
+	}
+	return resolvedModel(provider, key, model), nil
 }
 
 func resolvedModel(provider Provider, modelKey string, model Model) ResolvedModel {
@@ -134,15 +142,15 @@ func resolvedModel(provider Provider, modelKey string, model Model) ResolvedMode
 		Provider:               provider.Name,
 		ModelID:                modelKey,
 		CanonicalName:          modelKey,
-		DisplayName:            model.DisplayName,
+		DisplayName:            model.DisplayName(),
 		BaseURL:                provider.BaseURL,
 		APIKey:                 provider.APIKey,
 		AnthropicToolsDisabled: provider.AnthropicToolsDisabled,
-		ContextWindow:          model.ContextWindow,
-		CostInputPerM:          model.CostInputPerM,
-		CostOutputPerM:         model.CostOutputPerM,
-		Tools:                  model.Tools,
-		Vision:                 model.Vision,
+		ContextWindow:          model.ContextWindow(),
+		CostInputPerM:          0,
+		CostOutputPerM:         0,
+		Tools:                  model.SupportsTools(),
+		Vision:                 model.SupportsVision(),
 		Reasoning:              model.Reasoning,
 	}
 }

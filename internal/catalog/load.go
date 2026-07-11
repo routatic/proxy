@@ -42,8 +42,9 @@ func Load(path string) (*IndexedCatalog, error) {
 		providerModels: make(map[string][]Model, len(catalog.Providers)),
 	}
 
-	for _, model := range catalog.Models {
-		for _, provider := range model.Providers {
+	for key, model := range catalog.Models {
+		provider := providerFromModelKey(key)
+		if provider != "" {
 			idx.providerModels[provider] = append(idx.providerModels[provider], model)
 		}
 	}
@@ -59,14 +60,13 @@ func validateCatalog(catalog *Catalog) error {
 		return errors.New("catalog models map is empty")
 	}
 
-	for _, model := range catalog.Models {
-		for _, provider := range model.Providers {
-			if provider == "" {
-				return fmt.Errorf("model %q references an empty provider name", model.Name)
-			}
-			if _, ok := catalog.Providers[provider]; !ok {
-				return fmt.Errorf("model %q references unknown provider %q", model.Name, provider)
-			}
+	for key := range catalog.Models {
+		provider := providerFromModelKey(key)
+		if provider == "" {
+			return fmt.Errorf("model key %q does not include a provider prefix (expected format: provider/model)", key)
+		}
+		if _, ok := catalog.Providers[provider]; !ok {
+			return fmt.Errorf("model key %q references unknown provider %q", key, provider)
 		}
 	}
 
