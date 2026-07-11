@@ -2,11 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/routatic/proxy/internal/catalog"
+	"github.com/routatic/proxy/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -39,8 +43,32 @@ func writeTestCatalog(t *testing.T, dir, content string) {
 	if err := os.MkdirAll(catalogDir, 0755); err != nil {
 		t.Fatalf("mkdir catalog: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(catalogDir, "catalog.json"), []byte(content), 0644); err != nil {
+	jsonPath := filepath.Join(catalogDir, "catalog.json")
+	if err := os.WriteFile(jsonPath, []byte(content), 0644); err != nil {
 		t.Fatalf("write catalog: %v", err)
+	}
+}
+
+func migrateTestCatalogToSQLite(t *testing.T, dir string) {
+	t.Helper()
+	
+	jsonPath := filepath.Join(dir, "catalog", "catalog.json")
+	dbPath := filepath.Join(dir, "data.db")
+	
+	storageCfg := storage.DefaultConfig
+	storageCfg.DatabasePath = dbPath
+	
+	db, err := storage.Open(storageCfg)
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	defer db.Close()
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	if _, err := catalog.MigrateFromJSON(ctx, db, jsonPath); err != nil {
+		t.Fatalf("migrate catalog: %v", err)
 	}
 }
 
@@ -57,6 +85,7 @@ func TestRunModelsList_ProviderFilter(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
 	writeTestCatalog(t, tmp, catalogFixture)
+	migrateTestCatalogToSQLite(t, tmp)
 
 	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
@@ -85,6 +114,7 @@ func TestRunModelsList_EnabledProviders(t *testing.T) {
 	// A global API key enables every provider, so all catalog providers appear.
 	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
 	writeTestCatalog(t, tmp, catalogFixture)
+	migrateTestCatalogToSQLite(t, tmp)
 
 	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
@@ -105,6 +135,7 @@ func TestRunModelsList_UnknownProvider(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
 	writeTestCatalog(t, tmp, catalogFixture)
+	migrateTestCatalogToSQLite(t, tmp)
 
 	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
