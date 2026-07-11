@@ -8,7 +8,7 @@ const TRANSLATIONS = {
     'status.connected': 'Connected',
     'tab.overview': 'Overview',
     'tab.history': 'History',
-    'tab.performance': 'Performance',
+    'tab.fallback': 'Fallback',
     'tab.settings': 'Settings',
     'metric.total': 'Total Requests',
     'metric.success': 'Success',
@@ -54,6 +54,21 @@ const TRANSLATIONS = {
     'badge.fail': 'Fail',
     'port.info': 'Listening port: —',
     'save.unloaded': 'Config not loaded, cannot save',
+    'fallback.scenario': 'Scenario',
+    'fallback.default': 'Default',
+    'fallback.streaming': 'Streaming',
+    'fallback.longContext': 'Long Context',
+    'fallback.chainOrder': 'Fallback Chain Order',
+    'fallback.addModel': '+ Add Model',
+    'fallback.preview': 'Preview',
+    'fallback.save': 'Save',
+    'fallback.empty': 'No models configured',
+    'fallback.previewTitle': 'Fallback Chain Preview',
+    'fallback.selectModel': 'Select a model',
+    'fallback.saving': 'Saving fallback chain...',
+    'fallback.saved': 'Fallback chain saved successfully!',
+    'fallback.saveFailed': 'Failed to save fallback chain',
+    'fallback.noChanges': 'No changes to save',
     'perf.lastHour': 'Last Hour',
     'perf.last24h': 'Last 24 Hours',
     'perf.last7d': 'Last 7 Days',
@@ -84,6 +99,22 @@ const TRANSLATIONS = {
     'modal.importConfirm': 'Apply this configuration?',
     'btn.apply': 'Apply',
     'btn.cancel': 'Cancel',
+    'setting.testModel': 'Test Model',
+    'setting.testModelDesc': 'Send a quick test request to verify model connectivity',
+    'btn.testModel': 'Test Model',
+    'test.title': 'Quick Model Test',
+    'test.selectModel': 'Select a model...',
+    'test.send': 'Send',
+    'test.promptPlaceholder': 'Enter your prompt...',
+    'test.latency': 'Latency:',
+    'test.tokens': 'Tokens:',
+    'test.copy': 'Copy',
+    'test.copied': 'Copied!',
+    'test.sending': 'Sending...',
+    'test.noModel': 'Please select a model',
+    'test.noPrompt': 'Please enter a prompt',
+    'test.error': 'Error: ',
+    'test.networkError': 'Network error',
   },
   zh: {
     'lang.toggle': 'English',
@@ -93,7 +124,7 @@ const TRANSLATIONS = {
     'status.connected': '已连接',
     'tab.overview': '概览',
     'tab.history': '历史请求',
-    'tab.performance': '性能',
+    'tab.fallback': '降级策略',
     'tab.settings': '设置',
     'metric.total': '总请求数',
     'metric.success': '成功',
@@ -139,6 +170,49 @@ const TRANSLATIONS = {
     'badge.fail': '失败',
     'port.info': '监听端口：—',
     'save.unloaded': '未加载当前配置，无法保存',
+    'setting.testModel': '测试模型',
+    'setting.testModelDesc': '发送快速测试请求以验证模型连接',
+    'btn.testModel': '测试模型',
+    'test.title': '快速模型测试',
+    'test.selectModel': '选择模型...',
+    'test.send': '发送',
+    'test.promptPlaceholder': '输入测试提示词...',
+    'test.latency': '延迟：',
+    'test.tokens': 'Token：',
+    'test.copy': '复制',
+    'test.copied': '已复制！',
+    'test.sending': '发送中...',
+    'test.noModel': '请选择模型',
+    'test.noPrompt': '请输入提示词',
+    'test.error': '错误：',
+    'test.networkError': '网络错误',
+    'fallback.scenario': '使用场景',
+    'fallback.default': '默认',
+    'fallback.streaming': '流式请求',
+    'fallback.longContext': '长上下文',
+    'fallback.chainOrder': '降级链顺序',
+    'fallback.addModel': '+ 添加模型',
+    'fallback.preview': '预览',
+    'fallback.save': '保存',
+    'fallback.empty': '未配置模型',
+    'fallback.previewTitle': '降级链预览',
+    'fallback.selectModel': '选择模型',
+    'fallback.saving': '保存中...',
+    'fallback.saved': '降级链保存成功！',
+    'fallback.saveFailed': '保存失败',
+    'fallback.noChanges': '无更改',
+    'perf.lastHour': '最近 1 小时',
+    'perf.last24h': '最近 24 小时',
+    'perf.last7d': '最近 7 天',
+    'perf.allTime': '全部时间',
+    'perf.th.model': '模型',
+    'perf.th.count': '请求数',
+    'perf.th.successRate': '成功率',
+    'perf.th.avg': '平均延迟',
+    'perf.th.p50': 'P50',
+    'perf.th.p90': 'P90',
+    'perf.th.p99': 'P99',
+    'perf.empty': '暂无性能数据',
     'setting.backup': '备份配置',
     'setting.backupDesc': '导出当前配置为 JSON 文件',
     'setting.restore': '恢复配置',
@@ -205,6 +279,99 @@ let allHistory = [];
 let currentFilter = '';
 let lastModelCounts = {};
 
+/* ── Performance Module ───────────────────────────────────────────── */
+const PerfModule = {
+  data: [],
+  sortField: 'count',
+  sortDir: 'desc',
+  timeRange: 'all',
+
+  init() {
+    const timeRangeSelect = document.getElementById('perf-time-range');
+    if (timeRangeSelect) {
+      timeRangeSelect.addEventListener('change', (e) => {
+        this.timeRange = e.target.value;
+        this.refresh();
+      });
+    }
+
+    document.querySelectorAll('.perf-table .sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (this.sortField === field) {
+          this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortField = field;
+          this.sortDir = 'desc';
+        }
+        document.querySelectorAll('.perf-table .sortable').forEach(s => {
+          s.classList.remove('asc', 'desc');
+          s.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(this.sortDir);
+        th.setAttribute('aria-sort', this.sortDir === 'asc' ? 'ascending' : 'descending');
+        this.render();
+      });
+    });
+  },
+
+  async refresh() {
+    try {
+      const r = await fetch('/api/perf/models?range=' + encodeURIComponent(this.timeRange));
+      if (!r.ok) return;
+      this.data = await r.json() || [];
+      this.render();
+    } catch (e) {
+      console.error('PerfModule refresh failed:', e);
+    }
+  },
+
+  render() {
+    const tbody = document.getElementById('perf-tbody');
+    if (!tbody) return;
+
+    if (this.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">' + t('empty.noData') + '</td></tr>';
+      return;
+    }
+
+    const sorted = [...this.data].sort((a, b) => {
+      let aVal = a[this.sortField];
+      let bVal = b[this.sortField];
+      if (aVal == null) aVal = 0;
+      if (bVal == null) bVal = 0;
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      if (aVal < bVal) return this.sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return this.sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    tbody.innerHTML = sorted.map(row => {
+      const successRate = row.count > 0 ? (row.success / row.count * 100).toFixed(1) : 0;
+      const successClass = successRate >= 99 ? 'success-rate' : (successRate >= 95 ? '' : 'error-rate');
+      return `
+        <tr>
+          <td class="perf-model">${escapeHtml(row.model)}</td>
+          <td>${fmt(row.count)}</td>
+          <td class="${successClass}">${successRate}%</td>
+          <td class="${this.getLatencyClass(row.avg_ms)}">${fmt(row.avg_ms)}</td>
+          <td class="${this.getLatencyClass(row.p50_ms)}">${fmt(row.p50_ms)}</td>
+          <td class="${this.getLatencyClass(row.p90_ms)}">${fmt(row.p90_ms)}</td>
+          <td class="${this.getLatencyClass(row.p99_ms)}">${fmt(row.p99_ms)}</td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  getLatencyClass(ms) {
+    if (ms == null) return '';
+    if (ms < 1000) return 'latency-cell latency-fast';
+    if (ms < 2000) return 'latency-cell latency-medium';
+    return 'latency-cell latency-slow';
+  }
+};
+
 /* ── Tab switching ─────────────────────────────────────────────── */
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -216,9 +383,21 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 /* ── Polling ───────────────────────────────────────────────────── */
+let perfPollTimer = null;
+let perfPollCounter = 0;
+
 function startPolling() {
   refreshAll();
+  PerfModule.init();
+  PerfModule.refresh();
   setInterval(refreshAll, 3000);
+  perfPollTimer = setInterval(() => {
+    perfPollCounter++;
+    if (perfPollCounter >= 2) {
+      PerfModule.refresh();
+      perfPollCounter = 0;
+    }
+  }, 3000);
 }
 
 async function refreshAll() {
