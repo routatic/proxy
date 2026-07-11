@@ -20,22 +20,22 @@ type Database struct {
 }
 
 type Config struct {
-	DatabasePath     string `json:"database_path"`
-	RetentionDays    int    `json:"retention_days"`
-	VacuumOnStartup  bool   `json:"vacuum_on_startup"`
-	WALEnabled       bool   `json:"wal_enabled"`
+	DatabasePath    string `json:"database_path"`
+	RetentionDays   int    `json:"retention_days"`
+	VacuumOnStartup bool   `json:"vacuum_on_startup"`
+	WALEnabled      bool   `json:"wal_enabled"`
 }
 
 var DefaultConfig = Config{
 	DatabasePath:    "~/.local/share/routatic-proxy/data.db",
-	RetentionDays:  7,
+	RetentionDays:   7,
 	VacuumOnStartup: false,
-	WALEnabled:     true,
+	WALEnabled:      true,
 }
 
 func Open(cfg Config) (*Database, error) {
 	path := expandPath(cfg.DatabasePath)
-	
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)

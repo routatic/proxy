@@ -28,15 +28,15 @@ import (
 
 // Server represents the proxy server.
 type Server struct {
-	atomic   *config.AtomicConfig
-	httpSrv  *http.Server
-	mux      http.Handler
-	mu       sync.Mutex
-	logger   *slog.Logger
-	levelVar *slog.LevelVar
-	History  *history.History // exported so the ui command can read it
-	metrics  *metrics.Metrics // stored for Metrics() getter
-	storage  *storage.Database
+	atomic    *config.AtomicConfig
+	httpSrv   *http.Server
+	mux       http.Handler
+	mu        sync.Mutex
+	logger    *slog.Logger
+	levelVar  *slog.LevelVar
+	History   *history.History // exported so the ui command can read it
+	metrics   *metrics.Metrics // stored for Metrics() getter
+	storage   *storage.Database
 	retention *storage.Retention
 }
 

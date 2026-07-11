@@ -439,14 +439,14 @@ func modelNameFromKey(key string) string {
 }
 
 type ProviderModel struct {
-	ModelID      string
-	DisplayName  string
-	ToolCall     bool
-	Reasoning    bool
-	Vision       bool
-	Context      int64
-	CostInput    float64
-	CostOutput   float64
+	ModelID     string
+	DisplayName string
+	ToolCall    bool
+	Reasoning   bool
+	Vision      bool
+	Context     int64
+	CostInput   float64
+	CostOutput  float64
 }
 
 func (ic *IndexedCatalog) ModelsForProvider(provider string) []Model {

@@ -47,7 +47,7 @@ type MessagesHandler struct {
 	metrics             *metrics.Metrics
 	captureLogger       *debug.CaptureLogger
 	history             *history.History // optional: nil means no GUI history
-	storage             StorageWriter   // optional: SQLite persistence for requests/latency
+	storage             StorageWriter    // optional: SQLite persistence for requests/latency
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -563,14 +563,14 @@ func (h *MessagesHandler) handleStreaming(
 			if h.history != nil {
 				h.history.Add(rec)
 			}
-		if h.storage != nil {
-			if err := h.storage.InsertRequest(rec); err != nil {
-				h.logger.Warn("failed to insert request into storage", "error", err)
+			if h.storage != nil {
+				if err := h.storage.InsertRequest(rec); err != nil {
+					h.logger.Warn("failed to insert request into storage", "error", err)
+				}
+				if err := h.storage.InsertLatency(model.ModelID, latency); err != nil {
+					h.logger.Warn("failed to insert latency sample into storage", "error", err)
+				}
 			}
-			if err := h.storage.InsertLatency(model.ModelID, latency); err != nil {
-				h.logger.Warn("failed to insert latency sample into storage", "error", err)
-			}
-		}
 		}
 
 		// handleStreamError checks the error from a streaming attempt and

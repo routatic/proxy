@@ -77,17 +77,17 @@ func New(opts Options) *Server {
 		opts.Logger = slog.Default()
 	}
 	s := &Server{
-		hist:              opts.History,
-		met:               opts.Metrics,
-		atomicCfg:         opts.AtomicConfig,
-		proxyPort:         opts.ProxyPort,
-		startProxy:        opts.StartProxy,
-		stopProxy:         opts.StopProxy,
-		catalogDir:        opts.CatalogDir,
-		catalogSourceURL:  opts.CatalogSourceURL,
-		logger:            opts.Logger,
-		logBuffer:         NewLogBuffer(1000),
-		storage:           opts.Storage,
+		hist:             opts.History,
+		met:              opts.Metrics,
+		atomicCfg:        opts.AtomicConfig,
+		proxyPort:        opts.ProxyPort,
+		startProxy:       opts.StartProxy,
+		stopProxy:        opts.StopProxy,
+		catalogDir:       opts.CatalogDir,
+		catalogSourceURL: opts.CatalogSourceURL,
+		logger:           opts.Logger,
+		logBuffer:        NewLogBuffer(1000),
+		storage:          opts.Storage,
 	}
 	// Check initial autostart state.
 	s.cfg.Autostart = isAutostartEnabled()
@@ -531,16 +531,16 @@ func (s *Server) handleCatalogStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"available":           true,
-		"last_sync":           lastSync,
-		"total_providers":     len(idx.Providers),
-		"providers_enabled":   providersByEnabled["enabled"],
-		"providers_disabled":  providersByEnabled["disabled"],
-		"total_models":        totalModels,
-		"models_with_tools":   modelsWithTools,
-		"models_with_vision":  modelsWithVision,
+		"available":             true,
+		"last_sync":             lastSync,
+		"total_providers":       len(idx.Providers),
+		"providers_enabled":     providersByEnabled["enabled"],
+		"providers_disabled":    providersByEnabled["disabled"],
+		"total_models":          totalModels,
+		"models_with_tools":     modelsWithTools,
+		"models_with_vision":    modelsWithVision,
 		"models_with_reasoning": modelsWithReasoning,
-		"models_by_provider":  modelsByProvider,
+		"models_by_provider":    modelsByProvider,
 	}
 
 	writeJSON(w, resp)

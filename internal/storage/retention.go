@@ -63,7 +63,7 @@ func (r *Retention) runOnce() {
 	stats := struct {
 		requestsDeleted int64
 		latencyDeleted  int64
-		logsDeleted    int64
+		logsDeleted     int64
 	}{}
 
 	if requests, err := r.db.DB().ExecContext(ctx, `DELETE FROM requests WHERE created_at < ?`, before.Format(time.RFC3339Nano)); err == nil {
