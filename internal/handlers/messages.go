@@ -50,12 +50,6 @@ type MessagesHandler struct {
 	storage             StorageWriter   // optional: SQLite persistence for requests/latency
 }
 
-// StorageWriter defines the interface for persistent storage.
-type StorageWriter interface {
-	InsertRequest(rec history.RequestRecord) error
-	InsertLatency(model string, latency time.Duration) error
-}
-
 // responseWriter wraps http.ResponseWriter to track if headers were written.
 // It is safe for concurrent use: Write, WriteHeader, and Flush are serialized
 // via an internal mutex so that concurrent goroutines (e.g. heartbeat and
@@ -1125,18 +1119,24 @@ func (h *MessagesHandler) handleNonStreaming(
 		outputTokens = msgResp.Usage.OutputTokens
 	}
 
+	rec := history.RequestRecord{
+		ID:           requestID,
+		Model:        result.ModelID,
+		Provider:     provider,
+		Scenario:     string(scenario),
+		StartTime:    startTime,
+		Duration:     latency,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		Streaming:    false,
+		Success:      true,
+	}
 	if h.history != nil {
-		h.history.Add(history.RequestRecord{
-			Model:        result.ModelID,
-			Provider:     provider,
-			Scenario:     string(scenario),
-			StartTime:    startTime,
-			Duration:     latency,
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
-			Streaming:    false,
-			Success:      true,
-		})
+		h.history.Add(rec)
+	}
+	if h.storage != nil {
+		_ = h.storage.InsertRequest(rec)
+		_ = h.storage.InsertLatency(result.ModelID, latency)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

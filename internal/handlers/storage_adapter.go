@@ -7,6 +7,11 @@ import (
 	"github.com/routatic/proxy/internal/storage"
 )
 
+type StorageWriter interface {
+	InsertRequest(rec history.RequestRecord) error
+	InsertLatency(model string, latency time.Duration) error
+}
+
 type StorageAdapter struct {
 	requests *storage.Requests
 	latency  *storage.Latency
