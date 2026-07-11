@@ -75,8 +75,7 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 
 	anonymize := r.URL.Query().Get("anonymize") == "true"
 	if anonymize {
-		cfgCopy := cfg
-		cfg = *anonymizeConfig(&cfgCopy)
+		cfg = anonymizeConfig(cfg)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
