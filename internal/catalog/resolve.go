@@ -69,8 +69,9 @@ func (ic *IndexedCatalog) Resolve(sel Selector) (ResolvedModel, error) {
 }
 
 // ResolveShort resolves a legacy short model id to a fully materialized model/provider pair.
-// It first matches by model key, then by model Name. When multiple providers have models
-// with the same name, returns an ambiguity error listing all matching providers.
+// It first matches by model key, then by model Name, then by key suffix. All matches are
+// collected before checking provider availability, so an enabled provider on a lower-priority
+// match won't be shadowed by a disabled provider on a higher-priority match.
 func (ic *IndexedCatalog) ResolveShort(short string) (ResolvedModel, error) {
 	if model, ok := ic.Models[short]; ok {
 		return ic.resolveWithFirstEnabledProvider(model, short)
@@ -82,16 +83,12 @@ func (ic *IndexedCatalog) ResolveShort(short string) (ResolvedModel, error) {
 			matches = append(matches, key)
 		}
 	}
-	if len(matches) > 0 {
-		return ic.resolveFromMatches(short, matches)
-	}
-
-	matches = nil
 	for key := range ic.Models {
 		if modelNameFromKey(key) == short {
 			matches = append(matches, key)
 		}
 	}
+
 	if len(matches) > 0 {
 		return ic.resolveFromMatches(short, matches)
 	}
