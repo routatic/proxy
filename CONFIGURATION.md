@@ -8,6 +8,19 @@ Override with `ROUTATIC_PROXY_CONFIG` environment variable.
 
 For migration, `~/.config/oc-go-cc/config.json` is loaded when the new config file does not exist, and every `OC_GO_CC_*` environment variable is still accepted as a fallback for its `ROUTATIC_PROXY_*` replacement.
 
+### Provider-Specific Initialization
+
+Generate a config pre-configured for your provider with `routatic-proxy init --provider`:
+
+| Provider | Command | Models |
+|----------|---------|--------|
+| OpenCode Go | `routatic-proxy init --provider=opencode-go` | DeepSeek V4, GLM-5.2, Kimi K2.7, Qwen3.7 |
+| OpenCode Zen | `routatic-proxy init --provider=opencode-zen` | Claude Fable/Opus/Sonnet, Gemini, GPT |
+| AWS Bedrock | `routatic-proxy init --provider=aws-bedrock` | Claude on Bedrock, Amazon Nova |
+| OpenRouter | `routatic-proxy init --provider=openrouter` | 100+ models from all major providers |
+
+Each preset configures provider-specific base URLs, model selections for every scenario (default, background, think, complex, long_context, fast), fallback chains, and the correct API key environment variable placeholder. Run `routatic-proxy init --provider=openrouter` to get a ready-to-use OpenRouter config — just set your API key and start the proxy.
+
 ## Full Config Reference
 
 ```json
@@ -217,7 +230,11 @@ Environment variables override config file values. Config values also support `$
 
 | Variable                | Description                                 | Default                                          |
 | ----------------------- | ------------------------------------------- | ------------------------------------------------ |
-| `ROUTATIC_PROXY_API_KEY`      | OpenCode Go API key (**required**)          | —                                                |
+| `ROUTATIC_PROXY_API_KEY`      | Global API key (fallback)                   | —                                                |
+| `ROUTATIC_PROXY_OPENCODE_GO_API_KEY` | OpenCode Go API key                | —                                                |
+| `ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY` | OpenCode Zen API key                | —                                                |
+| `ROUTATIC_PROXY_AWS_BEDROCK_API_KEY` | AWS Bedrock API key                | —                                                |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEY` | OpenRouter API key                  | —                                                |
 | `ROUTATIC_PROXY_CONFIG`       | Custom config file path                     | `~/.config/routatic-proxy/config.json`                 |
 | `ROUTATIC_PROXY_HOST`         | Proxy listen host                           | `127.0.0.1`                                      |
 | `ROUTATIC_PROXY_PORT`         | Proxy listen port                           | `3456`                                           |
