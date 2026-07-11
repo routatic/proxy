@@ -28,7 +28,7 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 
 	if s.storage != nil {
 		latency := storage.NewLatency(s.storage)
-		
+
 		modelStats, err := latency.GetStats(since)
 		if err == nil {
 			for _, stat := range modelStats {
@@ -62,6 +62,31 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 			if perf, exists := result[model]; exists {
 				perf.Failed = count
 				result[model] = perf
+			}
+		}
+	} else if s.met != nil {
+		snap := s.met.GetSnapshot()
+		modelStats := s.met.GetModelLatencyStats()
+
+		for _, stat := range modelStats {
+			result[stat.Model] = modelPerf{
+				Model: stat.Model,
+				Count: stat.Count,
+				AvgMs: stat.Avg.Milliseconds(),
+				P50Ms: stat.P50.Milliseconds(),
+				P90Ms: stat.P90.Milliseconds(),
+				P99Ms: stat.P99.Milliseconds(),
+				MinMs: stat.Min.Milliseconds(),
+				MaxMs: stat.Max.Milliseconds(),
+			}
+		}
+
+		for model, count := range snap.ModelCounts {
+			if _, exists := result[model]; !exists {
+				result[model] = modelPerf{
+					Model: model,
+					Count: count,
+				}
 			}
 		}
 	}

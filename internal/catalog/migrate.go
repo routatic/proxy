@@ -98,7 +98,7 @@ func ExportJSON(ctx context.Context, db *storage.Database, jsonPath string) erro
 			Reasoning: m.Reasoning,
 			ToolCall:  m.ToolCall,
 		}
-		
+
 		if m.Vision {
 			model.Modalities.Input = []string{"text", "image"}
 		} else {
@@ -125,7 +125,7 @@ func ExportJSON(ctx context.Context, db *storage.Database, jsonPath string) erro
 // LoadFromSQLite loads the catalog from SQLite and returns an IndexedCatalog.
 func LoadFromSQLite(ctx context.Context, db *storage.Database) (*IndexedCatalog, error) {
 	repo := storage.NewCatalogRepo(db)
-	
+
 	storageIdx, err := repo.Load(ctx)
 	if err != nil {
 		return nil, err

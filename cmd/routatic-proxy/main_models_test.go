@@ -57,22 +57,22 @@ func writeTestCatalog(t *testing.T, dir, content string) {
 
 func migrateTestCatalogToSQLite(t *testing.T, dir string) {
 	t.Helper()
-	
+
 	jsonPath := filepath.Join(dir, "catalog", "catalog.json")
 	dbPath := filepath.Join(dir, "data.db")
-	
+
 	storageCfg := storage.DefaultConfig
 	storageCfg.DatabasePath = dbPath
-	
+
 	db, err := storage.Open(storageCfg)
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}
 	defer db.Close()
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	if _, err := catalog.MigrateFromJSON(ctx, db, jsonPath); err != nil {
 		t.Fatalf("migrate catalog: %v", err)
 	}
