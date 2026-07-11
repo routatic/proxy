@@ -531,11 +531,11 @@ func TestResolveRequestedModel(t *testing.T) {
 		},
 		{
 			name:           "short id resolves through catalog",
-			requestedModel: "kimi-k2.6",
+			requestedModel: "deepseek-v4-flash",
 			catalogPath:    catalogPath,
 			wantProvider:   "opencode-go",
-			wantModelID:    "kimi-k2.6",
-			wantModelRef:   "kimi-k2.6",
+			wantModelID:    "deepseek-v4-flash",
+			wantModelRef:   "deepseek-v4-flash",
 		},
 		{
 			name:           "config model takes precedence over catalog",
@@ -628,10 +628,10 @@ func TestRoute_CanonicalAndShortRefs(t *testing.T) {
 		},
 		{
 			name:         "short id resolves to first enabled provider",
-			requested:    "kimi-k2.6",
+			requested:    "deepseek-v4-flash",
 			wantProvider: "opencode-go",
-			wantModelID:  "kimi-k2.6",
-			wantModelRef: "kimi-k2.6",
+			wantModelID:  "deepseek-v4-flash",
+			wantModelRef: "deepseek-v4-flash",
 		},
 		{
 			name:         "short id with explicit provider",
