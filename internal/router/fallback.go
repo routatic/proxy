@@ -246,6 +246,23 @@ func (h *FallbackHandler) ExecuteWithFallback(
 			continue
 		}
 
+		// Auth errors (401/403) indicate invalid credentials.
+		// Since all models from the same provider share the same API key,
+		// fallback attempts will fail identically. Short-circuit immediately.
+		if IsAuthError(err) {
+			h.logger.Warn("authentication error, short-circuiting fallback chain",
+				"provider", provider,
+				"model", model.ModelID,
+				"error", err,
+			)
+			return &FallbackResult{
+				ModelID:     model.ModelID,
+				Success:     false,
+				Attempted:   i + 1,
+				TotalModels: totalModels,
+			}, nil, err
+		}
+
 		if IsRetryableError(err) {
 			cb.RecordFailure()
 			h.logger.Warn("model failed, trying fallback",
@@ -343,6 +360,22 @@ func IsUsageLimitError(err error) bool {
 	// The error body contains: {"type":"error","error":{"type":"GoUsageLimitError",...}}
 	errStr := err.Error()
 	return strings.Contains(errStr, "GoUsageLimitError")
+}
+
+// IsAuthError returns true if the error is an authentication error (401 or 403).
+// Auth errors are non-retryable and indicate invalid or expired credentials.
+// Since all models from the same provider share the same API key, fallback
+// attempts will fail identically, so we short-circuit the fallback chain.
+func IsAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == 401 || apiErr.StatusCode == 403
+	}
+	return false
 }
 
 // GetCircuitStates returns the state of all circuit breakers.
