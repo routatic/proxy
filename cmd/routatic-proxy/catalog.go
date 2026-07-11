@@ -56,11 +56,11 @@ By default exports to the catalog directory as catalog-export.json.`,
 				outputPath = filepath.Join(catalogDir, "catalog-export.json")
 			}
 
-		db, err := storage.Open(storage.DefaultConfig)
-		if err != nil {
-			return fmt.Errorf("open database: %w", err)
-		}
-		defer func() { _ = db.Close() }()
+			db, err := storage.Open(storage.DefaultConfig)
+			if err != nil {
+				return fmt.Errorf("open database: %w", err)
+			}
+			defer func() { _ = db.Close() }()
 
 			ctx := cmd.Context()
 			if err := catalog.ExportJSON(ctx, db, outputPath); err != nil {
