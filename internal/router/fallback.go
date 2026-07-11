@@ -206,6 +206,8 @@ func (h *FallbackHandler) ExecuteWithFallback(
 	totalModels := len(models)
 	blockedProviders := make(map[string]bool)
 	var usageLimitErr error
+	var authErr error
+	authAttempted := 0
 
 	for i, model := range models {
 		if err := ctx.Err(); err != nil {
@@ -288,7 +290,8 @@ func (h *FallbackHandler) ExecuteWithFallback(
 					"error", err,
 				)
 				blockedProviders[provider] = true
-				usageLimitErr = err
+				authErr = err
+				authAttempted = i + 1
 				continue
 			}
 			h.logger.Warn("authentication error, but provider has multiple keys, trying next",
@@ -314,6 +317,15 @@ func (h *FallbackHandler) ExecuteWithFallback(
 				"remaining", totalModels-i-1,
 			)
 		}
+	}
+
+	if authErr != nil {
+		return &FallbackResult{
+			ModelID:     models[0].ModelID,
+			Success:     false,
+			Attempted:   authAttempted,
+			TotalModels: totalModels,
+		}, nil, authErr
 	}
 
 	if usageLimitErr != nil {
