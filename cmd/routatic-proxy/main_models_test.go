@@ -37,6 +37,12 @@ func writeTestConfig(t *testing.T, dir, content string) string {
 	return path
 }
 
+func writeTestConfigWithDB(t *testing.T, dir, dbPath string) string {
+	t.Helper()
+	config := `{"api_key": "test-global-key", "storage": {"database_path": "` + dbPath + `"}}`
+	return writeTestConfig(t, dir, config)
+}
+
 func writeTestCatalog(t *testing.T, dir, content string) {
 	t.Helper()
 	catalogDir := filepath.Join(dir, "catalog")
@@ -83,9 +89,10 @@ func newCaptureCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 
 func TestRunModelsList_ProviderFilter(t *testing.T) {
 	tmp := t.TempDir()
-	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
+	dbPath := filepath.Join(tmp, "data.db")
 	writeTestCatalog(t, tmp, catalogFixture)
 	migrateTestCatalogToSQLite(t, tmp)
+	configPath := writeTestConfigWithDB(t, tmp, dbPath)
 
 	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
