@@ -589,7 +589,7 @@ func selectProviders(provider string, cfg *config.Config) []string {
 }
 
 // getConfigDir returns the default configuration directory path.
-var getConfigDir = func() string {
+func getConfigDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "routatic-proxy")
 }
