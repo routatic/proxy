@@ -30,15 +30,22 @@ type Limit struct {
 	Output  int64 `json:"output"`
 }
 
+// Rates describes model pricing per million tokens.
+type Rates struct {
+	Input  float64 `json:"input"`
+	Output float64 `json:"output"`
+}
+
 // Model describes a model available through one or more providers.
 // The provider is encoded in the model key (e.g. "xai/grok-4.5").
 type Model struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Reasoning   bool       `json:"reasoning"`
-	ToolCall    bool       `json:"tool_call"`
-	Modalities  Modalities `json:"modalities"`
-	Limit       *Limit     `json:"limit,omitempty"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Reasoning  bool       `json:"reasoning"`
+	ToolCall   bool       `json:"tool_call"`
+	Modalities Modalities `json:"modalities"`
+	Limit      *Limit     `json:"limit,omitempty"`
+	Rates      *Rates     `json:"rates,omitempty"`
 }
 
 // DisplayName returns the model's display name.
@@ -65,6 +72,22 @@ func (m Model) SupportsVision() bool {
 func (m Model) ContextWindow() int64 {
 	if m.Limit != nil {
 		return m.Limit.Context
+	}
+	return 0
+}
+
+// CostInputPerM returns the input cost per million tokens, or 0 if unknown.
+func (m Model) CostInputPerM() float64 {
+	if m.Rates != nil {
+		return m.Rates.Input
+	}
+	return 0
+}
+
+// CostOutputPerM returns the output cost per million tokens, or 0 if unknown.
+func (m Model) CostOutputPerM() float64 {
+	if m.Rates != nil {
+		return m.Rates.Output
 	}
 	return 0
 }

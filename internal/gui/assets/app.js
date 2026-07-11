@@ -242,6 +242,17 @@ const TRANSLATIONS = {
     'modal.importConfirm': '应用此配置？',
     'btn.apply': '应用',
     'btn.cancel': '取消',
+    'tab.logs': '日志',
+    'tab.performance': '性能',
+    'logs.allLevels': '全部级别',
+    'logs.autoScroll': '自动滚动',
+    'logs.pause': '暂停',
+    'logs.resume': '继续',
+    'logs.clear': '清空',
+    'logs.connecting': '连接中...',
+    'logs.connected': '已连接',
+    'logs.disconnected': '已断开',
+    'logs.reconnecting': '重连中...',
   }
 };
 
@@ -1039,6 +1050,9 @@ function executeCommand(action) {
     case 'goto-history':
       document.querySelector('[data-tab="history"]').click();
       break;
+    case 'goto-logs':
+      document.querySelector('[data-tab="logs"]').click();
+      break;
     case 'goto-performance':
       document.querySelector('[data-tab="performance"]').click();
       break;
@@ -1049,6 +1063,7 @@ function executeCommand(action) {
       debouncedRefresh();
       break;
   }
+}
 }
 
 commandPalette?.addEventListener('click', function(e) {
@@ -1079,10 +1094,10 @@ document.addEventListener('keydown', function(e) {
       document.getElementById('history-search')?.focus();
     }
   }
-  // Tab shortcuts: Cmd/Ctrl + 1/2/3/4
-  if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) {
+  // Tab shortcuts: Cmd/Ctrl + 1/2/3/4/5/6
+  if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4', '5', '6'].includes(e.key)) {
     e.preventDefault();
-    const tabs = ['overview', 'history', 'performance', 'settings'];
+    const tabs = ['overview', 'history', 'performance', 'fallback', 'logs', 'settings'];
     document.querySelector(`[data-tab="${tabs[parseInt(e.key) - 1]}"]`)?.click();
   }
   // Escape to close modals (use if-else to ensure only one action)
@@ -1499,6 +1514,190 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ── Boot ──────────────────────────────────────────────────────── */
 loadProxyConfig();
 startPolling();
+
+/* ── Logs Module ────────────────────────────────────────────────── */
+const LogsModule = {
+  eventSource: null,
+  paused: false,
+  logs: [],
+  maxLogs: 1000,
+  levelFilter: '',
+  searchQuery: '',
+  reconnectAttempts: 0,
+  maxReconnectAttempts: 10,
+  reconnectDelay: 1000,
+
+  init() {
+    const levelFilter = document.getElementById('log-level-filter');
+    const searchInput = document.getElementById('log-search');
+    const pauseBtn = document.getElementById('log-pause-btn');
+    const clearBtn = document.getElementById('log-clear-btn');
+    const autoScrollCheck = document.getElementById('log-auto-scroll');
+
+    if (levelFilter) {
+      levelFilter.addEventListener('change', (e) => {
+        this.levelFilter = e.target.value;
+        this.render();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        this.searchQuery = e.target.value.toLowerCase().trim();
+        this.render();
+      });
+    }
+
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => {
+        this.paused = !this.paused;
+        pauseBtn.textContent = t(this.paused ? 'logs.resume' : 'logs.pause');
+        if (this.paused) {
+          this.disconnect();
+        } else {
+          this.connect();
+        }
+      });
+    }
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        this.clear();
+      });
+    }
+
+    this.connect();
+  },
+
+  connect() {
+    if (this.eventSource) {
+      this.eventSource.close();
+    }
+
+    try {
+      this.eventSource = new EventSource('/api/logs/stream');
+
+      this.eventSource.onopen = () => {
+        this.reconnectAttempts = 0;
+      };
+
+      this.eventSource.addEventListener('connected', (e) => {
+        console.log('Logs stream connected');
+      });
+
+      this.eventSource.addEventListener('log', (e) => {
+        try {
+          const log = JSON.parse(e.data);
+          this.addLog(log);
+        } catch (err) {
+          console.error('Failed to parse log:', err);
+        }
+      });
+
+      this.eventSource.onerror = (e) => {
+        console.error('Log stream error:', e);
+        this.eventSource.close();
+        this.reconnect();
+      };
+    } catch (e) {
+      console.error('Failed to connect to log stream:', e);
+      this.reconnect();
+    }
+  },
+
+  disconnect() {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+  },
+
+  reconnect() {
+    if (this.paused) return;
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnect attempts reached for log stream');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000);
+    console.log(`Reconnecting log stream in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    setTimeout(() => {
+      if (!this.paused) {
+        this.connect();
+      }
+    }, delay);
+  },
+
+  addLog(log) {
+    if (!log || !log.message) return;
+    this.logs.push({
+      time: log.time || new Date().toISOString(),
+      level: log.level || 'info',
+      message: log.message
+    });
+
+    if (this.logs.length > this.maxLogs) {
+      this.logs = this.logs.slice(-this.maxLogs);
+    }
+
+    this.render();
+  },
+
+  clear() {
+    this.logs = [];
+    this.render();
+  },
+
+  render() {
+    const container = document.getElementById('log-container');
+    if (!container) return;
+
+    let filtered = this.logs;
+
+    if (this.levelFilter) {
+      filtered = filtered.filter(log => log.level === this.levelFilter);
+    }
+
+    if (this.searchQuery) {
+      filtered = filtered.filter(log =>
+        log.message.toLowerCase().includes(this.searchQuery)
+      );
+    }
+
+    if (filtered.length === 0) {
+      container.innerHTML = `<div class="empty-state">${t('empty.noData')}</div>`;
+      return;
+    }
+
+    container.innerHTML = filtered.map(log => `
+      <div class="log-entry ${escapeHtml(log.level)}">
+        <span class="log-time">${fmtLogTime(log.time)}</span>
+        <span class="log-level">${escapeHtml(log.level)}</span>
+        <span class="log-message">${escapeHtml(log.message)}</span>
+      </div>
+    `).join('');
+
+    const autoScroll = document.getElementById('log-auto-scroll');
+    if (autoScroll && autoScroll.checked) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }
+};
+
+function fmtLogTime(iso) {
+  if (!iso) return '--:--:--';
+  const d = new Date(iso);
+  const hh = d.getHours().toString().padStart(2, '0');
+  const mm = d.getMinutes().toString().padStart(2, '0');
+  const ss = d.getSeconds().toString().padStart(2, '0');
+  return hh + ':' + mm + ':' + ss;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  LogsModule.init();
+});
+
 
 /* ── Quick Model Test Module ───────────────────────────────────── */
 const TestModule = {
