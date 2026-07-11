@@ -1503,6 +1503,7 @@ func TestHandleNonStreaming_ParentContextCanceled_No502(t *testing.T) {
 		m,
 		nil, // captureLogger
 		nil, // hist
+		nil, // storage
 	)
 	handler.logger = slog.Default()
 
@@ -1585,6 +1586,7 @@ func TestHandleNonStreaming_ParentDeadlineExceeded_No502(t *testing.T) {
 		m,
 		nil, // captureLogger
 		nil, // hist
+		nil, // storage
 	)
 	handler.logger = slog.Default()
 
