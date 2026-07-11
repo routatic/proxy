@@ -260,9 +260,20 @@ func statusCmd() *cobra.Command {
 
 // initCmd returns the command to create a default configuration file.
 func initCmd() *cobra.Command {
-	return &cobra.Command{
+	var provider string
+
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create default configuration file",
+		Long: `Create a default configuration file optimized for a specific provider.
+
+The --provider flag pre-configures the config with provider-specific defaults:
+  - opencode-go: OpenCode Go subscription ($5/month, powerful coding models)
+  - opencode-zen: OpenCode Zen (pay-as-you-go, Claude/GPT/Gemini)
+  - aws-bedrock: AWS Bedrock Mantle (run models on your AWS infrastructure)
+  - openrouter: OpenRouter (unified API for 100+ models)
+
+Without --provider, a default config optimized for OpenCode Go is created.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configDir := getConfigDir()
 			configPath := filepath.Join(configDir, "config.json")
@@ -278,15 +289,42 @@ func initCmd() *cobra.Command {
 				return fmt.Errorf("failed to create config directory: %w", err)
 			}
 
-			if err := os.WriteFile(configPath, []byte(getDefaultConfig()), 0600); err != nil {
+			// Get the appropriate config template
+			var configContent string
+			var err error
+			if provider != "" {
+				configContent, err = getProviderConfig(provider)
+				if err != nil {
+					return err
+				}
+			} else {
+				configContent = getDefaultConfig()
+			}
+
+			if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 				return fmt.Errorf("failed to write config file: %w", err)
 			}
 
-			fmt.Printf("Created default config at %s\n", configPath)
-			fmt.Println("Edit the file and add your OpenCode Go API key.")
+			// Print helpful message based on provider
+			fmt.Printf("Created config at %s\n", configPath)
+			if provider != "" {
+				preset, ok := providerPresets[provider]
+				if ok {
+					fmt.Printf("\nProvider: %s\n", preset.Name)
+					fmt.Printf("Set your API key: export %s=your-api-key-here\n", preset.EnvVarName)
+				}
+			} else {
+				fmt.Println("\nEdit the file and add your OpenCode Go API key.")
+				fmt.Println("Or use --provider to generate a provider-specific config.")
+			}
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&provider, "provider", "",
+		"Provider preset: opencode-go, opencode-zen, aws-bedrock, openrouter")
+
+	return cmd
 }
 
 // validateCmd returns the command to validate the configuration file.
@@ -551,7 +589,7 @@ func selectProviders(provider string, cfg *config.Config) []string {
 }
 
 // getConfigDir returns the default configuration directory path.
-func getConfigDir() string {
+var getConfigDir = func() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "routatic-proxy")
 }
