@@ -42,13 +42,9 @@ clean:
 	rm -rf bin/ dist/
 
 install: build
-	cp bin/$(BINARY) $(GOPATH)/bin/$(BINARY) 2>/dev/null || \
-		cp bin/$(BINARY) $(HOME)/go/bin/$(BINARY) 2>/dev/null || \
-		go install -ldflags "$(LDFLAGS)" $(CMD)
-	@INSTALL_DIR="$$(go env GOPATH 2>/dev/null)/bin"; \
-		if [ -x "$$INSTALL_DIR/$(BINARY)" ]; then \
-			ln -sf "$(BINARY)" "$$INSTALL_DIR/$(LEGACY_BINARY)"; \
-		fi
+	@mkdir -p $(GOBIN)
+	cp bin/$(BINARY) $(GOBIN)/$(BINARY)
+	ln -sf $(BINARY) $(GOBIN)/$(LEGACY_BINARY)
 
 # ── Docker ─────────────────────────────────────────────────────────
 
