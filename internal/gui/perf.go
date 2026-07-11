@@ -5,18 +5,37 @@ import (
 	"time"
 
 	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/storage"
 )
 
 func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
+	rangeParam := r.URL.Query().Get("range")
+	since := storage.ParseTimeRange(rangeParam)
+
 	var modelStats []metrics.ModelLatencyStats
-	if s.met != nil {
+	var successCounts, failureCounts map[string]int64
+
+	if s.storage != nil {
+		latency := storage.NewLatency(s.storage)
+		var err error
+		modelStats, err = latency.GetStats(since)
+		if err != nil {
+			modelStats = nil
+		}
+
+		successCounts, failureCounts, _ = latency.GetSuccessCounts(since)
+	} else if s.met != nil {
 		modelStats = s.met.GetModelLatencyStats()
 	}
 
-	successCounts := make(map[string]int64)
-	failureCounts := make(map[string]int64)
+	if successCounts == nil {
+		successCounts = make(map[string]int64)
+	}
+	if failureCounts == nil {
+		failureCounts = make(map[string]int64)
+	}
 
-	if s.hist != nil {
+	if s.hist != nil && since.IsZero() {
 		records := s.hist.Last(0)
 		for _, rec := range records {
 			if rec.Success {
@@ -77,11 +96,8 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePerformanceAggregate(w http.ResponseWriter, r *http.Request) {
-	// TODO: rangeParam is ignored because metrics.Snapshot stores aggregated
-	// latency samples without timestamps. To honor time ranges, we'd need to
-	// store (latency, timestamp) pairs or store samples in a rolling window
-	// per time bucket. For now, we return the aggregate over all available samples.
-	_ = r.URL.Query().Get("range")
+	rangeParam := r.URL.Query().Get("range")
+	since := storage.ParseTimeRange(rangeParam)
 
 	type aggregate struct {
 		TotalRequests int64 `json:"total_requests"`
@@ -92,7 +108,30 @@ func (s *Server) handlePerformanceAggregate(w http.ResponseWriter, r *http.Reque
 
 	agg := aggregate{}
 
-	if s.met != nil {
+	if s.storage != nil && !since.IsZero() {
+		latency := storage.NewLatency(s.storage)
+		latencyStats, err := latency.GetStats(since)
+		if err == nil && len(latencyStats) > 0 {
+			var totalCount int64
+			var totalLatency time.Duration
+			for _, stat := range latencyStats {
+				totalCount += stat.Count
+				totalLatency += stat.Avg * time.Duration(stat.Count)
+			}
+			if totalCount > 0 {
+				agg.AvgLatencyMs = (totalLatency / time.Duration(totalCount)).Milliseconds()
+			}
+		}
+
+		successCounts, failureCounts, _ := latency.GetSuccessCounts(since)
+		for _, s := range successCounts {
+			agg.TotalSuccess += s
+		}
+		for _, f := range failureCounts {
+			agg.TotalFailed += f
+		}
+		agg.TotalRequests = agg.TotalSuccess + agg.TotalFailed
+	} else if s.met != nil {
 		snap := s.met.GetSnapshot()
 		agg.TotalRequests = snap.RequestsReceived
 		agg.TotalSuccess = snap.RequestsSuccess

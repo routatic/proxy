@@ -24,6 +24,7 @@ import (
 	"github.com/routatic/proxy/internal/daemon"
 	"github.com/routatic/proxy/internal/history"
 	"github.com/routatic/proxy/internal/metrics"
+	"github.com/routatic/proxy/internal/storage"
 )
 
 //go:embed assets/*
