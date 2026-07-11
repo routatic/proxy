@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -193,9 +194,18 @@ func calculateModelStats(model string, samples []time.Duration) ModelLatencyStat
 	count := len(sorted)
 	avg := sum / time.Duration(count)
 
-	p50Idx := int(float64(count) * 0.50)
-	p90Idx := int(float64(count) * 0.90)
-	p99Idx := int(float64(count) * 0.99)
+	p50Idx := int(math.Ceil(float64(count)*0.50)) - 1
+	p90Idx := int(math.Ceil(float64(count)*0.90)) - 1
+	p99Idx := int(math.Ceil(float64(count)*0.99)) - 1
+	if p50Idx < 0 {
+		p50Idx = 0
+	}
+	if p90Idx < 0 {
+		p90Idx = 0
+	}
+	if p99Idx < 0 {
+		p99Idx = 0
+	}
 	if p50Idx >= count {
 		p50Idx = count - 1
 	}
