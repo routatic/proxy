@@ -832,21 +832,19 @@ func TestExecuteWithFallback_AuthErrorMultiKeyContinues(t *testing.T) {
 		},
 	)
 
-	// Provider blocked after first auth error, remaining models skipped
-	if callCount != 1 {
-		t.Errorf("executor called %d times, want 1 (provider blocked after auth error)", callCount)
+	// With multiple keys, provider is not blocked — all 3 models are tried
+	// (each might use a different key via round-robin)
+	if callCount != 3 {
+		t.Errorf("executor called %d times, want 3 (multi-key provider should try all models)", callCount)
 	}
 
 	if err == nil {
 		t.Fatal("expected error after all models failed")
 	}
 
-	// The error should be the auth error — same as single-key, because blocking the
-	// provider after one 401 makes sense even with multiple keys: the current request
-	// already failed, and the consumer should retry with a fresh request (which will
-	// round-robin to the next key).
-	if !IsAuthError(err) {
-		t.Errorf("expected auth error, got: %v", err)
+	// All models failed but are not retryable, so the error is generic
+	if IsAuthError(err) {
+		t.Error("expected generic error (all models failed), not auth error")
 	}
 }
 
