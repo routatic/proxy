@@ -428,6 +428,7 @@ func TestHandleStreaming_UsageLimitSkipsRemainingProviderModels(t *testing.T) {
 		},
 		nil,
 		router.ScenarioDefault,
+		"",
 	)
 	if goCalls != 1 || zenCalls != 1 {
 		t.Fatalf("goCalls=%d zenCalls=%d; want 1 each", goCalls, zenCalls)

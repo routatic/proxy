@@ -118,10 +118,10 @@ func TestRunModelsList_ProviderFilter(t *testing.T) {
 
 func TestRunModelsList_EnabledProviders(t *testing.T) {
 	tmp := t.TempDir()
-	// A global API key enables every provider, so all catalog providers appear.
-	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
+	dbPath := filepath.Join(tmp, "data.db")
 	writeTestCatalog(t, tmp, catalogFixture)
 	migrateTestCatalogToSQLite(t, tmp)
+	configPath := writeTestConfigWithDB(t, tmp, dbPath)
 
 	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
@@ -140,9 +140,10 @@ func TestRunModelsList_EnabledProviders(t *testing.T) {
 
 func TestRunModelsList_UnknownProvider(t *testing.T) {
 	tmp := t.TempDir()
-	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
+	dbPath := filepath.Join(tmp, "data.db")
 	writeTestCatalog(t, tmp, catalogFixture)
 	migrateTestCatalogToSQLite(t, tmp)
+	configPath := writeTestConfigWithDB(t, tmp, dbPath)
 
 	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
