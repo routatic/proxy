@@ -588,11 +588,6 @@ func selectProviders(provider string, cfg *config.Config) []string {
 	return enabled
 }
 
-// getConfigDir returns the default configuration directory path.
-func getConfigDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "routatic-proxy")
-}
 
 // autostartCmd returns the command to manage autostart on login.
 func autostartCmd() *cobra.Command {
