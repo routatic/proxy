@@ -4,47 +4,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/storage"
 )
 
 func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 	rangeParam := r.URL.Query().Get("range")
 	since := storage.ParseTimeRange(rangeParam)
-
-	var modelStats []metrics.ModelLatencyStats
-	var successCounts, failureCounts map[string]int64
-
-	if s.storage != nil {
-		latency := storage.NewLatency(s.storage)
-		var err error
-		modelStats, err = latency.GetStats(since)
-		if err != nil {
-			modelStats = nil
-		}
-
-		successCounts, failureCounts, _ = latency.GetSuccessCounts(since)
-	} else if s.met != nil {
-		modelStats = s.met.GetModelLatencyStats()
-	}
-
-	if successCounts == nil {
-		successCounts = make(map[string]int64)
-	}
-	if failureCounts == nil {
-		failureCounts = make(map[string]int64)
-	}
-
-	if s.hist != nil && since.IsZero() {
-		records := s.hist.Last(0)
-		for _, rec := range records {
-			if rec.Success {
-				successCounts[rec.Model]++
-			} else {
-				failureCounts[rec.Model]++
-			}
-		}
-	}
 
 	type modelPerf struct {
 		Model   string `json:"model"`
@@ -61,28 +26,42 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 
 	result := make(map[string]modelPerf)
 
-	for _, stat := range modelStats {
-		perf := modelPerf{
-			Model:   stat.Model,
-			Count:   stat.Count,
-			AvgMs:   stat.Avg.Milliseconds(),
-			P50Ms:   stat.P50.Milliseconds(),
-			P90Ms:   stat.P90.Milliseconds(),
-			P99Ms:   stat.P99.Milliseconds(),
-			MinMs:   stat.Min.Milliseconds(),
-			MaxMs:   stat.Max.Milliseconds(),
-			Success: successCounts[stat.Model],
-			Failed:  failureCounts[stat.Model],
+	if s.storage != nil {
+		latency := storage.NewLatency(s.storage)
+		
+		modelStats, err := latency.GetStats(since)
+		if err == nil {
+			for _, stat := range modelStats {
+				result[stat.Model] = modelPerf{
+					Model: stat.Model,
+					Count: stat.Count,
+					AvgMs: stat.Avg.Milliseconds(),
+					P50Ms: stat.P50.Milliseconds(),
+					P90Ms: stat.P90.Milliseconds(),
+					P99Ms: stat.P99.Milliseconds(),
+					MinMs: stat.Min.Milliseconds(),
+					MaxMs: stat.Max.Milliseconds(),
+				}
+			}
 		}
-		result[stat.Model] = perf
-	}
 
-	for model, success := range successCounts {
-		if _, exists := result[model]; !exists {
-			result[model] = modelPerf{
-				Model:   model,
-				Success: success,
-				Failed:  failureCounts[model],
+		successCounts, failureCounts, _ := latency.GetSuccessCounts(since)
+		for model, count := range successCounts {
+			if perf, exists := result[model]; exists {
+				perf.Success = count
+				result[model] = perf
+			} else {
+				result[model] = modelPerf{
+					Model:   model,
+					Success: count,
+					Failed:  failureCounts[model],
+				}
+			}
+		}
+		for model, count := range failureCounts {
+			if perf, exists := result[model]; exists {
+				perf.Failed = count
+				result[model] = perf
 			}
 		}
 	}

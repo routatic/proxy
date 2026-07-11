@@ -54,6 +54,7 @@ type Server struct {
 	logger            *slog.Logger
 	catalogMu         sync.Mutex
 	logBuffer         *LogBuffer
+	storage           *storage.Database
 }
 
 // Options configures the GUI server.
@@ -67,6 +68,7 @@ type Options struct {
 	CatalogDir       string
 	CatalogSourceURL string
 	Logger           *slog.Logger
+	Storage          *storage.Database
 }
 
 // New creates a new GUI server.
@@ -75,16 +77,17 @@ func New(opts Options) *Server {
 		opts.Logger = slog.Default()
 	}
 	s := &Server{
-		hist:             opts.History,
-		met:              opts.Metrics,
-		atomicCfg:        opts.AtomicConfig,
-		proxyPort:        opts.ProxyPort,
-		startProxy:       opts.StartProxy,
-		stopProxy:        opts.StopProxy,
-		catalogDir:       opts.CatalogDir,
-		catalogSourceURL: opts.CatalogSourceURL,
-		logger:           opts.Logger,
-		logBuffer:        NewLogBuffer(1000),
+		hist:              opts.History,
+		met:               opts.Metrics,
+		atomicCfg:         opts.AtomicConfig,
+		proxyPort:         opts.ProxyPort,
+		startProxy:        opts.StartProxy,
+		stopProxy:         opts.StopProxy,
+		catalogDir:        opts.CatalogDir,
+		catalogSourceURL:  opts.CatalogSourceURL,
+		logger:            opts.Logger,
+		logBuffer:         NewLogBuffer(1000),
+		storage:           opts.Storage,
 	}
 	// Check initial autostart state.
 	s.cfg.Autostart = isAutostartEnabled()
