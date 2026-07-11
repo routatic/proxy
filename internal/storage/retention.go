@@ -66,7 +66,7 @@ func (r *Retention) runOnce() {
 		logsDeleted    int64
 	}{}
 
-	if requests, ok := r.db.DB().ExecContext(ctx, `DELETE FROM requests WHERE created_at < ?`, before.Format(time.RFC3339Nano)); ok == nil {
+	if requests, err := r.db.DB().ExecContext(ctx, `DELETE FROM requests WHERE created_at < ?`, before.Format(time.RFC3339Nano)); err == nil {
 		stats.requestsDeleted, _ = requests.RowsAffected()
 	}
 
