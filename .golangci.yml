@@ -1,0 +1,22 @@
+# Golangci-lint configuration
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    -_unused
+    - gosimple
+    - structcheck
+    - varcheck
+    - ineffassign
+    - deadcode
+
+linters-settings:
+  staticcheck:
+    checks:
+      - all
+      - -SA1019 # don't warn about deprecated symbols
