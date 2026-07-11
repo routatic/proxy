@@ -730,3 +730,189 @@ func TestExecuteWithFallback_403ForbiddenShortCircuits(t *testing.T) {
 		t.Errorf("expected auth error for 403, got: %v", err)
 	}
 }
+
+func TestProviderKeyCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *config.Config
+		provider string
+		want     int
+	}{
+		{
+			name:     "nil config defaults to single key",
+			config:   nil,
+			provider: "opencode-go",
+			want:     1,
+		},
+		{
+			name: "single key in provider config",
+			config: &config.Config{
+				OpenCodeGo: config.OpenCodeGoConfig{
+					APIKey: "key1",
+				},
+			},
+			provider: "opencode-go",
+			want:     1,
+		},
+		{
+			name: "multiple keys in provider config",
+			config: &config.Config{
+				OpenCodeGo: config.OpenCodeGoConfig{
+					APIKeys: []string{"key1", "key2", "key3"},
+				},
+			},
+			provider: "opencode-go",
+			want:     3,
+		},
+		{
+			name: "multiple keys in zen provider",
+			config: &config.Config{
+				OpenCodeZen: config.OpenCodeZenConfig{
+					APIKeys: []string{"key1", "key2"},
+				},
+			},
+			provider: "opencode-zen",
+			want:     2,
+		},
+		{
+			name: "fallback to global keys for unknown provider",
+			config: &config.Config{
+				APIKeys: []string{"global1", "global2"},
+			},
+			provider: "unknown-provider",
+			want:     2,
+		},
+		{
+			name: "empty keys defaults to single",
+			config: &config.Config{
+				OpenCodeGo: config.OpenCodeGoConfig{},
+			},
+			provider: "opencode-go",
+			want:     1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var atomicCfg *config.AtomicConfig
+			if tt.config != nil {
+				atomicCfg = config.NewAtomicConfig(tt.config, "")
+			}
+
+			got := client.ProviderKeyCount(atomicCfg, tt.provider)
+			if got != tt.want {
+				t.Errorf("ProviderKeyCount(%q) = %d, want %d", tt.provider, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorMultiKeyContinues(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	// Configure provider with multiple keys
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			APIKeys: []string{"key1", "key2", "key3"},
+		},
+	}
+	handler.SetAtomicConfig(config.NewAtomicConfig(cfg, ""))
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+		{Provider: "opencode-go", ModelID: "model-c"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+		},
+	)
+
+	// With multiple keys, should try all models
+	if callCount != 3 {
+		t.Errorf("executor called %d times, want 3 (multi-key provider should continue trying)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error after all models failed")
+	}
+
+	// Should return "all models failed" error, not short-circuit auth error
+	if IsAuthError(err) {
+		t.Error("expected generic error (all models failed), not auth error short-circuit")
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorSingleKeyShortCircuits(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	// Configure provider with single key (explicitly)
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			APIKey: "single-key",
+		},
+	}
+	handler.SetAtomicConfig(config.NewAtomicConfig(cfg, ""))
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+		},
+	)
+
+	// With single key, should short-circuit immediately
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (single-key provider should short-circuit)", callCount)
+	}
+
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error, got: %v", err)
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorNoConfigShortCircuits(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+	// No SetAtomicConfig called - should default to single-key behavior
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+		},
+	)
+
+	// Without config, should default to single-key behavior (short-circuit)
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (no config should default to single-key)", callCount)
+	}
+
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error, got: %v", err)
+	}
+}

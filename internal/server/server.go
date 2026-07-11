@@ -60,6 +60,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	openCodeClient := client.NewOpenCodeClient(atomic, captureLogger)
 	modelRouter := router.NewModelRouter(atomic)
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
+	fallbackHandler.SetAtomicConfig(atomic)
 
 	// Register providers.
 	providerRegistry := core.NewProviderRegistry()

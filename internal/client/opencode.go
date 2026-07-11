@@ -105,6 +105,34 @@ func (c *OpenCodeClient) getProviderAPIKeys(modelConfig config.ModelConfig) []st
 	return cfg.EffectiveAPIKeys()
 }
 
+// ProviderKeyCount returns the number of API keys configured for a provider.
+// This is used to determine whether auth errors should short-circuit the fallback
+// chain (single key) or continue trying other models (multiple keys).
+func ProviderKeyCount(atomicCfg *config.AtomicConfig, provider string) int {
+	if atomicCfg == nil {
+		return 1 // Default to single-key behavior
+	}
+	cfg := atomicCfg.Get()
+
+	var keys []string
+	switch provider {
+	case ProviderOpenCodeGo:
+		keys = cfg.OpenCodeGo.EffectiveAPIKeys()
+	case ProviderOpenCodeZen:
+		keys = cfg.OpenCodeZen.EffectiveAPIKeys()
+	case ProviderAWSBedrock:
+		keys = cfg.AWSBedrock.EffectiveAPIKeys()
+	default:
+		// Unknown provider - default to global keys
+		keys = cfg.EffectiveAPIKeys()
+	}
+
+	if len(keys) == 0 {
+		return 1 // Default to single-key behavior
+	}
+	return len(keys)
+}
+
 // NewOpenCodeClient creates a new OpenCode client.
 func NewOpenCodeClient(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) *OpenCodeClient {
 	transport := &http.Transport{

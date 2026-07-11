@@ -132,6 +132,7 @@ type FallbackHandler struct {
 	cbThreshold     int
 	cbTimeout       time.Duration
 	mu              sync.Mutex
+	atomicCfg       *config.AtomicConfig // Optional: for checking provider key counts
 }
 
 // NewFallbackHandler creates a new fallback handler with circuit breakers.
@@ -152,6 +153,14 @@ func NewFallbackHandler(logger *slog.Logger, cbThreshold int, cbTimeout time.Dur
 		cbThreshold:     cbThreshold,
 		cbTimeout:       cbTimeout,
 	}
+}
+
+// SetAtomicConfig sets the atomic config for the fallback handler.
+// This is used to check provider key counts for auth error handling.
+func (h *FallbackHandler) SetAtomicConfig(cfg *config.AtomicConfig) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.atomicCfg = cfg
 }
 
 // getCircuitBreaker returns or creates a circuit breaker for a model.
@@ -249,18 +258,30 @@ func (h *FallbackHandler) ExecuteWithFallback(
 		// Auth errors (401/403) indicate invalid credentials.
 		// Since all models from the same provider share the same API key,
 		// fallback attempts will fail identically. Short-circuit immediately.
+		// However, if the provider has multiple keys, the next model might use
+		// a different key, so we should continue trying.
 		if IsAuthError(err) {
-			h.logger.Warn("authentication error, short-circuiting fallback chain",
+			keyCount := client.ProviderKeyCount(h.atomicCfg, provider)
+			if keyCount <= 1 {
+				h.logger.Warn("authentication error, short-circuiting fallback chain",
+					"provider", provider,
+					"model", model.ModelID,
+					"error", err,
+				)
+				return &FallbackResult{
+					ModelID:     model.ModelID,
+					Success:     false,
+					Attempted:   i + 1,
+					TotalModels: totalModels,
+				}, nil, err
+			}
+			// Multiple keys - continue trying other models (they might use a different key)
+			h.logger.Warn("authentication error, but provider has multiple keys, continuing fallback",
 				"provider", provider,
 				"model", model.ModelID,
+				"key_count", keyCount,
 				"error", err,
 			)
-			return &FallbackResult{
-				ModelID:     model.ModelID,
-				Success:     false,
-				Attempted:   i + 1,
-				TotalModels: totalModels,
-			}, nil, err
 		}
 
 		if IsRetryableError(err) {
