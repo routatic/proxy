@@ -11,13 +11,13 @@ import (
 // the models that declare support for that provider.
 type IndexedCatalog struct {
 	Catalog
-	providerModels map[string][]Model
+	ProviderModels map[string][]Model
 }
 
 // ModelsForProvider returns the models that support the named provider.
 // It returns nil when the provider has no indexed models.
 func (ic *IndexedCatalog) ModelsForProvider(provider string) []Model {
-	return ic.providerModels[provider]
+	return ic.ProviderModels[provider]
 }
 
 // Load reads a catalog from path, validates its contents, and returns an
@@ -39,13 +39,13 @@ func Load(path string) (*IndexedCatalog, error) {
 
 	idx := &IndexedCatalog{
 		Catalog:        catalog,
-		providerModels: make(map[string][]Model, len(catalog.Providers)),
+		ProviderModels: make(map[string][]Model, len(catalog.Providers)),
 	}
 
 	for key, model := range catalog.Models {
 		provider := ProviderFromModelKey(key)
 		if provider != "" {
-			idx.providerModels[provider] = append(idx.providerModels[provider], model)
+			idx.ProviderModels[provider] = append(idx.ProviderModels[provider], model)
 		}
 	}
 

@@ -132,6 +132,49 @@ func (d *Database) initSchema(ctx context.Context) error {
 	);
 
 	INSERT OR IGNORE INTO schema_info (key, value) VALUES ('version', '1');
+
+	CREATE TABLE IF NOT EXISTS providers (
+		name TEXT PRIMARY KEY,
+		base_url TEXT,
+		api_key TEXT,
+		enabled INTEGER DEFAULT 1,
+		anthropic_tools_disabled INTEGER DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled);
+
+	CREATE TABLE IF NOT EXISTS models (
+		id TEXT PRIMARY KEY,
+		provider TEXT NOT NULL,
+		name TEXT NOT NULL,
+		display_name TEXT,
+		context_window INTEGER,
+		cost_input_per_m REAL,
+		cost_output_per_m REAL,
+		supports_tools INTEGER DEFAULT 1,
+		supports_vision INTEGER DEFAULT 0,
+		supports_reasoning INTEGER DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (provider) REFERENCES providers(name)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
+	CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
+
+	CREATE TABLE IF NOT EXISTS scenarios (
+		key TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT,
+		requires_tools INTEGER,
+		requires_vision INTEGER,
+		requires_reasoning INTEGER,
+		min_context_window INTEGER,
+		preferred_providers TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_scenarios_name ON scenarios(name);
 	`
 
 	_, err := d.db.ExecContext(ctx, schema)

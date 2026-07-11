@@ -1,67 +1,55 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/routatic/proxy/internal/catalog"
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/storage"
 )
 
-// ErrUnknownProvider is returned when a provider-qualified model reference
-// cannot be resolved because the named provider is not configured.
 var ErrUnknownProvider = errors.New("unknown provider")
 
-// ModelRouter handles model selection based on scenarios.
 type ModelRouter struct {
-	atomic      *config.AtomicConfig
-	catalogPath string
-	catMu       sync.Mutex
-	cat         *catalog.IndexedCatalog
-	catErr      error
-	catMtime    time.Time
+	atomic   *config.AtomicConfig
+	db       *storage.Database
+	catMu    sync.Mutex
+	cat      *catalog.IndexedCatalog
+	catErr   error
+	catCache time.Time
 }
 
-// NewModelRouter creates a new model router.
 func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
 	return &ModelRouter{atomic: atomic}
 }
 
-// NewModelRouterWithCatalog creates a new model router that resolves model
-// references and short ids through a catalog file when a model is not present
-// in the legacy config map.
-func NewModelRouterWithCatalog(atomic *config.AtomicConfig, catalogPath string) *ModelRouter {
-	return &ModelRouter{atomic: atomic, catalogPath: catalogPath}
+func NewModelRouterWithDB(atomic *config.AtomicConfig, db *storage.Database) *ModelRouter {
+	return &ModelRouter{atomic: atomic, db: db}
 }
 
-// catalog lazily loads and caches the indexed catalog, automatically
-// reloading when the underlying file changes on disk.
 func (r *ModelRouter) catalog() (*catalog.IndexedCatalog, error) {
-	if r.catalogPath == "" {
+	if r.db == nil {
 		return nil, nil
 	}
 
 	r.catMu.Lock()
 	defer r.catMu.Unlock()
 
-	fi, err := os.Stat(r.catalogPath)
-	if err != nil {
-		r.cat = nil
-		r.catErr = fmt.Errorf("stat catalog file: %w", err)
-		return nil, r.catErr
-	}
-
-	if r.cat != nil && !fi.ModTime().After(r.catMtime) {
+	if r.cat != nil && time.Since(r.catCache) < 30*time.Second {
 		return r.cat, nil
 	}
 
-	r.cat, r.catErr = catalog.Load(r.catalogPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	r.cat, r.catErr = catalog.LoadFromSQLite(ctx, r.db)
 	if r.catErr == nil {
-		r.catMtime = fi.ModTime()
+		r.catCache = time.Now()
 	}
 	return r.cat, r.catErr
 }

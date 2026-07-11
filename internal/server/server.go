@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -62,7 +61,6 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	metrics := metrics.New()
 
 	openCodeClient := client.NewOpenCodeClient(atomic, captureLogger)
-	modelRouter := router.NewModelRouterWithCatalog(atomic, filepath.Join(filepath.Dir(atomic.Path()), "catalog", "catalog.json"))
 	fallbackHandler := router.NewFallbackHandler(logger, 3, 30*time.Second)
 	fallbackHandler.SetAtomicConfig(atomic)
 
@@ -78,7 +76,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	// Create history ring buffer (1000 entries, in-memory).
 	hist := history.New(1000)
 
-	// Initialize SQLite storage if configured.
+	// Initialize SQLite storage first so catalog can use it.
 	var db *storage.Database
 	var retention *storage.Retention
 	storageCfg := storage.DefaultConfig
@@ -99,6 +97,14 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 			retention = storage.NewRetention(db, storageCfg.RetentionDays)
 			retention.Start()
 		}
+	}
+
+	// Create model router with SQLite catalog support.
+	var modelRouter *router.ModelRouter
+	if db != nil {
+		modelRouter = router.NewModelRouterWithDB(atomic, db)
+	} else {
+		modelRouter = router.NewModelRouter(atomic)
 	}
 
 	// Create handlers.

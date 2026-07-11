@@ -29,7 +29,56 @@ used to resolve canonical model names and providers at runtime.`,
 	}
 
 	cmd.AddCommand(catalogSyncCmd())
+	cmd.AddCommand(catalogExportCmd())
 	cmd.PersistentFlags().StringP("config", "c", "", "Path to config file (used to locate the catalog directory)")
+
+	return cmd
+}
+
+func catalogExportCmd() *cobra.Command {
+	var outputPath string
+
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export the SQLite catalog to JSON",
+		Long: `Export the catalog from SQLite to a JSON file for backup or debugging.
+
+The output file can be used as a backup or for manual inspection. 
+By default exports to the catalog directory as catalog-export.json.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := cmd.Flags().GetString("config")
+			if err != nil {
+				return fmt.Errorf("read config flag: %w", err)
+			}
+
+			catalogDir := resolveCatalogDir(configPath)
+			if outputPath == "" {
+				outputPath = filepath.Join(catalogDir, "catalog-export.json")
+			}
+
+			dbPath := storage.DefaultConfig.DatabasePath
+			if dbPath[:2] == "~/" {
+				home, _ := os.UserHomeDir()
+				dbPath = filepath.Join(home, dbPath[2:])
+			}
+
+			db, err := storage.Open(storage.DefaultConfig)
+			if err != nil {
+				return fmt.Errorf("open database: %w", err)
+			}
+			defer db.Close()
+
+			ctx := cmd.Context()
+			if err := catalog.ExportJSON(ctx, db, outputPath); err != nil {
+				return fmt.Errorf("export catalog: %w", err)
+			}
+
+			cmd.Printf("Catalog exported to %s\n", outputPath)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output file path (default: catalog/catalog-export.json)")
 
 	return cmd
 }

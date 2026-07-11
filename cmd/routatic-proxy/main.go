@@ -538,9 +538,26 @@ func runModelsList(cmd *cobra.Command, configPath, provider string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	catalogDir := resolveCatalogDir(cfgPath)
-	catalogPath := filepath.Join(catalogDir, "catalog.json")
-	cat, err := catalog.Load(catalogPath)
+	storageCfg := storage.DefaultConfig
+	if cfg.Storage != nil {
+		storageCfg = storage.Config{
+			DatabasePath:    cfg.Storage.DatabasePath,
+			RetentionDays:   cfg.Storage.RetentionDays,
+			VacuumOnStartup: cfg.Storage.VacuumOnStartup,
+			WALEnabled:      cfg.Storage.WALEnabled,
+		}
+	}
+
+	db, err := storage.Open(storageCfg)
+	if err != nil {
+		return fmt.Errorf("failed to open storage: %w", err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cat, err := catalog.LoadFromSQLite(ctx, db)
 	if err != nil {
 		return fmt.Errorf("catalog not found; run 'routatic-proxy catalog sync' first")
 	}
