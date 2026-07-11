@@ -159,7 +159,7 @@ func (r *CatalogRepo) UpsertBatch(ctx context.Context, providers []ProviderRecor
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT OR REPLACE INTO schema_info (key, value) VALUES ('catalog_last_sync', ?)
-	`, time.Now().UTC().Format(time.RFC3339))
+	`, now)
 	if err != nil {
 		return err
 	}
