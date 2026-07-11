@@ -2,7 +2,7 @@
 
 **Spec:** `.planning/specs/catalog-sqlite-migration.md`  
 **Created:** 2026-07-11  
-**Status:** draft
+**Status:** completed
 
 ---
 

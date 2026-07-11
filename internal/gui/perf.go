@@ -87,7 +87,7 @@ func (s *Server) handlePerformanceAggregate(w http.ResponseWriter, r *http.Reque
 
 	agg := aggregate{}
 
-	if s.storage != nil && !since.IsZero() {
+	if s.storage != nil {
 		latency := storage.NewLatency(s.storage)
 		latencyStats, err := latency.GetStats(since)
 		if err == nil && len(latencyStats) > 0 {
