@@ -115,6 +115,17 @@ const TRANSLATIONS = {
     'test.noPrompt': 'Please enter a prompt',
     'test.error': 'Error: ',
     'test.networkError': 'Network error',
+    'tab.logs': 'Logs',
+    'tab.performance': 'Performance',
+    'logs.allLevels': 'All Levels',
+    'logs.autoScroll': 'Auto-scroll',
+    'logs.pause': 'Pause',
+    'logs.resume': 'Resume',
+    'logs.clear': 'Clear',
+    'logs.connecting': 'Connecting...',
+    'logs.connected': 'Connected',
+    'logs.disconnected': 'Disconnected',
+    'logs.reconnecting': 'Reconnecting...',
   },
   zh: {
     'lang.toggle': 'English',
@@ -266,6 +277,7 @@ function toggleLanguage() {
   // Re-render dynamic content
   renderModelList(lastModelCounts);
   renderHistory();
+  PerfModule.render();
 }
 
 // Apply translations on load
@@ -1067,16 +1079,18 @@ document.addEventListener('keydown', function(e) {
       document.getElementById('history-search')?.focus();
     }
   }
-  // Tab shortcuts: Cmd/Ctrl + 1/2/3
-  if ((e.metaKey || e.ctrlKey) && ['1', '2', '3'].includes(e.key)) {
+  // Tab shortcuts: Cmd/Ctrl + 1/2/3/4
+  if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) {
     e.preventDefault();
-    const tabs = ['overview', 'history', 'settings'];
+    const tabs = ['overview', 'history', 'performance', 'settings'];
     document.querySelector(`[data-tab="${tabs[parseInt(e.key) - 1]}"]`)?.click();
   }
   // Escape to close modals (use if-else to ensure only one action)
   if (e.key === 'Escape') {
     if (commandPaletteOpen) {
       closeCommandPalette();
+    } else if (TestModule.testModal?.classList.contains('visible')) {
+      TestModule.close();
     } else if (modal.classList.contains('visible')) {
       closeHistoryModal();
     }
@@ -1230,7 +1244,444 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+/* ── Fallback Chain Editor ─────────────────────────────────────── */
+const FallbackModule = {
+  chains: {
+    default: [],
+    streaming: [],
+    'long-context': []
+  },
+  currentScenario: 'default',
+  originalChains: null,
+  availableModels: [],
+
+  init() {
+    this.loadConfig();
+  },
+
+  async loadConfig() {
+    try {
+      const r = await fetch('/api/proxy/config');
+      if (!r.ok) return;
+      const config = await r.json();
+
+      this.availableModels = config.models || [];
+
+      this.chains = {
+        default: this.parseFallbackChain(config, 'default'),
+        streaming: this.parseFallbackChain(config, 'streaming'),
+        'long-context': this.parseFallbackChain(config, 'long_context')
+      };
+
+      this.originalChains = JSON.parse(JSON.stringify(this.chains));
+      this.renderChain();
+    } catch (e) {
+      console.error('Failed to load fallback config:', e);
+    }
+  },
+
+  parseFallbackChain(config, scenario) {
+    const key = scenario === 'long-context' ? 'long_context' : scenario;
+    if (config.router_config && config.router_config.scenario_fallbacks && config.router_config.scenario_fallbacks[key]) {
+      return [...config.router_config.scenario_fallbacks[key]];
+    }
+    return [];
+  },
+
+  renderChain() {
+    const list = document.getElementById('fallback-chain');
+    const chain = this.chains[this.currentScenario];
+
+    if (!chain || chain.length === 0) {
+      list.innerHTML = '<li class="empty-state">' + t('fallback.empty') + '</li>';
+      list.classList.remove('has-items');
+      return;
+    }
+
+    list.classList.add('has-items');
+    list.innerHTML = chain.map((modelId, index) => {
+      const model = this.availableModels.find(m => m.id === modelId);
+      const displayName = model ? (model.display_name || model.id) : modelId;
+      const provider = model ? model.provider : '';
+      return `
+        <li class="fallback-item" draggable="true" data-index="${index}" role="option">
+          <span class="handle">⋮⋮</span>
+          <span class="model-name">${escapeHtml(displayName)}</span>
+          ${provider ? '<span class="model-meta">' + escapeHtml(provider) + '</span>' : ''}
+          <button class="remove-btn" onclick="FallbackModule.removeModel(${index})" title="Remove model" aria-label="Remove ${escapeHtml(displayName)}">×</button>
+        </li>
+      `;
+    }).join('');
+
+    this.setupDragDrop();
+  },
+
+  setupDragDrop() {
+    const items = document.querySelectorAll('.fallback-item');
+
+    items.forEach(item => {
+      item.addEventListener('dragstart', (e) => this.onDragStart(e));
+      item.addEventListener('dragover', (e) => this.onDragOver(e));
+      item.addEventListener('dragleave', (e) => this.onDragLeave(e));
+      item.addEventListener('drop', (e) => this.onDrop(e));
+      item.addEventListener('dragend', (e) => this.onDragEnd(e));
+    });
+  },
+
+  onDragStart(e) {
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', e.target.dataset.index);
+  },
+
+  onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const dragging = document.querySelector('.fallback-item.dragging');
+    if (dragging !== e.currentTarget) {
+      e.currentTarget.classList.add('drag-over');
+    }
+  },
+
+  onDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+  },
+
+  onDrop(e) {
+    e.preventDefault();
+    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const toIndex = parseInt(e.currentTarget.dataset.index, 10);
+
+    e.currentTarget.classList.remove('drag-over');
+
+    if (fromIndex !== toIndex) {
+      const chain = this.chains[this.currentScenario];
+      const [removed] = chain.splice(fromIndex, 1);
+      chain.splice(toIndex, 0, removed);
+      this.renderChain();
+    }
+  },
+
+  onDragEnd(e) {
+    e.target.classList.remove('dragging');
+    document.querySelectorAll('.fallback-item').forEach(item => {
+      item.classList.remove('drag-over');
+    });
+  },
+
+  onScenarioChange() {
+    const select = document.getElementById('fallback-scenario');
+    this.currentScenario = select.value;
+    this.renderChain();
+    document.getElementById('fallback-preview').style.display = 'none';
+  },
+
+  addModel() {
+    const modelOptions = this.availableModels
+      .filter(m => !this.chains[this.currentScenario].includes(m.id))
+      .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.display_name || m.id)} (${escapeHtml(m.provider)})</option>`)
+      .join('');
+
+    if (!modelOptions) {
+      alert(currentLang === 'zh' ? '没有可用模型' : 'No available models');
+      return;
+    }
+
+    const selectHtml = `<select id="new-model-select" class="filter-select">${modelOptions}</select>`;
+    const confirmed = confirm(
+      (currentLang === 'zh' ? '选择模型添加到降级链:\n\n' : 'Select a model to add:\n\n') +
+      this.availableModels.filter(m => !this.chains[this.currentScenario].includes(m.id))
+        .map(m => `${m.display_name || m.id} (${m.provider})`).join('\n')
+    );
+
+    if (confirmed) {
+      const modelId = prompt(
+        currentLang === 'zh' ? '输入模型ID:' : 'Enter model ID:',
+        this.availableModels.filter(m => !this.chains[this.currentScenario].includes(m.id))[0]?.id || ''
+      );
+
+      if (modelId && !this.chains[this.currentScenario].includes(modelId)) {
+        const model = this.availableModels.find(m => m.id === modelId);
+        if (model) {
+          this.chains[this.currentScenario].push(modelId);
+          this.renderChain();
+        } else {
+          alert(currentLang === 'zh' ? '无效的模型ID' : 'Invalid model ID');
+        }
+      }
+    }
+  },
+
+  removeModel(index) {
+    this.chains[this.currentScenario].splice(index, 1);
+    this.renderChain();
+  },
+
+  preview() {
+    const previewEl = document.getElementById('fallback-preview');
+    const contentEl = document.getElementById('fallback-preview-content');
+    const chain = this.chains[this.currentScenario];
+
+    if (!chain || chain.length === 0) {
+      contentEl.innerHTML = '<div class="empty-state">' + t('fallback.empty') + '</div>';
+    } else {
+      contentEl.innerHTML = '<div class="fallback-preview-chain">' +
+        chain.map((modelId, i) => {
+          const model = this.availableModels.find(m => m.id === modelId);
+          const displayName = model ? (model.display_name || model.id) : modelId;
+          return `
+            <span class="fallback-preview-model ${i === 0 ? 'primary' : ''}">${escapeHtml(displayName)}</span>
+            ${i < chain.length - 1 ? '<span class="fallback-preview-arrow">→</span>' : ''}
+          `;
+        }).join('') +
+        '</div>';
+    }
+
+    previewEl.style.display = 'block';
+  },
+
+  async save() {
+    const hasChanges = this.originalChains && (
+      JSON.stringify(this.chains) !== JSON.stringify(this.originalChains)
+    );
+
+    if (!hasChanges) {
+      showSaveStatus(t('fallback.noChanges'), 'success');
+      return;
+    }
+
+    const saveBtn = document.querySelector('.fallback-actions .btn-primary');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = t('fallback.saving');
+    }
+
+    try {
+      const patch = {
+        router_config: {
+          scenario_fallbacks: {
+            default: this.chains.default,
+            streaming: this.chains.streaming,
+            long_context: this.chains['long-context']
+          }
+        }
+      };
+
+      const r = await fetch('/api/proxy/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch)
+      });
+
+      if (r.ok) {
+        showSaveStatus(t('fallback.saved'), 'success');
+        this.originalChains = JSON.parse(JSON.stringify(this.chains));
+        await loadProxyConfig();
+      } else {
+        const txt = await r.text();
+        showSaveStatus(t('fallback.saveFailed') + ': ' + txt, 'error');
+      }
+    } catch (e) {
+      showSaveStatus(t('fallback.saveFailed'), 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = t('fallback.save');
+      }
+    }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  FallbackModule.init();
+});
+
 /* ── Boot ──────────────────────────────────────────────────────── */
 loadProxyConfig();
 startPolling();
+
+/* ── Quick Model Test Module ───────────────────────────────────── */
+const TestModule = {
+  STORAGE_KEY: 'routatic-proxy-test-history',
+  MAX_HISTORY: 5,
+
+  testModal: document.getElementById('test-modal'),
+  testModelSelect: document.getElementById('test-model'),
+  testPrompt: document.getElementById('test-prompt'),
+  testResponse: document.getElementById('test-response'),
+  testLatency: document.getElementById('test-latency'),
+  testTokens: document.getElementById('test-tokens'),
+  testSendBtn: document.getElementById('btn-test-send'),
+  testCopyBtn: document.getElementById('btn-test-copy'),
+  testModalClose: document.getElementById('test-modal-close'),
+  testHistoryHint: document.getElementById('test-history-hint'),
+
+  init() {
+    document.getElementById('btn-test-model')?.addEventListener('click', () => this.open());
+    this.testModalClose?.addEventListener('click', () => this.close());
+    this.testModal?.addEventListener('click', (e) => {
+      if (e.target === this.testModal) this.close();
+    });
+    this.testSendBtn?.addEventListener('click', () => this.sendTest());
+    this.testCopyBtn?.addEventListener('click', () => this.copyResponse());
+    this.testPrompt?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.sendTest();
+      }
+    });
+    this.loadHistory();
+  },
+
+  open() {
+    this.populateModels();
+    this.testModal?.classList.add('visible');
+    if (this.testPrompt) {
+      this.testPrompt.value = '';
+      this.testPrompt.focus();
+    }
+    this.resetResponse();
+  },
+
+  close() {
+    this.testModal?.classList.remove('visible');
+  },
+
+  populateModels() {
+    const models = Object.keys(lastModelCounts).sort();
+    const configModels = currentProxyConfig?.models || [];
+    const allModels = [...new Set([...models, ...configModels])].sort();
+
+    if (this.testModelSelect) {
+      const current = this.testModelSelect.value;
+      this.testModelSelect.innerHTML = `<option value="">${t('test.selectModel')}</option>` +
+        allModels.map(m => `<option value="${escapeHtml(m)}"${m === current ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('');
+    }
+  },
+
+  async sendTest() {
+    const model = this.testModelSelect?.value;
+    const prompt = this.testPrompt?.value?.trim();
+
+    if (!model) {
+      this.showError(t('test.noModel'));
+      return;
+    }
+    if (!prompt) {
+      this.showError(t('test.noPrompt'));
+      return;
+    }
+
+    this.saveToHistory(prompt);
+    this.setLoading(true);
+
+    const startTime = Date.now();
+
+    try {
+      const response = await fetch('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: false
+        })
+      });
+
+      const latency = Date.now() - startTime;
+      this.testLatency.textContent = latency + 'ms';
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.showError(t('test.error') + (response.status + ': ' + errorText));
+        return;
+      }
+
+      const data = await response.json();
+      this.testResponse.classList.remove('error', 'loading');
+      this.testResponse.querySelector('pre').textContent = JSON.stringify(data, null, 2);
+
+      let totalTokens = 0;
+      if (data.usage) {
+        totalTokens = (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0);
+      }
+      this.testTokens.textContent = totalTokens > 0 ? totalTokens.toLocaleString() : '--';
+    } catch (e) {
+      this.testLatency.textContent = '--';
+      this.showError(t('test.networkError') + ': ' + e.message);
+    } finally {
+      this.setLoading(false);
+    }
+  },
+
+  setLoading(loading) {
+    this.testSendBtn.disabled = loading;
+    this.testSendBtn.textContent = loading ? t('test.sending') : t('test.send');
+    if (loading) {
+      this.testResponse.classList.add('loading');
+      this.testResponse.querySelector('pre').textContent = '...';
+    }
+  },
+
+  showError(message) {
+    this.testResponse.classList.add('error');
+    this.testResponse.classList.remove('loading');
+    this.testResponse.querySelector('pre').textContent = message;
+    this.testTokens.textContent = '--';
+  },
+
+  resetResponse() {
+    this.testResponse.classList.remove('error', 'loading');
+    this.testResponse.querySelector('pre').textContent = '';
+    this.testLatency.textContent = '--';
+    this.testTokens.textContent = '--';
+  },
+
+  loadHistory() {
+    try {
+      const history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+      if (history.length > 0 && this.testHistoryHint) {
+        this.testHistoryHint.innerHTML = history.slice(0, this.MAX_HISTORY)
+          .map(p => `<span title="${escapeHtml(p)}">${escapeHtml(p.substring(0, 20))}${p.length > 20 ? '...' : ''}</span>`)
+          .join('');
+        this.testHistoryHint.querySelectorAll('span').forEach((el, i) => {
+          el.addEventListener('click', () => {
+            const history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+            if (history[i]) {
+              this.testPrompt.value = history[i];
+              this.testPrompt.focus();
+            }
+          });
+        });
+      }
+    } catch (e) {}
+  },
+
+  saveToHistory(prompt) {
+    try {
+      let history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+      history = [prompt, ...history.filter(p => p !== prompt)].slice(0, this.MAX_HISTORY);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(history));
+      this.loadHistory();
+    } catch (e) {}
+  },
+
+  async copyResponse() {
+    const pre = this.testResponse.querySelector('pre');
+    if (!pre || !pre.textContent) return;
+
+    try {
+      await navigator.clipboard.writeText(pre.textContent);
+      const originalText = this.testCopyBtn.innerHTML;
+      this.testCopyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>${t('test.copied')}`;
+      this.testCopyBtn.classList.add('copied');
+      setTimeout(() => {
+        this.testCopyBtn.innerHTML = originalText;
+        this.testCopyBtn.classList.remove('copied');
+      }, 2000);
+    } catch (e) {}
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => TestModule.init());
 
