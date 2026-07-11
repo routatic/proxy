@@ -38,6 +38,25 @@
 4. Push to your fork and open a pull request against `main`
 5. Describe what your PR does and link any related issues
 
+### Pre-push Hooks
+
+This repository uses git hooks to ensure code quality. Install them once after cloning:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+The pre-push hook runs these checks before allowing a push:
+- **Code formatting** (`gofmt`) — ensures consistent formatting
+- **Linting** (`go vet`) — catches common errors
+- **Tests** (`make test`) — runs all tests with race detector
+- **Build** (`make build`) — verifies the project compiles
+
+To bypass hooks temporarily (not recommended):
+```bash
+git push --no-verify
+```
+
 ## Code Style
 
 This project follows standard Go conventions:
