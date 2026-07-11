@@ -372,7 +372,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	if isStreaming {
 		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario)
 	} else {
-		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario)
+			h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	}
 }
 
@@ -1032,6 +1032,7 @@ func (h *MessagesHandler) handleNonStreaming(
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
 	scenario router.Scenario,
+	requestID string,
 ) {
 	ctx := r.Context()
 	startTime := time.Now()
