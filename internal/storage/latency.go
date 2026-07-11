@@ -53,7 +53,7 @@ func (l *Latency) GetStats(since time.Time) ([]ModelLatencyStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	samplesByModel := make(map[string][]int64)
 	for rows.Next() {

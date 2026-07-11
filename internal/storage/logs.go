@@ -51,7 +51,7 @@ func (l *Logs) Last(n int) ([]LogEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanLogs(rows)
 }

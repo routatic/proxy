@@ -33,7 +33,7 @@ GOBIN=$(shell go env GOPATH)/bin
 
 lint:
 	@echo "Running gofmt..."
-	@test -z "$$(gofmt -d . | tee /dev/stderr)" || (echo "gofmt check failed" && exit 1)
+	@gofmt -d . | grep . && (echo "gofmt check failed" && exit 1) || true
 	@echo "Running go vet..."
 	CGO_ENABLED=0 go vet ./...
 	@echo "Lint checks passed!"

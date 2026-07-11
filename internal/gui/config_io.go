@@ -83,7 +83,7 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
-	encoder.Encode(cfg)
+	_ = encoder.Encode(cfg)
 }
 
 func (s *Server) handleConfigImport(w http.ResponseWriter, r *http.Request) {

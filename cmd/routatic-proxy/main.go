@@ -312,11 +312,11 @@ Without --provider, a default config optimized for OpenCode Go is created.`,
 			}
 
 			// Initialize database.
-			db, err := storage.Open(storage.DefaultConfig)
-			if err != nil {
-				return fmt.Errorf("failed to initialize database: %w", err)
-			}
-			db.Close()
+		db, err := storage.Open(storage.DefaultConfig)
+		if err != nil {
+			return fmt.Errorf("failed to initialize database: %w", err)
+		}
+		defer func() { _ = db.Close() }()
 
 			// Print helpful message based on provider
 			fmt.Printf("Created config at %s\n", configPath)

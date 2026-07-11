@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/routatic/proxy/internal/catalog"
@@ -57,17 +56,11 @@ By default exports to the catalog directory as catalog-export.json.`,
 				outputPath = filepath.Join(catalogDir, "catalog-export.json")
 			}
 
-			dbPath := storage.DefaultConfig.DatabasePath
-			if strings.HasPrefix(dbPath, "~/") {
-				home, _ := os.UserHomeDir()
-				dbPath = filepath.Join(home, dbPath[2:])
-			}
-
-			db, err := storage.Open(storage.DefaultConfig)
-			if err != nil {
-				return fmt.Errorf("open database: %w", err)
-			}
-			defer db.Close()
+		db, err := storage.Open(storage.DefaultConfig)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		defer func() { _ = db.Close() }()
 
 			ctx := cmd.Context()
 			if err := catalog.ExportJSON(ctx, db, outputPath); err != nil {
@@ -166,7 +159,7 @@ func ensureDatabase() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
-	db.Close()
+	defer func() { _ = db.Close() }()
 
 	slog.Info("initialized sqlite database", "path", storage.DefaultConfig.DatabasePath)
 	return nil
