@@ -163,7 +163,10 @@ func ensureCatalogSynced(cfg *config.Config, configPath string, now time.Time) e
 func ensureDatabase() error {
 	dbPath := storage.DefaultConfig.DatabasePath
 	if strings.HasPrefix(dbPath, "~/") {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to resolve home directory: %w", err)
+		}
 		dbPath = filepath.Join(home, dbPath[2:])
 	}
 
