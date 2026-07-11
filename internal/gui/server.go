@@ -87,18 +87,28 @@ func New(opts Options) *Server {
 	return s
 }
 
-// isAutostartEnabled checks whether autostart is currently enabled on macOS.
+// isAutostartEnabled checks whether autostart is currently enabled.
+// On macOS it checks ~/Library/LaunchAgents/{LaunchAgent}.plist.
+// On Linux it checks ~/.config/autostart/{LaunchAgent}.desktop.
 func isAutostartEnabled() bool {
-	if runtime.GOOS != "darwin" {
-		return false
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false
 	}
-	plist := filepath.Join(home, "Library", "LaunchAgents", daemon.LaunchAgent+".plist")
-	_, err = os.Stat(plist)
-	return err == nil
+
+	if runtime.GOOS == "darwin" {
+		plist := filepath.Join(home, "Library", "LaunchAgents", daemon.LaunchAgent+".plist")
+		_, err = os.Stat(plist)
+		return err == nil
+	}
+
+	if runtime.GOOS == "linux" {
+		desktop := filepath.Join(home, ".config", "autostart", daemon.LaunchAgent+".desktop")
+		_, err = os.Stat(desktop)
+		return err == nil
+	}
+
+	return false
 }
 
 // SetProxyRunning updates the running state (called by the proxy lifecycle).

@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && cgo
 
 // Package tray manages the macOS system tray icon and menu.
 //

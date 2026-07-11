@@ -10,7 +10,7 @@ CMD = ./cmd/routatic-proxy
 # ── Development ────────────────────────────────────────────────────
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
 	@ln -sf $(BINARY) bin/$(LEGACY_BINARY)
 
 build-ui:
