@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -234,12 +235,21 @@ func isZenAnthropicModel(modelID string) bool {
 }
 
 // Provider returns the provider string for a model config.
-// Defaults to ProviderOpenCodeGo if empty.
+// Normalizes underscores to hyphens so that both "aws_bedrock" and "aws-bedrock"
+// resolve to the same canonical form. Defaults to ProviderOpenCodeGo if empty.
 func Provider(model config.ModelConfig) string {
-	if model.Provider != "" {
-		return model.Provider
+	p := model.Provider
+	if p == "" {
+		return ProviderOpenCodeGo
 	}
-	return ProviderOpenCodeGo
+	// Normalize underscores to hyphens for consistent matching.
+	for i := range p {
+		if p[i] == '_' {
+			// strings.ReplaceAll would allocate; do an in-place scan + build only when needed.
+			return strings.ReplaceAll(p, "_", "-")
+		}
+	}
+	return p
 }
 
 // IsZen returns true if the model uses the OpenCode Zen provider.
@@ -290,6 +300,11 @@ func isResponsesModel(modelID string) bool {
 func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelConfig) endpointConfig {
 	cfg := c.atomic.Get()
 	apiKey := c.nextAPIKey(c.getProviderAPIKeys(modelConfig))
+
+	if IsBedrock(modelConfig) {
+		bedrock := cfg.AWSBedrock
+		return endpointConfig{BaseURL: bedrock.BaseURL, APIKey: apiKey}
+	}
 
 	if IsZen(modelConfig) {
 		zen := cfg.OpenCodeZen
