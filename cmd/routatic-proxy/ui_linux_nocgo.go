@@ -71,11 +71,11 @@ Press Ctrl+C to stop.`,
 			slog.Warn("Failed to load config (will require GUI configuration)", "error", err)
 			cfg = &config.Config{
 				Host: "127.0.0.1", Port: 3456,
-				Logging:   config.LoggingConfig{Level: "info"},
+				Logging: config.LoggingConfig{Level: "info"},
 				OpenCodeGo: config.OpenCodeGoConfig{
-					BaseURL: "https://opencode.ai/zen/go/v1/chat/completions",
+					BaseURL:          "https://opencode.ai/zen/go/v1/chat/completions",
 					AnthropicBaseURL: "https://opencode.ai/zen/go/v1/messages",
-					TimeoutMs: 300000,
+					TimeoutMs:        300000,
 				},
 				OpenCodeZen: config.OpenCodeZenConfig{
 					BaseURL:          "https://opencode.ai/zen/v1/chat/completions",
@@ -126,7 +126,9 @@ Press Ctrl+C to stop.`,
 		go func() {
 			<-sigCh
 			slog.Info("Received signal, exiting...")
-			if stopProxy != nil { _ = stopProxy() }
+			if stopProxy != nil {
+				_ = stopProxy()
+			}
 			cancel()
 		}()
 
@@ -138,7 +140,9 @@ Press Ctrl+C to stop.`,
 		startProxy = func() error {
 			proxySrvMu.Lock()
 			defer proxySrvMu.Unlock()
-			if isProxyRunning { return nil }
+			if isProxyRunning {
+				return nil
+			}
 			currentCfg := atomic.Get()
 			if currentCfg.APIKey == "" && len(currentCfg.APIKeys) == 0 &&
 				(currentCfg.OpenCodeGo.APIKey == "" || strings.Contains(currentCfg.OpenCodeGo.APIKey, "${")) &&
@@ -146,13 +150,17 @@ Press Ctrl+C to stop.`,
 				return fmt.Errorf("API Key is empty. Please set it in Settings first")
 			}
 			isProxyRunning = true
-			if guiSrv != nil { guiSrv.SetProxyRunning(true) }
+			if guiSrv != nil {
+				guiSrv.SetProxyRunning(true)
+			}
 			go func() {
 				srvErr := proxySrv.Start()
 				proxySrvMu.Lock()
 				isProxyRunning = false
 				proxySrvMu.Unlock()
-				if guiSrv != nil { guiSrv.SetProxyRunning(false) }
+				if guiSrv != nil {
+					guiSrv.SetProxyRunning(false)
+				}
 				if srvErr != nil && srvErr != http.ErrServerClosed {
 					slog.Error("proxy server stopped with error", "error", srvErr)
 				}
@@ -163,9 +171,13 @@ Press Ctrl+C to stop.`,
 		stopProxy = func() error {
 			proxySrvMu.Lock()
 			defer proxySrvMu.Unlock()
-			if !isProxyRunning { return nil }
+			if !isProxyRunning {
+				return nil
+			}
 			isProxyRunning = false
-			if guiSrv != nil { guiSrv.SetProxyRunning(false) }
+			if guiSrv != nil {
+				guiSrv.SetProxyRunning(false)
+			}
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
 			return proxySrv.Shutdown(shutdownCtx)
