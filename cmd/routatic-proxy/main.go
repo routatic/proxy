@@ -311,18 +311,7 @@ Without --provider, a default config optimized for OpenCode Go is created.`,
 				return fmt.Errorf("failed to write config file: %w", err)
 			}
 
-			// Create SQLite database directory and initialize database.
-			dbPath := storage.DefaultConfig.DatabasePath
-			if strings.HasPrefix(dbPath, "~/") {
-				home, err := os.UserHomeDir()
-			if err != nil {
-				return fmt.Errorf("failed to resolve home directory: %w", err)
-			}
-				dbPath = filepath.Join(home, dbPath[2:])
-			}
-			if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-				return fmt.Errorf("failed to create database directory: %w", err)
-			}
+			// Initialize database.
 			db, err := storage.Open(storage.DefaultConfig)
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
@@ -331,7 +320,7 @@ Without --provider, a default config optimized for OpenCode Go is created.`,
 
 			// Print helpful message based on provider
 			fmt.Printf("Created config at %s\n", configPath)
-			fmt.Printf("Initialized database at %s\n", dbPath)
+			fmt.Printf("Initialized database at %s\n", storage.DefaultConfig.DatabasePath)
 			if provider != "" {
 				preset, ok := providerPresets[provider]
 				if ok {
