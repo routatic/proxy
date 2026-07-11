@@ -19,7 +19,6 @@ import (
 	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/handlers"
 	"github.com/routatic/proxy/internal/history"
-	"github.com/routatic/proxy/internal/history"
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/provider"
 	"github.com/routatic/proxy/internal/router"

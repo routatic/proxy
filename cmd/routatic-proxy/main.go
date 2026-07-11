@@ -17,6 +17,7 @@ import (
 	"github.com/routatic/proxy/internal/daemon"
 	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/server"
+	"github.com/routatic/proxy/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -305,8 +306,24 @@ Without --provider, a default config optimized for OpenCode Go is created.`,
 				return fmt.Errorf("failed to write config file: %w", err)
 			}
 
+			// Create SQLite database directory and initialize database.
+			dbPath := storage.DefaultConfig.DatabasePath
+			if dbPath[:2] == "~/" {
+				home, _ := os.UserHomeDir()
+				dbPath = filepath.Join(home, dbPath[2:])
+			}
+			if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+				return fmt.Errorf("failed to create database directory: %w", err)
+			}
+			db, err := storage.Open(storage.DefaultConfig)
+			if err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
+			}
+			db.Close()
+
 			// Print helpful message based on provider
 			fmt.Printf("Created config at %s\n", configPath)
+			fmt.Printf("Initialized database at %s\n", dbPath)
 			if provider != "" {
 				preset, ok := providerPresets[provider]
 				if ok {
