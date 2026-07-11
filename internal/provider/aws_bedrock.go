@@ -49,21 +49,24 @@ func (p *AWSBedrockProvider) ModelCapabilities(modelID string) (core.ProviderCap
 	return p.Capabilities(), true
 }
 
-// WireFormat returns the wire format for Bedrock models. Defaults to OpenAI
-// Chat Completions. Models with the "anthropic." prefix (e.g. anthropic.claude-*)
-// automatically use the Anthropic Messages format. Override per-model by setting
-// wire_format: "anthropic" in the aws_bedrock config (applies to all Bedrock
-// models when no per-model prefix match).
+// WireFormat returns the wire format for Bedrock models.
+// Bedrock Mantle uses "provider.model-name" format — models prefixed with
+// "anthropic." use the Anthropic Messages endpoint, everything else uses
+// OpenAI Chat Completions. The global wire_format config acts as a fallback
+// only when no prefix match applies.
 func (p *AWSBedrockProvider) WireFormat(modelID string) core.WireFormat {
-	// Auto-detect: models prefixed with "anthropic." use the Anthropic endpoint.
-	if strings.HasPrefix(modelID, "anthropic.") {
+	switch {
+	case strings.HasPrefix(modelID, "anthropic."):
 		return core.WireFormatAnthropic
+	case strings.HasPrefix(modelID, "openai."):
+		return core.WireFormatOpenAIChat
+	default:
+		cfg := p.atomic.Get()
+		if cfg != nil && cfg.AWSBedrock.WireFormat == "anthropic" {
+			return core.WireFormatAnthropic
+		}
+		return core.WireFormatOpenAIChat
 	}
-	cfg := p.atomic.Get()
-	if cfg != nil && cfg.AWSBedrock.WireFormat == "anthropic" {
-		return core.WireFormatAnthropic
-	}
-	return core.WireFormatOpenAIChat
 }
 
 // RoundTripName returns the model ID to use in the upstream request.
