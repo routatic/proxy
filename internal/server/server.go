@@ -165,6 +165,11 @@ func (s *Server) Metrics() *metrics.Metrics {
 	return s.metrics
 }
 
+// Storage returns the SQLite storage instance.
+func (s *Server) Storage() *storage.Database {
+	return s.storage
+}
+
 // Start starts the server with graceful shutdown.
 func (s *Server) Start() error {
 	cfg := s.atomic.Get()

@@ -47,6 +47,13 @@ type MessagesHandler struct {
 	metrics             *metrics.Metrics
 	captureLogger       *debug.CaptureLogger
 	history             *history.History // optional: nil means no GUI history
+	storage             StorageWriter   // optional: SQLite persistence for requests/latency
+}
+
+// StorageWriter defines the interface for persistent storage.
+type StorageWriter interface {
+	InsertRequest(rec history.RequestRecord) error
+	InsertLatency(model string, latency time.Duration) error
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -205,6 +212,7 @@ func NewMessagesHandler(
 	metrics *metrics.Metrics,
 	captureLogger *debug.CaptureLogger,
 	hist *history.History,
+	storage StorageWriter,
 ) *MessagesHandler {
 	return &MessagesHandler{
 		client:              openCodeClient,
@@ -223,6 +231,7 @@ func NewMessagesHandler(
 		metrics:             metrics,
 		captureLogger:       captureLogger,
 		history:             hist,
+		storage:             storage,
 	}
 }
 
