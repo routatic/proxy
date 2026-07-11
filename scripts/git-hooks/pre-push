@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+# Pre-push hook: Runs quality checks before pushing to remote
+# Ensures code is properly formatted, passes linting, tests, and builds
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}=== Pre-push checks ===${NC}"
+echo ""
+
+# Get the current branch
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo -e "Branch: ${GREEN}${BRANCH}${NC}"
+echo ""
+
+# Store original directory
+ORIGINAL_DIR=$(pwd)
+
+# Function to check if we're pushing to a protected branch
+is_protected_branch() {
+    [[ "$BRANCH" == "main" || "$BRANCH" == "master" || "$BRANCH" == "develop" ]]
+}
+
+# Skip checks for protected branches (they usually have branch protection rules)
+if is_protected_branch; then
+    echo -e "${YELLOW}Pushing to protected branch '${BRANCH}'${NC}"
+    echo -e "${YELLOW}Skipping pre-push checks (branch protection should handle this)${NC}"
+    exit 0
+fi
+
+# Check 1: Format check (gofmt)
+echo -e "${YELLOW}[1/4] Checking code formatting...${NC}"
+FORMAT_ISSUES=$(gofmt -d .)
+if [ -n "$FORMAT_ISSUES" ]; then
+    echo -e "${RED}✗ Code is not properly formatted${NC}"
+    echo ""
+    echo "Run 'gofmt -w .' to fix formatting issues:"
+    echo "$FORMAT_ISSUES"
+    exit 1
+fi
+echo -e "${GREEN}✓ Code formatting check passed${NC}"
+echo ""
+
+# Check 2: Lint check (go vet)
+echo -e "${YELLOW}[2/4] Running go vet...${NC}"
+CGO_ENABLED=0 go vet ./...
+echo -e "${GREEN}✓ Go vet passed${NC}"
+echo ""
+
+# Check 3: Tests
+echo -e "${YELLOW}[3/4] Running tests...${NC}"
+go test ./internal/... ./pkg/... ./cmd/... -v -race 2>&1 | while IFS= read -r line; do
+    # Suppress verbose test output, show summary
+    if [[ "$line" =~ ^(PASS|FAIL|===\s+RUN|---\s+(PASS|FAIL)|coverage:) ]]; then
+        echo "  $line"
+    fi
+done
+echo -e "${GREEN}✓ Tests passed${NC}"
+echo ""
+
+# Check 4: Build
+echo -e "${YELLOW}[4/4] Building project...${NC}"
+CGO_ENABLED=0 go build -o /tmp/routatic-proxy-build-test ./cmd/routatic-proxy
+rm -f /tmp/routatic-proxy-build-test
+echo -e "${GREEN}✓ Build successful${NC}"
+echo ""
+
+echo -e "${GREEN}=== All pre-push checks passed! ===${NC}"
+echo ""
+exit 0

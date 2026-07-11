@@ -563,10 +563,14 @@ func (h *MessagesHandler) handleStreaming(
 			if h.history != nil {
 				h.history.Add(rec)
 			}
-			if h.storage != nil {
-				_ = h.storage.InsertRequest(rec)
-				_ = h.storage.InsertLatency(model.ModelID, latency)
+		if h.storage != nil {
+			if err := h.storage.InsertRequest(rec); err != nil {
+				h.logger.Warn("failed to insert request into storage", "error", err)
 			}
+			if err := h.storage.InsertLatency(model.ModelID, latency); err != nil {
+				h.logger.Warn("failed to insert latency sample into storage", "error", err)
+			}
+		}
 		}
 
 		// handleStreamError checks the error from a streaming attempt and
@@ -1137,8 +1141,12 @@ func (h *MessagesHandler) handleNonStreaming(
 		h.history.Add(rec)
 	}
 	if h.storage != nil {
-		_ = h.storage.InsertRequest(rec)
-		_ = h.storage.InsertLatency(result.ModelID, latency)
+		if err := h.storage.InsertRequest(rec); err != nil {
+			h.logger.Warn("failed to insert request into storage", "error", err)
+		}
+		if err := h.storage.InsertLatency(result.ModelID, latency); err != nil {
+			h.logger.Warn("failed to insert latency sample into storage", "error", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
