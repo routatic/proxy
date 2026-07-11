@@ -16,12 +16,13 @@ import (
 var ErrUnknownProvider = errors.New("unknown provider")
 
 type ModelRouter struct {
-	atomic   *config.AtomicConfig
-	db       *storage.Database
-	catMu    sync.Mutex
-	cat      *catalog.IndexedCatalog
-	catErr   error
-	catCache time.Time
+	atomic      *config.AtomicConfig
+	db          *storage.Database
+	catalogPath string
+	catMu       sync.Mutex
+	cat         *catalog.IndexedCatalog
+	catErr      error
+	catCache    time.Time
 }
 
 func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
@@ -32,8 +33,12 @@ func NewModelRouterWithDB(atomic *config.AtomicConfig, db *storage.Database) *Mo
 	return &ModelRouter{atomic: atomic, db: db}
 }
 
+func NewModelRouterWithCatalog(atomic *config.AtomicConfig, catalogPath string) *ModelRouter {
+	return &ModelRouter{atomic: atomic, catalogPath: catalogPath}
+}
+
 func (r *ModelRouter) catalog() (*catalog.IndexedCatalog, error) {
-	if r.db == nil {
+	if r.db == nil && r.catalogPath == "" {
 		return nil, nil
 	}
 
@@ -47,7 +52,11 @@ func (r *ModelRouter) catalog() (*catalog.IndexedCatalog, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	r.cat, r.catErr = catalog.LoadFromSQLite(ctx, r.db)
+	if r.db != nil {
+		r.cat, r.catErr = catalog.LoadFromSQLite(ctx, r.db)
+	} else if r.catalogPath != "" {
+		r.cat, r.catErr = catalog.Load(r.catalogPath)
+	}
 	if r.catErr == nil {
 		r.catCache = time.Now()
 	}
