@@ -3,6 +3,7 @@ package catalog
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -68,25 +69,65 @@ func (ic *IndexedCatalog) Resolve(sel Selector) (ResolvedModel, error) {
 }
 
 // ResolveShort resolves a legacy short model id to a fully materialized model/provider pair.
-// It first matches by model key, then by model Name.
+// It first matches by model key, then by model Name. When multiple providers have models
+// with the same name, returns an ambiguity error listing all matching providers.
 func (ic *IndexedCatalog) ResolveShort(short string) (ResolvedModel, error) {
 	if model, ok := ic.Models[short]; ok {
 		return ic.resolveWithFirstEnabledProvider(model, short)
 	}
 
+	var matches []string
 	for key, model := range ic.Models {
 		if model.Name == short {
-			return ic.resolveWithFirstEnabledProvider(model, key)
+			matches = append(matches, key)
 		}
 	}
+	if len(matches) > 0 {
+		return ic.resolveFromMatches(short, matches)
+	}
 
-	for key, model := range ic.Models {
+	matches = nil
+	for key := range ic.Models {
 		if modelNameFromKey(key) == short {
-			return ic.resolveWithFirstEnabledProvider(model, key)
+			matches = append(matches, key)
 		}
+	}
+	if len(matches) > 0 {
+		return ic.resolveFromMatches(short, matches)
 	}
 
 	return ResolvedModel{}, fmt.Errorf("unknown short model id: %q", short)
+}
+
+func (ic *IndexedCatalog) resolveFromMatches(short string, matches []string) (ResolvedModel, error) {
+	sort.Strings(matches)
+
+	var enabled []string
+	for _, key := range matches {
+		providerName := ProviderFromModelKey(key)
+		if provider, ok := ic.Providers[providerName]; ok {
+			if provider.Enabled == nil || *provider.Enabled {
+				enabled = append(enabled, key)
+			}
+		}
+	}
+
+	if len(enabled) == 0 {
+		return ResolvedModel{}, fmt.Errorf("model %q exists but all providers are disabled", short)
+	}
+
+	if len(enabled) == 1 {
+		key := enabled[0]
+		model := ic.Models[key]
+		return ic.resolveWithFirstEnabledProvider(model, key)
+	}
+
+	var providers []string
+	for _, key := range enabled {
+		providers = append(providers, ProviderFromModelKey(key))
+	}
+	sort.Strings(providers)
+	return ResolvedModel{}, fmt.Errorf("ambiguous model %q: available on multiple providers [%s] - use provider/model-id format", short, strings.Join(providers, ", "))
 }
 
 // ListProviderModels returns a slice of ResolvedModel for every model that supports the
@@ -121,18 +162,21 @@ func (ic *IndexedCatalog) findModel(sel Selector) (Model, string) {
 	}
 	// Try full key "provider/model-name" built from model name.
 	// If sel.Provider is set, prefer matching that provider.
+	var fallbackKeys []string
 	for key, model := range ic.Models {
 		if modelNameFromKey(key) == sel.Model {
 			if sel.Provider != "" && ProviderFromModelKey(key) == sel.Provider {
 				return model, key
 			}
+			// Collect candidates for fallback (when no provider-specific match)
+			fallbackKeys = append(fallbackKeys, key)
 		}
 	}
-	// Fall back to any provider if no exact match
-	for key, model := range ic.Models {
-		if modelNameFromKey(key) == sel.Model {
-			return model, key
-		}
+	// Fall back to any provider. Use deterministic order.
+	if len(fallbackKeys) > 0 {
+		sort.Strings(fallbackKeys)
+		key := fallbackKeys[0]
+		return ic.Models[key], key
 	}
 	return Model{}, ""
 }
