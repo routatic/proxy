@@ -24,8 +24,7 @@ run:
 	go run -ldflags "$(LDFLAGS)" $(CMD)
 
 test:
-	go test ./internal/... ./pkg/... -v -race
-	go test ./cmd/routatic-proxy/... -v -race -exclude=github.com/routatic/proxy/internal/tray
+	go test ./internal/... ./pkg/... ./cmd/... -v -race
 
 vet:
 	go vet ./...
