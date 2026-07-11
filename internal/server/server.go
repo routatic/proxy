@@ -23,6 +23,7 @@ import (
 	"github.com/routatic/proxy/internal/provider"
 	"github.com/routatic/proxy/internal/router"
 	"github.com/routatic/proxy/internal/status"
+	"github.com/routatic/proxy/internal/storage"
 	"github.com/routatic/proxy/internal/token"
 )
 
@@ -36,6 +37,8 @@ type Server struct {
 	levelVar *slog.LevelVar
 	History  *history.History // exported so the ui command can read it
 	metrics  *metrics.Metrics // stored for Metrics() getter
+	storage  *storage.Database
+	retention *storage.Retention
 }
 
 // NewServer creates a new proxy server.
@@ -74,6 +77,29 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 
 	// Create history ring buffer (1000 entries, in-memory).
 	hist := history.New(1000)
+
+	// Initialize SQLite storage if configured.
+	var db *storage.Database
+	var retention *storage.Retention
+	storageCfg := storage.DefaultConfig
+	if cfg.Storage != nil {
+		storageCfg = storage.Config{
+			DatabasePath:    cfg.Storage.DatabasePath,
+			RetentionDays:   cfg.Storage.RetentionDays,
+			VacuumOnStartup: cfg.Storage.VacuumOnStartup,
+			WALEnabled:      cfg.Storage.WALEnabled,
+		}
+	}
+	if storageCfg.DatabasePath != "" {
+		db, err = storage.Open(storageCfg)
+		if err != nil {
+			logger.Warn("failed to open storage database, falling back to in-memory", "error", err)
+		} else {
+			logger.Info("storage database opened", "path", db.Path())
+			retention = storage.NewRetention(db, storageCfg.RetentionDays)
+			retention.Start()
+		}
+	}
 
 	// Create handlers.
 	messagesHandler := handlers.NewMessagesHandler(
@@ -114,13 +140,15 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	}
 
 	srv := &Server{
-		atomic:   atomic,
-		httpSrv:  httpSrv,
-		mux:      mux,
-		logger:   logger,
-		levelVar: levelVar,
-		History:  hist,
-		metrics:  metrics,
+		atomic:    atomic,
+		httpSrv:   httpSrv,
+		mux:       mux,
+		logger:    logger,
+		levelVar:  levelVar,
+		History:   hist,
+		metrics:   metrics,
+		storage:   db,
+		retention: retention,
 	}
 
 	// Register callback to update log level on config reload
@@ -164,6 +192,14 @@ func (s *Server) Start() error {
 	go func() {
 		<-ctx.Done()
 		s.logger.Info("shutting down server...")
+
+		if s.retention != nil {
+			s.retention.Stop()
+		}
+
+		if s.storage != nil {
+			s.storage.Close()
+		}
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
