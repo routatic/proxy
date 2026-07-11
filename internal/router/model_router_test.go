@@ -651,6 +651,21 @@ func TestRoute_CanonicalAndShortRefs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Verify catalog loads correctly
+			cat, err := catalog.Load(catalogPath)
+			if err != nil {
+				t.Fatalf("failed to load catalog: %v", err)
+			}
+			if _, ok := cat.Providers["openrouter"]; !ok {
+				t.Fatalf("catalog missing openrouter provider, got providers: %v", func() []string {
+					var keys []string
+					for k := range cat.Providers {
+						keys = append(keys, k)
+					}
+					return keys
+				}())
+			}
+			
 			router := NewModelRouterWithCatalog(atomic, catalogPath)
 			result, err := router.Route([]MessageContent{{Role: "user", Content: "Hello"}}, 100, tt.requested)
 			if err != nil {

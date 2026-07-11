@@ -120,6 +120,15 @@ func (ic *IndexedCatalog) findModel(sel Selector) (Model, string) {
 		}
 	}
 	// Try full key "provider/model-name" built from model name.
+	// If sel.Provider is set, prefer matching that provider.
+	for key, model := range ic.Models {
+		if modelNameFromKey(key) == sel.Model {
+			if sel.Provider != "" && ProviderFromModelKey(key) == sel.Provider {
+				return model, key
+			}
+		}
+	}
+	// Fall back to any provider if no exact match
 	for key, model := range ic.Models {
 		if modelNameFromKey(key) == sel.Model {
 			return model, key
