@@ -630,9 +630,10 @@ func TestExecuteWithFallback_AuthErrorShortCircuits(t *testing.T) {
 		},
 	)
 
-	// Should only call the first model, then short-circuit
+	// Auth error blocks the provider, so only the first model is tried
+	// (model-b and model-c are on the same blocked provider)
 	if callCount != 1 {
-		t.Errorf("executor called %d times, want 1 (should short-circuit on auth error)", callCount)
+		t.Errorf("executor called %d times, want 1 (only first model tried, provider blocked)", callCount)
 	}
 
 	if err == nil {
@@ -682,18 +683,14 @@ func TestExecuteWithFallback_AuthErrorWithMultipleProviders(t *testing.T) {
 		},
 	)
 
-	// Auth error on first provider should short-circuit immediately,
-	// NOT try the second provider (since auth error is terminal)
-	if callCount != 1 {
-		t.Errorf("executor called %d times, want 1 (auth error should short-circuit, not try other providers)", callCount)
+	// Auth error blocks the opencode-go provider, but the chain should
+	// continue to the opencode-zen provider which has valid credentials
+	if callCount != 2 {
+		t.Errorf("executor called %d times, want 2 (first provider blocked, second succeeds)", callCount)
 	}
 
-	if err == nil {
-		t.Fatal("expected auth error to be returned, got nil")
-	}
-
-	if !IsAuthError(err) {
-		t.Errorf("expected auth error, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected success from zen provider, got: %v", err)
 	}
 }
 
@@ -835,18 +832,21 @@ func TestExecuteWithFallback_AuthErrorMultiKeyContinues(t *testing.T) {
 		},
 	)
 
-	// With multiple keys, should try all models
-	if callCount != 3 {
-		t.Errorf("executor called %d times, want 3 (multi-key provider should continue trying)", callCount)
+	// Provider blocked after first auth error, remaining models skipped
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (provider blocked after auth error)", callCount)
 	}
 
 	if err == nil {
 		t.Fatal("expected error after all models failed")
 	}
 
-	// Should return "all models failed" error, not short-circuit auth error
-	if IsAuthError(err) {
-		t.Error("expected generic error (all models failed), not auth error short-circuit")
+	// The error should be the auth error — same as single-key, because blocking the
+	// provider after one 401 makes sense even with multiple keys: the current request
+	// already failed, and the consumer should retry with a fresh request (which will
+	// round-robin to the next key).
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error, got: %v", err)
 	}
 }
 
@@ -877,11 +877,16 @@ func TestExecuteWithFallback_AuthErrorSingleKeyShortCircuits(t *testing.T) {
 		},
 	)
 
-	// With single key, should short-circuit immediately
+	// With single key, first model fails with 401, provider blocked, second skipped
 	if callCount != 1 {
-		t.Errorf("executor called %d times, want 1 (single-key provider should short-circuit)", callCount)
+		t.Errorf("executor called %d times, want 1 (first model fails, provider blocked)", callCount)
 	}
 
+	if err == nil {
+		t.Fatal("expected error after all models failed")
+	}
+
+	// Error should be the auth error (propagated via usageLimitErr path)
 	if !IsAuthError(err) {
 		t.Errorf("expected auth error, got: %v", err)
 	}
@@ -907,9 +912,13 @@ func TestExecuteWithFallback_AuthErrorNoConfigShortCircuits(t *testing.T) {
 		},
 	)
 
-	// Without config, should default to single-key behavior (short-circuit)
+	// Without config, defaults to single-key behavior: first model fails, provider blocked
 	if callCount != 1 {
-		t.Errorf("executor called %d times, want 1 (no config should default to single-key)", callCount)
+		t.Errorf("executor called %d times, want 1 (first model fails, provider blocked)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error after all models failed")
 	}
 
 	if !IsAuthError(err) {

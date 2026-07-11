@@ -276,32 +276,30 @@ func (h *FallbackHandler) ExecuteWithFallback(
 		}
 
 		// Auth errors (401/403) indicate invalid credentials.
-		// Since all models from the same provider share the same API key,
-		// fallback attempts will fail identically. Short-circuit immediately.
-		// However, if the provider has multiple keys, the next model might use
-		// a different key, so we should continue trying.
+		// Block the provider so its remaining models are skipped (they
+		// share the same API key), but continue the chain in case another
+		// provider uses different credentials. If the provider has multiple
+		// API keys, the next attempt might use a different key — let the
+		// fallback consumer try by passing through the auth error.
 		if IsAuthError(err) {
 			keyCount := client.ProviderKeyCount(h.atomicCfg, provider)
 			if keyCount <= 1 {
-				h.logger.Warn("authentication error, short-circuiting fallback chain",
+				h.logger.Warn("authentication error, blocking provider",
 					"provider", provider,
 					"model", model.ModelID,
 					"error", err,
 				)
-				return &FallbackResult{
-					ModelID:     model.ModelID,
-					Success:     false,
-					Attempted:   i + 1,
-					TotalModels: totalModels,
-				}, nil, err
+			} else {
+				h.logger.Warn("authentication error, but provider has multiple keys, continuing",
+					"provider", provider,
+					"model", model.ModelID,
+					"key_count", keyCount,
+					"error", err,
+				)
 			}
-			// Multiple keys - continue trying other models (they might use a different key)
-			h.logger.Warn("authentication error, but provider has multiple keys, continuing fallback",
-				"provider", provider,
-				"model", model.ModelID,
-				"key_count", keyCount,
-				"error", err,
-			)
+			blockedProviders[provider] = true
+			usageLimitErr = err
+			continue
 		}
 
 		if IsRetryableError(err) {
