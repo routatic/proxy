@@ -1,11 +1,9 @@
 package gui
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/routatic/proxy/internal/history"
 	"github.com/routatic/proxy/internal/metrics"
 )
 
@@ -80,24 +78,13 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePerformanceAggregate(w http.ResponseWriter, r *http.Request) {
 	rangeParam := r.URL.Query().Get("range")
-	var since time.Time
-	switch rangeParam {
-	case "1h":
-		since = time.Now().Add(-1 * time.Hour)
-	case "24h":
-		since = time.Now().Add(-24 * time.Hour)
-	case "7d":
-		since = time.Now().Add(-7 * 24 * time.Hour)
-	default:
-		since = time.Time{}
-	}
+	_ = rangeParam
 
 	type aggregate struct {
 		TotalRequests int64 `json:"total_requests"`
 		TotalSuccess  int64 `json:"total_success"`
 		TotalFailed   int64 `json:"total_failed"`
 		AvgLatencyMs  int64 `json:"avg_latency_ms"`
-		ConnectionTime time.Time `json:"connection_time"`
 	}
 
 	agg := aggregate{}

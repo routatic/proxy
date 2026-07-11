@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -463,6 +464,71 @@ func (s *Server) handleCatalogSync(w http.ResponseWriter, r *http.Request) {
 		AgeSeconds: int64(age.Seconds()),
 		Synced:     true,
 	})
+}
+
+func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send initial connection message
+	fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
+	flusher.Flush()
+
+	// Subscribe to logs
+	ch := s.logBuffer.Subscribe()
+	defer s.logBuffer.Unsubscribe(ch)
+
+	// Send last 50 logs
+	lastLogs := s.logBuffer.Last(50)
+	for _, entry := range lastLogs {
+		jsonData, _ := json.Marshal(entry)
+		fmt.Fprintf(w, "event: log\ndata: %s\n\n", jsonData)
+	}
+	flusher.Flush()
+
+	// Stream new logs
+	ctx := r.Context()
+	for {
+		select {
+		case entry := <-ch:
+			jsonData, _ := json.Marshal(entry)
+			fmt.Fprintf(w, "event: log\ndata: %s\n\n", jsonData)
+			flusher.Flush()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *Server) handleLogsHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	n := 200
+	if nStr := r.URL.Query().Get("n"); nStr != "" {
+		if num, err := strconv.Atoi(nStr); err == nil && num > 0 {
+			n = num
+		}
+	}
+
+	level := LogLevel(r.URL.Query().Get("level"))
+	if level == "" {
+		level = LogLevelInfo
+	}
+
+	logs := s.logBuffer.Last(n)
+	writeJSON(w, logs)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

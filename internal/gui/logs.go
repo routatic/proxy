@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -123,11 +124,11 @@ func NewLogHandler(buffer *LogBuffer, level slog.Level) *LogHandler {
 	}
 }
 
-func (h *LogHandler) Enabled(_ slog.Level) bool {
+func (h *LogHandler) Enabled(_ context.Context, _ slog.Level) bool {
 	return true
 }
 
-func (h *LogHandler) Handle(r slog.Record) error {
+func (h *LogHandler) Handle(_ context.Context, r slog.Record) error {
 	var level LogLevel
 	switch {
 	case r.Level >= slog.LevelError:
