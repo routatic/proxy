@@ -314,7 +314,10 @@ Without --provider, a default config optimized for OpenCode Go is created.`,
 			// Create SQLite database directory and initialize database.
 			dbPath := storage.DefaultConfig.DatabasePath
 		if strings.HasPrefix(dbPath, "~\/") {
-				home, _ := os.UserHomeDir()
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to resolve home directory: %w", err)
+			}
 				dbPath = filepath.Join(home, dbPath[2:])
 			}
 			if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
