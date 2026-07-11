@@ -275,8 +275,8 @@ The --provider flag pre-configures the config with provider-specific defaults:
 
 Without --provider, a default config optimized for OpenCode Go is created.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			configDir := getConfigDir()
-			configPath := filepath.Join(configDir, "config.json")
+			// Resolve config path, respecting ROUTATIC_PROXY_CONFIG env var.
+			configPath := config.ResolveConfigPath()
 
 			// Check if config already exists
 			if _, err := os.Stat(configPath); err == nil {
@@ -285,7 +285,7 @@ Without --provider, a default config optimized for OpenCode Go is created.`,
 				return nil
 			}
 
-			if err := os.MkdirAll(configDir, 0700); err != nil {
+			if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 				return fmt.Errorf("failed to create config directory: %w", err)
 			}
 
