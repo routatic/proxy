@@ -103,17 +103,31 @@ func (ic *IndexedCatalog) resolveFromMatches(short string, matches []string) (Re
 	sort.Strings(matches)
 
 	var enabled []string
+	var missingProviders []string
+	var disabledProviders []string
+
 	for _, key := range matches {
 		providerName := ProviderFromModelKey(key)
-		if provider, ok := ic.Providers[providerName]; ok {
-			if provider.Enabled == nil || *provider.Enabled {
-				enabled = append(enabled, key)
-			}
+		provider, ok := ic.Providers[providerName]
+		if !ok {
+			missingProviders = append(missingProviders, providerName)
+			continue
 		}
+		if provider.Enabled != nil && !*provider.Enabled {
+			disabledProviders = append(disabledProviders, providerName)
+			continue
+		}
+		enabled = append(enabled, key)
 	}
 
 	if len(enabled) == 0 {
-		return ResolvedModel{}, fmt.Errorf("model %q exists but all providers are disabled", short)
+		if len(missingProviders) > 0 && len(disabledProviders) == 0 {
+			return ResolvedModel{}, fmt.Errorf("model %q exists but provider(s) %q not found in catalog", short, strings.Join(missingProviders, ", "))
+		}
+		if len(disabledProviders) > 0 && len(missingProviders) == 0 {
+			return ResolvedModel{}, fmt.Errorf("model %q exists but all providers %q are disabled", short, strings.Join(disabledProviders, ", "))
+		}
+		return ResolvedModel{}, fmt.Errorf("model %q exists but providers %q not found and providers %q are disabled", short, strings.Join(missingProviders, ", "), strings.Join(disabledProviders, ", "))
 	}
 
 	if len(enabled) == 1 {
