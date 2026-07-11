@@ -588,7 +588,6 @@ func selectProviders(provider string, cfg *config.Config) []string {
 	return enabled
 }
 
-
 // autostartCmd returns the command to manage autostart on login.
 func autostartCmd() *cobra.Command {
 	cmd := &cobra.Command{

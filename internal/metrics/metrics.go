@@ -29,18 +29,18 @@ type Metrics struct {
 	modelMu     sync.RWMutex
 
 	// Per-model latency tracking
-	modelLatencies map[string][]time.Duration
-	modelLatMu     sync.RWMutex
+	modelLatencies     map[string][]time.Duration
+	modelLatMu         sync.RWMutex
 	maxPerModelSamples int
 }
 
 // New creates a new metrics instance.
 func New() *Metrics {
 	return &Metrics{
-		maxLatencySamples: 1000,
+		maxLatencySamples:  1000,
 		maxPerModelSamples: 100,
-		modelCounts:       make(map[string]*atomic.Int64),
-		modelLatencies:    make(map[string][]time.Duration),
+		modelCounts:        make(map[string]*atomic.Int64),
+		modelLatencies:     make(map[string][]time.Duration),
 	}
 }
 
@@ -151,14 +151,14 @@ type Snapshot struct {
 
 // ModelLatencyStats holds latency statistics for a single model.
 type ModelLatencyStats struct {
-	Model    string
-	Count    int64
-	Avg      time.Duration
-	P50      time.Duration
-	P90      time.Duration
-	P99      time.Duration
-	Min      time.Duration
-	Max      time.Duration
+	Model string
+	Count int64
+	Avg   time.Duration
+	P50   time.Duration
+	P90   time.Duration
+	P99   time.Duration
+	Min   time.Duration
+	Max   time.Duration
 }
 
 // GetModelLatencyStats returns latency statistics for all models.

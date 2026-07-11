@@ -74,16 +74,16 @@ func New(opts Options) *Server {
 		opts.Logger = slog.Default()
 	}
 	s := &Server{
-		hist:              opts.History,
-		met:               opts.Metrics,
-		atomicCfg:         opts.AtomicConfig,
-		proxyPort:         opts.ProxyPort,
-		startProxy:        opts.StartProxy,
-		stopProxy:         opts.StopProxy,
-		catalogDir:        opts.CatalogDir,
-		catalogSourceURL:  opts.CatalogSourceURL,
-		logger:            opts.Logger,
-		logBuffer:         NewLogBuffer(1000),
+		hist:             opts.History,
+		met:              opts.Metrics,
+		atomicCfg:        opts.AtomicConfig,
+		proxyPort:        opts.ProxyPort,
+		startProxy:       opts.StartProxy,
+		stopProxy:        opts.StopProxy,
+		catalogDir:       opts.CatalogDir,
+		catalogSourceURL: opts.CatalogSourceURL,
+		logger:           opts.Logger,
+		logBuffer:        NewLogBuffer(1000),
 	}
 	// Check initial autostart state.
 	s.cfg.Autostart = isAutostartEnabled()

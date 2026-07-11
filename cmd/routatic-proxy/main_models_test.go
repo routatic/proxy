@@ -13,14 +13,14 @@ import (
 // catalogFixture is a minimal catalog with three providers and one model each.
 const catalogFixture = `{
   "providers": {
-    "opencode-go": {"name": "opencode-go", "base_url": "https://opencode.ai/zen/go/v1/chat/completions"},
-    "opencode-zen": {"name": "opencode-zen", "base_url": "https://opencode.ai/zen/v1/chat/completions"},
-    "openrouter": {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1"}
+    "opencode-go": {"name": "opencode-go", "base_url": "https://opencode.ai/zen/go/v1/chat/completions", "enabled": true},
+    "opencode-zen": {"name": "opencode-zen", "base_url": "https://opencode.ai/zen/v1/chat/completions", "enabled": true},
+    "openrouter": {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1", "enabled": true}
   },
   "models": {
-    "model-go": {"name": "model-go", "providers": ["opencode-go"]},
-    "model-zen": {"name": "model-zen", "providers": ["opencode-zen"]},
-    "model-router": {"name": "model-router", "providers": ["openrouter"]}
+    "opencode-go/model-go": {"id": "opencode-go/model-go", "name": "Model Go"},
+    "opencode-zen/model-zen": {"id": "opencode-zen/model-zen", "name": "Model Zen"},
+    "openrouter/model-router": {"id": "openrouter/model-router", "name": "Model Router"}
   }
 }`
 

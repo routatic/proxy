@@ -28,30 +28,30 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type modelPerf struct {
-		Model    string `json:"model"`
-		Count    int64  `json:"count"`
-		Success  int64  `json:"success"`
-		Failed   int64  `json:"failed"`
-		AvgMs    int64  `json:"avg_ms"`
-		P50Ms    int64  `json:"p50_ms"`
-		P90Ms    int64  `json:"p90_ms"`
-		P99Ms    int64  `json:"p99_ms"`
-		MinMs    int64  `json:"min_ms"`
-		MaxMs    int64  `json:"max_ms"`
+		Model   string `json:"model"`
+		Count   int64  `json:"count"`
+		Success int64  `json:"success"`
+		Failed  int64  `json:"failed"`
+		AvgMs   int64  `json:"avg_ms"`
+		P50Ms   int64  `json:"p50_ms"`
+		P90Ms   int64  `json:"p90_ms"`
+		P99Ms   int64  `json:"p99_ms"`
+		MinMs   int64  `json:"min_ms"`
+		MaxMs   int64  `json:"max_ms"`
 	}
 
 	result := make(map[string]modelPerf)
 
 	for _, stat := range modelStats {
 		perf := modelPerf{
-			Model:  stat.Model,
-			Count:  stat.Count,
-			AvgMs:  stat.Avg.Milliseconds(),
-			P50Ms:  stat.P50.Milliseconds(),
-			P90Ms:  stat.P90.Milliseconds(),
-			P99Ms:  stat.P99.Milliseconds(),
-			MinMs:  stat.Min.Milliseconds(),
-			MaxMs:  stat.Max.Milliseconds(),
+			Model:   stat.Model,
+			Count:   stat.Count,
+			AvgMs:   stat.Avg.Milliseconds(),
+			P50Ms:   stat.P50.Milliseconds(),
+			P90Ms:   stat.P90.Milliseconds(),
+			P99Ms:   stat.P99.Milliseconds(),
+			MinMs:   stat.Min.Milliseconds(),
+			MaxMs:   stat.Max.Milliseconds(),
 			Success: successCounts[stat.Model],
 			Failed:  failureCounts[stat.Model],
 		}

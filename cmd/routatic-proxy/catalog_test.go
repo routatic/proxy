@@ -77,10 +77,10 @@ func TestCatalogCmd_Help(t *testing.T) {
 func TestCatalogSyncCmd_Success(t *testing.T) {
 	catalogJSON := `{
   "models": {
-    "claude-sonnet-4": {"providers": ["openrouter"]}
+    "openrouter/claude-sonnet-4": {"id": "openrouter/claude-sonnet-4", "name": "Claude Sonnet 4"}
   },
   "providers": {
-    "openrouter": {"base_url": "https://openrouter.ai/api/v1"}
+    "openrouter": {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1", "enabled": true}
   }
 }`
 
@@ -160,10 +160,10 @@ func TestCatalogSyncCmd_ServerError(t *testing.T) {
 func TestServeCatalog_MissingSyncs(t *testing.T) {
 	catalogJSON := `{
   "models": {
-    "claude-sonnet-4": {"providers": ["openrouter"]}
+    "openrouter/claude-sonnet-4": {"id": "openrouter/claude-sonnet-4", "name": "Claude Sonnet 4"}
   },
   "providers": {
-    "openrouter": {"base_url": "https://openrouter.ai/api/v1"}
+    "openrouter": {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1", "enabled": true}
   }
 }`
 
@@ -203,10 +203,10 @@ func TestServeCatalog_MissingSyncs(t *testing.T) {
 func TestServeCatalog_ExpiredSyncs(t *testing.T) {
 	catalogJSON := `{
   "models": {
-    "claude-sonnet-4": {"providers": ["openrouter"]}
+    "openrouter/claude-sonnet-4": {"id": "openrouter/claude-sonnet-4", "name": "Claude Sonnet 4"}
   },
   "providers": {
-    "openrouter": {"base_url": "https://openrouter.ai/api/v1"}
+    "openrouter": {"name": "openrouter", "base_url": "https://openrouter.ai/api/v1", "enabled": true}
   }
 }`
 
