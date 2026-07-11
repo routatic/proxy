@@ -69,9 +69,9 @@ func (m Model) ContextWindow() int64 {
 	return 0
 }
 
-// providerFromModelKey extracts the provider name from a model key
+// ProviderFromModelKey extracts the provider name from a model key
 // of the form "provider/model-name". Returns "" if no separator found.
-func providerFromModelKey(key string) string {
+func ProviderFromModelKey(key string) string {
 	idx := strings.IndexByte(key, '/')
 	if idx < 0 {
 		return ""

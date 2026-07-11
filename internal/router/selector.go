@@ -98,10 +98,10 @@ func (s *Selector) resolveCandidates(scen catalog.Scenario, constraints Scenario
 			continue
 		}
 		for modelKey, model := range s.catalog.Models {
-			if !modelSupportsProvider(model, providerName) {
+			if !modelSupportsProvider(modelKey, providerName) {
 				continue
 			}
-			if maxContext > 0 && model.ContextWindow > maxContext {
+			if maxContext > 0 && model.ContextWindow() > maxContext {
 				continue
 			}
 			if !modelMatches(model, scen, constraints, minContext) {
@@ -111,15 +111,15 @@ func (s *Selector) resolveCandidates(scen catalog.Scenario, constraints Scenario
 				Provider:               provider.Name,
 				ModelID:                modelKey,
 				CanonicalName:          modelKey,
-				DisplayName:            model.DisplayName,
+				DisplayName:            model.DisplayName(),
 				BaseURL:                provider.BaseURL,
 				APIKey:                 provider.APIKey,
 				AnthropicToolsDisabled: provider.AnthropicToolsDisabled,
-				ContextWindow:          model.ContextWindow,
-				CostInputPerM:          model.CostInputPerM,
-				CostOutputPerM:         model.CostOutputPerM,
-				Tools:                  model.Tools,
-				Vision:                 model.Vision,
+				ContextWindow:          model.ContextWindow(),
+				CostInputPerM:          0,
+				CostOutputPerM:         0,
+				Tools:                  model.SupportsTools(),
+				Vision:                 model.SupportsVision(),
 				Reasoning:              model.Reasoning,
 			})
 		}
@@ -192,27 +192,27 @@ func (s *Selector) globalPreferProviders() []string {
 	return s.cfg.CostRouting.PreferProviders
 }
 
-func modelSupportsProvider(model catalog.Model, provider string) bool {
-	return slices.Contains(model.Providers, provider)
+func modelSupportsProvider(modelKey string, provider string) bool {
+	return catalog.ProviderFromModelKey(modelKey) == provider
 }
 
 func modelMatches(model catalog.Model, scen catalog.Scenario, constraints ScenarioConstraints, minContext int64) bool {
-	if model.ContextWindow < minContext {
+	if model.ContextWindow() < minContext {
 		return false
 	}
-	if scen.RequiresTools != nil && *scen.RequiresTools && !model.Tools {
+	if scen.RequiresTools != nil && *scen.RequiresTools && !model.SupportsTools() {
 		return false
 	}
-	if scen.RequiresVision != nil && *scen.RequiresVision && !model.Vision {
+	if scen.RequiresVision != nil && *scen.RequiresVision && !model.SupportsVision() {
 		return false
 	}
 	if scen.RequiresReasoning != nil && *scen.RequiresReasoning && !model.Reasoning {
 		return false
 	}
-	if constraints.Tools && !model.Tools {
+	if constraints.Tools && !model.SupportsTools() {
 		return false
 	}
-	if constraints.Vision && !model.Vision {
+	if constraints.Vision && !model.SupportsVision() {
 		return false
 	}
 	if constraints.Reasoning && !model.Reasoning {

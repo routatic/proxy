@@ -43,7 +43,7 @@ func Load(path string) (*IndexedCatalog, error) {
 	}
 
 	for key, model := range catalog.Models {
-		provider := providerFromModelKey(key)
+		provider := ProviderFromModelKey(key)
 		if provider != "" {
 			idx.providerModels[provider] = append(idx.providerModels[provider], model)
 		}
@@ -61,7 +61,7 @@ func validateCatalog(catalog *Catalog) error {
 	}
 
 	for key := range catalog.Models {
-		provider := providerFromModelKey(key)
+		provider := ProviderFromModelKey(key)
 		if provider == "" {
 			return fmt.Errorf("model key %q does not include a provider prefix (expected format: provider/model)", key)
 		}

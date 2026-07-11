@@ -60,7 +60,7 @@ func (ic *IndexedCatalog) Resolve(sel Selector) (ResolvedModel, error) {
 		return ResolvedModel{}, fmt.Errorf("unknown model %q", sel.Model)
 	}
 
-	if providerFromModelKey(modelKey) != sel.Provider {
+	if ProviderFromModelKey(modelKey) != sel.Provider {
 		return ResolvedModel{}, fmt.Errorf("model %q is not available on provider %q", modelKey, sel.Provider)
 	}
 
@@ -123,7 +123,7 @@ func (ic *IndexedCatalog) findModel(sel Selector) (Model, string) {
 }
 
 func (ic *IndexedCatalog) resolveWithFirstEnabledProvider(model Model, key string) (ResolvedModel, error) {
-	providerName := providerFromModelKey(key)
+	providerName := ProviderFromModelKey(key)
 	if providerName == "" {
 		return ResolvedModel{}, fmt.Errorf("model key %q has no provider prefix", key)
 	}
