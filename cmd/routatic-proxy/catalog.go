@@ -162,29 +162,12 @@ func ensureCatalogSynced(cfg *config.Config, configPath string, now time.Time) e
 // ensureDatabase ensures the SQLite database exists and is initialized.
 // It creates the database directory and schema if missing.
 func ensureDatabase() error {
-	dbPath := storage.DefaultConfig.DatabasePath
-	if strings.HasPrefix(dbPath, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to resolve home directory: %w", err)
-		}
-		dbPath = filepath.Join(home, dbPath[2:])
-	}
-
-	if _, err := os.Stat(dbPath); err == nil {
-		return nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-		return fmt.Errorf("failed to create database directory: %w", err)
-	}
-
 	db, err := storage.Open(storage.DefaultConfig)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 	db.Close()
 
-	slog.Info("initialized sqlite database", "path", dbPath)
+	slog.Info("initialized sqlite database", "path", storage.DefaultConfig.DatabasePath)
 	return nil
 }
