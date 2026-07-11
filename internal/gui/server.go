@@ -166,6 +166,7 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 	mux.HandleFunc("/api/config/import", s.handleConfigImport)
 	mux.HandleFunc("/api/perf/models", s.handlePerformance)
 	mux.HandleFunc("/api/perf/aggregate", s.handlePerformanceAggregate)
+	mux.HandleFunc("/api/catalog/stats", s.handleCatalogStats)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -468,6 +469,81 @@ func (s *Server) handleCatalogSync(w http.ResponseWriter, r *http.Request) {
 		AgeSeconds: int64(age.Seconds()),
 		Synced:     true,
 	})
+}
+
+func (s *Server) handleCatalogStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.storage == nil {
+		writeJSON(w, map[string]any{
+			"available": false,
+			"error":     "storage not configured",
+		})
+		return
+	}
+
+	repo := storage.NewCatalogRepo(s.storage)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	idx, err := repo.Load(ctx)
+	if err != nil {
+		writeJSON(w, map[string]any{
+			"available": false,
+			"error":     err.Error(),
+		})
+		return
+	}
+
+	lastSync, _ := repo.LastSync(ctx)
+
+	providersByEnabled := make(map[string]int)
+	for _, p := range idx.Providers {
+		enabled := "disabled"
+		if p.Enabled != nil && *p.Enabled {
+			enabled = "enabled"
+		}
+		providersByEnabled[enabled]++
+	}
+
+	modelsByProvider := make(map[string]int)
+	for prov := range idx.Providers {
+		modelsByProvider[prov] = len(idx.ProviderModels[prov])
+	}
+
+	totalModels := len(idx.Models)
+	modelsWithTools := 0
+	modelsWithVision := 0
+	modelsWithReasoning := 0
+	for _, m := range idx.Models {
+		if m.ToolCall {
+			modelsWithTools++
+		}
+		if m.Vision {
+			modelsWithVision++
+		}
+		if m.Reasoning {
+			modelsWithReasoning++
+		}
+	}
+
+	resp := map[string]any{
+		"available":           true,
+		"last_sync":           lastSync,
+		"total_providers":     len(idx.Providers),
+		"providers_enabled":   providersByEnabled["enabled"],
+		"providers_disabled":  providersByEnabled["disabled"],
+		"total_models":        totalModels,
+		"models_with_tools":   modelsWithTools,
+		"models_with_vision":  modelsWithVision,
+		"models_with_reasoning": modelsWithReasoning,
+		"models_by_provider":  modelsByProvider,
+	}
+
+	writeJSON(w, resp)
 }
 
 func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
