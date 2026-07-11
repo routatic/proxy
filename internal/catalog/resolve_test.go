@@ -203,15 +203,15 @@ func TestResolve_ModelNotOnProvider(t *testing.T) {
 func TestResolveShort_Legacy(t *testing.T) {
 	ic := newFixtureCatalog()
 
-	got, err := ic.ResolveShort("kimi-k2.6")
+	got, err := ic.ResolveShort("DeepSeek V4 Flash")
 	if err != nil {
-		t.Fatalf("ResolveShort(%q) unexpected error: %v", "kimi-k2.6", err)
+		t.Fatalf("ResolveShort(%q) unexpected error: %v", "DeepSeek V4 Flash", err)
 	}
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "opencode-go/kimi-k2.6" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/kimi-k2.6")
+	if got.ModelID != "opencode-go/deepseek-v4-flash" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/deepseek-v4-flash")
 	}
 }
 

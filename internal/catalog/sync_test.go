@@ -13,7 +13,7 @@ import (
 )
 
 func TestSync(t *testing.T) {
-	validCatalog := `{"models":{"gpt-4":{"providers":["openai"]}},"providers":{"openai":{}}}`
+	validCatalog := `{"models":{"openai/gpt-4":{"id":"openai/gpt-4","name":"gpt-4"}},"providers":{"openai":{}}}`
 	validHash := sha256.Sum256([]byte(validCatalog))
 
 	cases := []struct {
@@ -32,7 +32,7 @@ func TestSync(t *testing.T) {
 		},
 		{
 			name:        "missing providers object returns error and leaves no catalog",
-			body:        `{"models":{"gpt-4":{}}}`,
+			body:        `{"models":{"openai/gpt-4":{"id":"openai/gpt-4"}}}`,
 			wantErr:     true,
 			wantLock:    false,
 			wantCatalog: false,
@@ -125,7 +125,6 @@ func TestSync(t *testing.T) {
 func TestSyncOversized(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Emit a valid-looking prefix so the size guard, not JSON parsing, fails.
 		prefix := []byte(`{"models":{`)
 		_, _ = w.Write(prefix)
 		padding := strings.Repeat("0", maxCatalogBytes+1)
@@ -184,7 +183,7 @@ func TestSyncMissingModels(t *testing.T) {
 func TestSyncCreatesDestDir(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"models":{"x":{"providers":["y"]}},"providers":{"y":{}}}`))
+		_, _ = w.Write([]byte(`{"models":{"y/x":{"id":"y/x","name":"x"}},"providers":{"y":{}}}`))
 	}))
 	defer server.Close()
 

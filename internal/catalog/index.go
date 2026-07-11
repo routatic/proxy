@@ -71,20 +71,6 @@ func BuildProviderIndex(catalog Catalog) (*ProviderModelIndex, error) {
 	// Sorting the keys is not required by the contract, but it makes the
 	// output deterministic and easier to test.
 	if len(providerModels) == 0 {
-		// Debug: print first few provider and model keys
-		fmt.Printf("DEBUG BuildProviderIndex: enabledCount=%d, providerModels len=0\n", enabledCount)
-		fmt.Printf("DEBUG Providers sample: ")
-		i := 0
-		for k := range catalog.Providers {
-			if i < 3 { fmt.Printf("%q ", k); i++ }
-		}
-		fmt.Println()
-		fmt.Printf("DEBUG Models sample: ")
-		i = 0
-		for k := range catalog.Models {
-			if i < 3 { fmt.Printf("%q ", k); i++ }
-		}
-		fmt.Println()
 		return nil, errors.New("no models reference enabled providers")
 	}
 

@@ -80,6 +80,12 @@ func (ic *IndexedCatalog) ResolveShort(short string) (ResolvedModel, error) {
 		}
 	}
 
+	for key, model := range ic.Models {
+		if modelNameFromKey(key) == short {
+			return ic.resolveWithFirstEnabledProvider(model, key)
+		}
+	}
+
 	return ResolvedModel{}, fmt.Errorf("unknown short model id: %q", short)
 }
 
