@@ -142,13 +142,8 @@ docker run -d --restart unless-stopped --name routatic-proxy \
 ### Initialize Configuration
 
 ```bash
-# Create default config file (OpenCode Go)
+# Create default config file
 routatic-proxy init
-
-# Or create a provider-specific config:
-routatic-proxy init --provider=openrouter
-routatic-proxy init --provider=aws-bedrock
-routatic-proxy init --provider=opencode-zen
 ```
 
 This creates `~/.config/routatic-proxy/config.json` with default settings.
