@@ -1,0 +1,9 @@
+version: "2"
+issues:
+  exclude-dirs:
+    - internal/tray
+linters:
+  default: none
+  enable:
+    - gofmt
+    - govet

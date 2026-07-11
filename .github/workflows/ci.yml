@@ -56,4 +56,4 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
-          args: --timeout 5m --exclude-dirs=internal/tray
+          args: --timeout 5m
