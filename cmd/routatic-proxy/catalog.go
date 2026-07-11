@@ -162,7 +162,7 @@ func ensureCatalogSynced(cfg *config.Config, configPath string, now time.Time) e
 // It creates the database directory and schema if missing.
 func ensureDatabase() error {
 	dbPath := storage.DefaultConfig.DatabasePath
-	if dbPath[:2] == "~/" {
+	if strings.HasPrefix(dbPath, "~/") {
 		home, _ := os.UserHomeDir()
 		dbPath = filepath.Join(home, dbPath[2:])
 	}
