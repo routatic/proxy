@@ -9,6 +9,7 @@ import (
 
 	"github.com/routatic/proxy/internal/catalog"
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -105,5 +106,32 @@ func ensureCatalogSynced(cfg *config.Config, configPath string, now time.Time) e
 	}
 
 	slog.Debug("catalog lock fresh, skipping sync", "catalog_dir", catalogDir, "synced_at", lock.SyncedAt)
+	return nil
+}
+
+// ensureDatabase ensures the SQLite database exists and is initialized.
+// It creates the database directory and schema if missing.
+func ensureDatabase() error {
+	dbPath := storage.DefaultConfig.DatabasePath
+	if dbPath[:2] == "~/" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, dbPath[2:])
+	}
+
+	if _, err := os.Stat(dbPath); err == nil {
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return fmt.Errorf("failed to create database directory: %w", err)
+	}
+
+	db, err := storage.Open(storage.DefaultConfig)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	db.Close()
+
+	slog.Info("initialized sqlite database", "path", dbPath)
 	return nil
 }

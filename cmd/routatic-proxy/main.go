@@ -96,6 +96,11 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("failed to sync catalog: %w", err)
 			}
 
+			// Ensure SQLite database exists.
+			if err := ensureDatabase(); err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
+			}
+
 			var captureLogger *debug.CaptureLogger
 			if cfg.Logging.DebugCapture != nil && cfg.Logging.DebugCapture.Enabled {
 				storage, err := debug.NewStorage(*cfg.Logging.DebugCapture)
@@ -359,6 +364,11 @@ func validateCmd() *cobra.Command {
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("invalid config: %w", err)
+			}
+
+			// Ensure SQLite database exists.
+			if err := ensureDatabase(); err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
 			}
 
 			fmt.Println("Configuration is valid!")
