@@ -136,7 +136,7 @@ func resolvedModelToConfig(resolved catalog.ResolvedModel) config.ModelConfig {
 	supportsTools := resolved.Tools
 	return config.ModelConfig{
 		Provider:      resolved.Provider,
-		ModelID:       catalog.ModelNameFromKey(resolved.ModelID),
+		ModelID:       resolved.ModelID,
 		ModelRef:      resolved.CanonicalName,
 		Vision:        resolved.Vision,
 		ContextWindow: int(resolved.ContextWindow),

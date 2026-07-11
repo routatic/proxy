@@ -108,7 +108,7 @@ func (s *Selector) resolveCandidates(scen catalog.Scenario, constraints Scenario
 			}
 			candidates = append(candidates, catalog.ResolvedModel{
 				Provider:               provider.Name,
-				ModelID:                modelKey,
+				ModelID:                catalog.ModelNameFromKey(modelKey),
 				CanonicalName:          modelKey,
 				DisplayName:            model.DisplayName(),
 				BaseURL:                provider.BaseURL,

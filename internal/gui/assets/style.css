@@ -467,6 +467,37 @@ input:checked + .toggle-slider::before {
   background: var(--border);
 }
 
+.btn-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.checkbox-inline input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.btn-primary.btn-small {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.btn-primary.btn-small:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 .save-status {
   margin-top: 10px;
   font-size: 12px;
@@ -910,4 +941,400 @@ input:checked + .toggle-slider::before {
   background: var(--surface2);
   border-radius: var(--radius-sm);
   font-family: monospace;
+}
+
+/* ── Fallback Chain Editor ──────────────────────────────────────── */
+.fallback-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+}
+
+.fallback-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.fallback-toolbar .form-group {
+  flex: 0 0 auto;
+}
+
+.fallback-toolbar label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+  display: block;
+  color: var(--text);
+}
+
+.fallback-toolbar select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  min-width: 180px;
+  cursor: pointer;
+}
+
+.fallback-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.fallback-chain-container {
+  margin-top: var(--space-3);
+}
+
+.fallback-chain-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.fallback-chain {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  min-height: 60px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.fallback-chain.has-items {
+  border-style: solid;
+  background: transparent;
+}
+
+.fallback-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3);
+  margin: var(--space-1) 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.fallback-item:first-child {
+  margin-top: 0;
+}
+
+.fallback-item:last-child {
+  margin-bottom: 0;
+}
+
+.fallback-item:hover {
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.fallback-item:active {
+  cursor: grabbing;
+}
+
+.fallback-item.dragging {
+  opacity: 0.5;
+  background: var(--surface);
+}
+
+.fallback-item.drag-over {
+  border-top: 2px solid var(--accent);
+}
+
+.fallback-item .handle {
+  margin-right: var(--space-2);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.fallback-item .model-name {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.fallback-item .model-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: var(--space-2);
+}
+
+.fallback-item .remove-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+  background: none;
+  border: none;
+  padding: var(--space-1);
+  cursor: pointer;
+  color: var(--error);
+  font-size: 16px;
+  border-radius: var(--radius-sm);
+}
+
+.fallback-item:hover .remove-btn {
+  opacity: 1;
+}
+
+.fallback-item .remove-btn:hover {
+  background: rgba(220, 53, 69, 0.1);
+}
+
+.fallback-preview {
+  margin-top: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+}
+
+.fallback-preview-header {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.fallback-preview-chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.fallback-preview-model {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.fallback-preview-model.primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.fallback-preview-arrow {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+/* ── Quick Model Test Modal ───────────────────────────────────── */
+.test-modal-content {
+  max-width: 800px;
+}
+
+.test-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.test-toolbar .filter-select {
+  flex: 1;
+}
+
+.test-prompt-wrap {
+  position: relative;
+  margin-bottom: var(--space-3);
+}
+
+#test-prompt {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#test-prompt:focus {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+}
+
+#test-prompt::placeholder {
+  color: var(--text-muted);
+}
+
+.test-history-hint {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0.6;
+}
+
+.test-history-hint span {
+  padding: 2px 6px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.test-history-hint span:hover {
+  opacity: 1;
+  background: var(--border);
+}
+
+.test-response {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-height: 150px;
+  max-height: 400px;
+  overflow: auto;
+  margin-bottom: var(--space-3);
+}
+
+.test-response pre {
+  margin: 0;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: var(--text-xs);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.test-response.loading {
+  opacity: 0.6;
+}
+
+.test-response.error pre {
+  color: var(--error);
+}
+
+.test-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.test-metrics {
+  display: flex;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.test-metrics strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+#btn-test-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#btn-test-copy.copied {
+  background: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+/* ── Performance Table ───────────────────────────────────────────── */
+.perf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+
+.perf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.perf-table th,
+.perf-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.perf-table th {
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+
+.perf-table td {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.perf-table tr:hover td {
+  background: var(--surface2);
+}
+
+.perf-model {
+  font-weight: 500;
+}
+
+.latency-cell {
+  font-family: monospace;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.latency-fast {
+  background: rgba(40, 167, 69, 0.15);
+  color: var(--success);
+}
+
+.latency-medium {
+  background: rgba(253, 126, 20, 0.15);
+  color: var(--warning);
+}
+
+.latency-slow {
+  background: rgba(220, 53, 69, 0.15);
+  color: var(--error);
+}
+
+.success-rate {
+  color: var(--success);
+  font-weight: 500;
+}
+
+.error-rate {
+  color: var(--error);
+  font-weight: 500;
 }

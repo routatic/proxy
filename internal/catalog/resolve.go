@@ -146,7 +146,7 @@ func (ic *IndexedCatalog) resolveWithFirstEnabledProvider(model Model, key strin
 func resolvedModel(provider Provider, modelKey string, model Model) ResolvedModel {
 	return ResolvedModel{
 		Provider:               provider.Name,
-		ModelID:                modelKey,
+		ModelID:                modelNameFromKey(modelKey),
 		CanonicalName:          modelKey,
 		DisplayName:            model.DisplayName(),
 		BaseURL:                provider.BaseURL,

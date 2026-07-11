@@ -35,6 +35,8 @@
   <nav class="tabs">
     <button class="tab active" data-tab="overview" data-i18n="tab.overview">Overview</button>
     <button class="tab" data-tab="history" data-i18n="tab.history">History</button>
+    <button class="tab" data-tab="performance" data-i18n="tab.performance">Performance</button>
+    <button class="tab" data-tab="fallback" data-i18n="tab.fallback">Fallback</button>
     <button class="tab" data-tab="settings" data-i18n="tab.settings">Settings</button>
   </nav>
 
@@ -99,6 +101,74 @@
     </div>
   </div>
 
+  <!-- Logs Tab -->
+  <div class="tab-content" id="tab-logs">
+    <div class="log-toolbar">
+      <div class="log-toolbar-left">
+        <select class="filter-select" id="log-level-filter" aria-label="Filter by log level">
+          <option value="" data-i18n="logs.allLevels">All Levels</option>
+          <option value="debug">debug</option>
+          <option value="info" selected>info</option>
+          <option value="warn">warn</option>
+          <option value="error">error</option>
+        </select>
+        <input type="text" id="log-search" placeholder="Search logs..." aria-label="Search logs" class="log-search-input">
+      </div>
+      <div class="log-toolbar-right">
+        <label class="log-toggle">
+          <input type="checkbox" id="log-auto-scroll" checked>
+          <span data-i18n="logs.autoScroll">Auto-scroll</span>
+        </label>
+        <button class="btn btn-small" id="log-pause-btn" data-i18n="logs.pause">Pause</button>
+        <button class="btn btn-small" id="log-clear-btn" data-i18n="logs.clear">Clear</button>
+      </div>
+    </div>
+    <div class="log-container" id="log-container"></div>
+  </div>
+
+  <!-- Quick Model Test Modal -->
+  <div class="modal-overlay" id="test-modal" role="dialog" aria-labelledby="test-modal-title" aria-modal="true">
+    <div class="modal-content test-modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title" id="test-modal-title" data-i18n="test.title">Quick Model Test</h3>
+        <button class="modal-close" id="test-modal-close" aria-label="Close modal">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="test-toolbar">
+          <select id="test-model" class="filter-select" aria-label="Select model">
+            <option value="" data-i18n="test.selectModel">Select a model...</option>
+          </select>
+          <button class="btn btn-primary" id="btn-test-send" data-i18n="test.send">Send</button>
+        </div>
+        <div class="test-prompt-wrap">
+          <textarea id="test-prompt" placeholder="Enter your prompt..." rows="4" data-i18n-placeholder="test.promptPlaceholder" aria-label="Test prompt"></textarea>
+          <div class="test-history-hint" id="test-history-hint"></div>
+        </div>
+        <div class="test-response" id="test-response">
+          <pre></pre>
+        </div>
+        <div class="test-footer">
+          <div class="test-metrics">
+            <span data-i18n="test.latency">Latency:</span> <strong id="test-latency">--</strong>
+            <span data-i18n="test.tokens">Tokens:</span> <strong id="test-tokens">--</strong>
+          </div>
+          <button class="btn btn-small" id="btn-test-copy" data-i18n="test.copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- History Detail Modal -->
   <div class="modal-overlay" id="history-modal" role="dialog" aria-labelledby="modal-title" aria-modal="true">
     <div class="modal-content">
@@ -138,15 +208,84 @@
           <span class="command-item-label">Go to History</span>
           <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+2">⌘2</kbd></span>
         </div>
+        <div class="command-item" data-action="goto-performance" role="option" id="cmd-goto-performance">
+          <span class="command-item-label">Go to Performance</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+3">⌘3</kbd></span>
+        </div>
         <div class="command-item" data-action="goto-settings" role="option" id="cmd-goto-settings">
           <span class="command-item-label">Go to Settings</span>
-          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+3">⌘3</kbd></span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+4">⌘4</kbd></span>
         </div>
         <div class="command-item" data-action="refresh" role="option" id="cmd-refresh">
           <span class="command-item-label">Refresh Data</span>
           <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+R">⌘R</kbd></span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Performance Tab -->
+  <div class="tab-content" id="tab-performance">
+    <div class="perf-toolbar">
+      <select class="filter-select" id="perf-time-range" aria-label="Time range filter">
+        <option value="1h" data-i18n="perf.lastHour">Last Hour</option>
+        <option value="24h" data-i18n="perf.last24h">Last 24 Hours</option>
+        <option value="7d" data-i18n="perf.last7d">Last 7 Days</option>
+        <option value="all" selected data-i18n="perf.allTime">All Time</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="perf-table" role="grid">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="model" data-i18n="perf.th.model" aria-sort="none">Model <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="count" data-i18n="perf.th.count" aria-sort="none">Count <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="success_rate" data-i18n="perf.th.successRate" aria-sort="none">Success % <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="avg_ms" data-i18n="perf.th.avg" aria-sort="none">Avg (ms) <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="p50_ms" data-i18n="perf.th.p50" aria-sort="none">P50 <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="p90_ms" data-i18n="perf.th.p90" aria-sort="none">P90 <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-sort="p99_ms" data-i18n="perf.th.p99" aria-sort="none">P99 <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="perf-tbody">
+          <tr><td colspan="7" class="empty-state" data-i18n="empty.noData">No data yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Fallback Tab -->
+  <div class="tab-content" id="tab-fallback">
+    <div class="fallback-section">
+      <div class="fallback-toolbar">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="fallback-scenario" data-i18n="fallback.scenario">Scenario</label>
+          <select id="fallback-scenario" onchange="FallbackModule.onScenarioChange()">
+            <option value="default" data-i18n="fallback.default">Default</option>
+            <option value="streaming" data-i18n="fallback.streaming">Streaming</option>
+            <option value="long-context" data-i18n="fallback.longContext">Long Context</option>
+          </select>
+        </div>
+        <div class="fallback-actions">
+          <button class="btn btn-small" onclick="FallbackModule.preview()" data-i18n="fallback.preview">Preview</button>
+          <button class="btn btn-primary btn-small" onclick="FallbackModule.save()" data-i18n="fallback.save">Save</button>
+        </div>
+      </div>
+
+      <div class="fallback-chain-container">
+        <div class="fallback-chain-header">
+          <span data-i18n="fallback.chainOrder">Fallback Chain Order</span>
+          <button class="btn btn-small" onclick="FallbackModule.addModel()" data-i18n="fallback.addModel">+ Add Model</button>
+        </div>
+        <ul class="fallback-chain" id="fallback-chain" role="listbox" aria-label="Fallback chain models">
+          <li class="empty-state" data-i18n="fallback.empty">No models configured</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="fallback-preview" id="fallback-preview" style="display: none;">
+      <div class="fallback-preview-header" data-i18n="fallback.previewTitle">Fallback Chain Preview</div>
+      <div id="fallback-preview-content"></div>
     </div>
   </div>
 
@@ -203,6 +342,37 @@
             <div class="setting-desc" id="catalog-age" data-i18n="setting.catalogNotSynced">Catalog not synced</div>
           </div>
           <button class="btn btn-small" id="btn-refresh-catalog" onclick="refreshCatalog()" data-i18n="btn.refreshCatalog">Refresh catalog</button>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.testModel">Test Model</div>
+            <div class="setting-desc" data-i18n="setting.testModelDesc">Send a quick test request to verify model connectivity</div>
+          </div>
+          <button class="btn btn-small" id="btn-test-model" data-i18n="btn.testModel">Test Model</button>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.backup">Backup Configuration</div>
+            <div class="setting-desc" data-i18n="setting.backupDesc">Export current config as JSON file</div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-small" id="btn-export-config" data-i18n="btn.export">Export</button>
+            <label class="checkbox-inline">
+              <input type="checkbox" id="export-anonymize">
+              <span data-i18n="label.anonymize">Anonymize</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label" data-i18n="setting.restore">Restore Configuration</div>
+            <div class="setting-desc" data-i18n="setting.restoreDesc">Import config from JSON file</div>
+          </div>
+          <input type="file" id="import-file" accept=".json" style="display: none;">
+          <button class="btn btn-small" id="btn-import-config" data-i18n="btn.import">Import</button>
         </div>
       </div>
     </div>

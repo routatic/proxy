@@ -8,6 +8,7 @@ const TRANSLATIONS = {
     'status.connected': 'Connected',
     'tab.overview': 'Overview',
     'tab.history': 'History',
+    'tab.performance': 'Performance',
     'tab.settings': 'Settings',
     'metric.total': 'Total Requests',
     'metric.success': 'Success',
@@ -53,6 +54,36 @@ const TRANSLATIONS = {
     'badge.fail': 'Fail',
     'port.info': 'Listening port: —',
     'save.unloaded': 'Config not loaded, cannot save',
+    'perf.lastHour': 'Last Hour',
+    'perf.last24h': 'Last 24 Hours',
+    'perf.last7d': 'Last 7 Days',
+    'perf.allTime': 'All Time',
+    'perf.th.model': 'Model',
+    'perf.th.count': 'Count',
+    'perf.th.successRate': 'Success %',
+    'perf.th.avg': 'Avg (ms)',
+    'perf.th.p50': 'P50',
+    'perf.th.p90': 'P90',
+    'perf.th.p99': 'P99',
+    'perf.empty': 'No performance data',
+    'setting.backup': 'Backup Configuration',
+    'setting.backupDesc': 'Export current config as JSON file',
+    'setting.restore': 'Restore Configuration',
+    'setting.restoreDesc': 'Import config from JSON file',
+    'btn.export': 'Export',
+    'btn.import': 'Import',
+    'label.anonymize': 'Anonymize',
+    'status.exporting': 'Exporting...',
+    'status.exportOk': 'Config exported successfully!',
+    'status.exportFail': 'Export failed: ',
+    'status.importing': 'Importing...',
+    'status.importOk': 'Config imported successfully!',
+    'status.importFail': 'Import failed: ',
+    'status.importInvalid': 'Invalid config file',
+    'modal.importPreview': 'Import Preview',
+    'modal.importConfirm': 'Apply this configuration?',
+    'btn.apply': 'Apply',
+    'btn.cancel': 'Cancel',
   },
   zh: {
     'lang.toggle': 'English',
@@ -62,6 +93,7 @@ const TRANSLATIONS = {
     'status.connected': '已连接',
     'tab.overview': '概览',
     'tab.history': '历史请求',
+    'tab.performance': '性能',
     'tab.settings': '设置',
     'metric.total': '总请求数',
     'metric.success': '成功',
@@ -107,6 +139,24 @@ const TRANSLATIONS = {
     'badge.fail': '失败',
     'port.info': '监听端口：—',
     'save.unloaded': '未加载当前配置，无法保存',
+    'setting.backup': '备份配置',
+    'setting.backupDesc': '导出当前配置为 JSON 文件',
+    'setting.restore': '恢复配置',
+    'setting.restoreDesc': '从 JSON 文件导入配置',
+    'btn.export': '导出',
+    'btn.import': '导入',
+    'label.anonymize': '脱敏',
+    'status.exporting': '导出中...',
+    'status.exportOk': '配置导出成功！',
+    'status.exportFail': '导出失败：',
+    'status.importing': '导入中...',
+    'status.importOk': '配置导入成功！',
+    'status.importFail': '导入失败：',
+    'status.importInvalid': '无效的配置文件',
+    'modal.importPreview': '导入预览',
+    'modal.importConfirm': '应用此配置？',
+    'btn.apply': '应用',
+    'btn.cancel': '取消',
   }
 };
 
@@ -873,6 +923,130 @@ function initAccordions() {
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', initAccordions);
+
+/* ── Config Backup/Restore ─────────────────────────────────────── */
+async function exportConfig() {
+  const anonymize = document.getElementById('export-anonymize').checked;
+  const btn = document.getElementById('btn-export-config');
+  btn.disabled = true;
+  btn.textContent = t('status.exporting');
+
+  try {
+    const url = '/api/config/export?anonymize=' + anonymize;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = 'routatic-proxy-config.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+
+    showSaveStatus(t('status.exportOk'), 'success');
+  } catch (e) {
+    showSaveStatus(t('status.exportFail') + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('btn.export');
+    applyTranslations();
+  }
+}
+
+function importConfig() {
+  document.getElementById('import-file').click();
+}
+
+async function handleConfigImport(file) {
+  if (!file || file.type !== 'application/json') {
+    showSaveStatus(t('status.importInvalid'), 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-import-config');
+  btn.disabled = true;
+  btn.textContent = t('status.importing');
+
+  try {
+    const content = await file.text();
+    const config = JSON.parse(content);
+
+    const previewHtml = `
+      <div class="detail-row">
+        <span class="detail-label">${t('modal.importConfirm')}</span>
+      </div>
+      <pre style="max-height: 300px; overflow: auto; background: var(--surface2); padding: 12px; border-radius: var(--radius-sm); font-size: 11px; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(config, null, 2))}</pre>
+    `;
+
+    modalBody.innerHTML = previewHtml;
+    document.getElementById('modal-title').textContent = t('modal.importPreview');
+
+    const footerHtml = `
+      <div style="padding: 12px 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border);">
+        <button class="btn btn-small" id="btn-import-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-small btn-primary" id="btn-import-apply">${t('btn.apply')}</button>
+      </div>
+    `;
+
+    const existingFooter = modal.querySelector('.modal-footer');
+    if (existingFooter) existingFooter.remove();
+
+    modal.querySelector('.modal-content').insertAdjacentHTML('beforeend', footerHtml);
+
+    modal.classList.add('visible');
+
+    document.getElementById('btn-import-cancel').onclick = () => {
+      modal.classList.remove('visible');
+      const footer = modal.querySelector('.modal-footer');
+      if (footer) footer.remove();
+    };
+
+    document.getElementById('btn-import-apply').onclick = async () => {
+      try {
+        const response = await fetch('/api/config/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ config: config, apply: true })
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        modal.classList.remove('visible');
+        const footer = modal.querySelector('.modal-footer');
+        if (footer) footer.remove();
+
+        showSaveStatus(t('status.importOk'), 'success');
+        await loadProxyConfig();
+      } catch (e) {
+        showSaveStatus(t('status.importFail') + e.message, 'error');
+      }
+    };
+  } catch (e) {
+    showSaveStatus(t('status.importFail') + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('btn.import');
+    applyTranslations();
+    document.getElementById('import-file').value = '';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btn-export-config')?.addEventListener('click', exportConfig);
+  document.getElementById('btn-import-config')?.addEventListener('click', importConfig);
+  document.getElementById('import-file')?.addEventListener('change', function(e) {
+    if (e.target.files && e.target.files[0]) {
+      handleConfigImport(e.target.files[0]);
+    }
+  });
+});
 
 /* ── Boot ──────────────────────────────────────────────────────── */
 loadProxyConfig();
