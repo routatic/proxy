@@ -248,6 +248,59 @@ func TestResolveShort_DisabledProvider(t *testing.T) {
 	}
 }
 
+func TestResolveShort_AmbiguousModel(t *testing.T) {
+	ic := newFixtureCatalog()
+
+	_, err := ic.ResolveShort("kimi-k2.6")
+	if err == nil {
+		t.Fatal("ResolveShort: expected ambiguity error for model on multiple providers, got nil")
+	}
+	if !containsAll(err.Error(), "ambiguous", "kimi-k2.6", "opencode-go", "openrouter") {
+		t.Errorf("error message = %q, want mention of ambiguity and available providers", err.Error())
+	}
+}
+
+func TestResolveShort_UnambiguousWithSingleEnabledProvider(t *testing.T) {
+	ic := newFixtureCatalog()
+
+	provider := ic.Providers["openrouter"]
+	provider.Enabled = boolPtr(false)
+	ic.Providers["openrouter"] = provider
+
+	got, err := ic.ResolveShort("kimi-k2.6")
+	if err != nil {
+		t.Fatalf("ResolveShort: unexpected error: %v", err)
+	}
+	if got.Provider != "opencode-go" {
+		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
+	}
+	if got.ModelID != "kimi-k2.6" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "kimi-k2.6")
+	}
+}
+
+func containsAll(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if !contains(s, sub) {
+			return false
+		}
+	}
+	return true
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || containsAt(s, sub))
+}
+
+func containsAt(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestListProviderModels(t *testing.T) {
 	ic := newFixtureCatalog()
 
