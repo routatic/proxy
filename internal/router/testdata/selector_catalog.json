@@ -65,6 +65,15 @@
       "limit": { "context": 1000000, "output": 32768 },
       "rates": { "input": 1.0, "output": 2.0 }
     },
+    "openrouter/large-context": {
+      "id": "openrouter/large-context",
+      "name": "Large Context",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 1000000, "output": 32768 },
+      "rates": { "input": 1.0, "output": 2.0 }
+    },
     "opencode-go/tie-small-context": {
       "id": "opencode-go/tie-small-context",
       "name": "Tie Small Context",
