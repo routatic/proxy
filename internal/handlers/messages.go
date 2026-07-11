@@ -584,7 +584,7 @@ func (h *MessagesHandler) handleStreaming(
 
 		// Try new provider-based dispatch first.
 		if h.providerRegistry != nil {
-			if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+			if prov, ok := h.providerRegistry.Get(client.Provider(model)); ok {
 				caps, ok := prov.ModelCapabilities(model.ModelID)
 				if !ok || !caps.SupportsStreaming {
 					h.logger.Warn("model does not support streaming", "model", model.ModelID, "provider", model.Provider)
@@ -1031,7 +1031,7 @@ func (h *MessagesHandler) handleNonStreaming(
 
 			// Try new provider-based dispatch first.
 			if h.providerRegistry != nil {
-				if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+				if prov, ok := h.providerRegistry.Get(client.Provider(model)); ok {
 					execResult, execErr := prov.Execute(attemptCtx, normalizedReq, model)
 					if execErr != nil {
 						return nil, execErr

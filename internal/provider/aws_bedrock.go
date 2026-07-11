@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/routatic/proxy/internal/client"
@@ -49,9 +50,15 @@ func (p *AWSBedrockProvider) ModelCapabilities(modelID string) (core.ProviderCap
 }
 
 // WireFormat returns the wire format for Bedrock models. Defaults to OpenAI
-// Chat Completions. Set wire_format: "anthropic" in aws_bedrock config for
-// models that need raw Anthropic Messages format.
+// Chat Completions. Models with the "anthropic." prefix (e.g. anthropic.claude-*)
+// automatically use the Anthropic Messages format. Override per-model by setting
+// wire_format: "anthropic" in the aws_bedrock config (applies to all Bedrock
+// models when no per-model prefix match).
 func (p *AWSBedrockProvider) WireFormat(modelID string) core.WireFormat {
+	// Auto-detect: models prefixed with "anthropic." use the Anthropic endpoint.
+	if strings.HasPrefix(modelID, "anthropic.") {
+		return core.WireFormatAnthropic
+	}
 	cfg := p.atomic.Get()
 	if cfg != nil && cfg.AWSBedrock.WireFormat == "anthropic" {
 		return core.WireFormatAnthropic
