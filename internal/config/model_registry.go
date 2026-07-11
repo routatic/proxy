@@ -2,6 +2,11 @@ package config
 
 const DefaultContextMargin = 8192
 
+// ModelMetadata describes a known model's capabilities (context window size,
+// max output tokens, vision support, and tool support). This metadata is
+// used by ResolveModelConfig to fill in defaults when the user's runtime
+// config omits optional fields, ensuring consistent behavior across models
+// without requiring every property to be specified in the JSON config.
 type ModelMetadata struct {
 	ContextWindow   int
 	MaxOutputTokens int
@@ -32,6 +37,12 @@ var modelMetadata = map[string]ModelMetadata{
 	"qwen3.5-plus":           {ContextWindow: 1000000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
 }
 
+// ResolveModelConfig fills in default capability values (context window,
+// max output tokens, vision, tool support) for a ModelConfig by consulting
+// the built-in modelMetadata registry. If the model is unknown or a field
+// is already set, the existing value is preserved. Call this before using
+// a ModelConfig so capacity filtering and scenario routing see accurate
+// per-model limits.
 func ResolveModelConfig(model ModelConfig) ModelConfig {
 	if meta, ok := modelMetadata[model.ModelID]; ok {
 		if model.ContextWindow == 0 {
@@ -58,6 +69,11 @@ func ResolveModelConfig(model ModelConfig) ModelConfig {
 	return model
 }
 
+// SupportsTools reports whether a model is capable of handling tool-use
+// requests (function calling). It resolves the model config through
+// ResolveModelConfig, then checks the SupportsTools field. Models that
+// lack tool support (e.g., lightweight streaming-only models) should be
+// excluded from requests that include tool definitions.
 func SupportsTools(model ModelConfig) bool {
 	model = ResolveModelConfig(model)
 	return model.SupportsTools == nil || *model.SupportsTools

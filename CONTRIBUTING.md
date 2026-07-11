@@ -1,5 +1,53 @@
 # Contributing
 
+## Prerequisites
+
+- [Go](https://go.dev/dl/) 1.25.0 or later
+- [golangci-lint](https://golangci-lint.run/usage/install/) (for linting)
+- [Git](https://git-scm.com/)
+- [Make](https://www.gnu.org/software/make/) (build automation)
+
+## Getting Started
+
+1. Fork and clone the repository:
+   ```bash
+   git clone https://github.com/<your-username>/routatic-proxy.git
+   cd routatic-proxy
+   ```
+
+2. Build the binary:
+   ```bash
+   make build
+   ```
+
+3. Run tests:
+   ```bash
+   make test
+   ```
+
+4. Run the proxy:
+   ```bash
+   make run
+   ```
+
+## Pull Request Process
+
+1. Create a feature branch from `main`: `git checkout -b feature/your-feature-name`
+2. Make your changes and ensure tests pass: `make test && make lint`
+3. Commit with a descriptive message explaining what changed and why
+4. Push to your fork and open a pull request against `main`
+5. Describe what your PR does and link any related issues
+
+## Code Style
+
+This project follows standard Go conventions:
+- Format code with `gofmt` (run `make lint` to check)
+- Follow [Effective Go](https://go.dev/doc/effective_go) guidelines
+- Add doc comments to all exported functions, types, and methods
+- Write tests for new functionality
+
+---
+
 ## Development
 
 ```bash

@@ -1,5 +1,7 @@
 // Package transformer handles request and response format conversion
-// between Anthropic Messages API and OpenAI Chat Completions API.
+// between Anthropic Messages API and OpenAI Chat Completions API,
+// including streaming SSE transformation, token counting, and
+// protocol bridging for Responses and Gemini endpoints.
 package transformer
 
 import (

@@ -1,5 +1,3 @@
-// Package router defines HTTP route registration and middleware chaining,
-// as well as model selection based on request scenarios.
 package router
 
 import (

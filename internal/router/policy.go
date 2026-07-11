@@ -8,6 +8,9 @@ import (
 )
 
 // EvaluationContext carries all information needed to evaluate routing policies.
+// It bundles the normalized request, token count, the pool of models to choose
+// from, and any prior routing decisions that may influence the outcome (e.g.,
+// for debugging or dry-run evaluation).
 type EvaluationContext struct {
 	Request         *core.NormalizedRequest
 	TokenCount      int
@@ -15,7 +18,9 @@ type EvaluationContext struct {
 	History         []RouteDecision
 }
 
-// RouteDecision records a routing decision for observability.
+// RouteDecision records a routing decision for observability and dry-run
+// inspection. Each policy that is evaluated produces one RouteDecision so
+// callers can audit which policy won, which model was selected, and why.
 type RouteDecision struct {
 	PolicyName string
 	ModelID    string

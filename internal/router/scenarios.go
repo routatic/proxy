@@ -38,6 +38,11 @@ type MessageContent struct {
 	ImageHashes []string
 }
 
+// RequestFacts summarizes relevant properties of the request for scenario
+// detection — specifically whether the latest user message contains an image,
+// whether the text suggests complex intent, and the raw text for pattern
+// matching. This enables scenario detection to make routing decisions without
+// re-parsing the full message history.
 type RequestFacts struct {
 	LatestUserText          string
 	LatestUserHasImage      bool
@@ -124,6 +129,11 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 	}
 }
 
+// AnalyzeRequestFacts extracts routing-relevant facts from the message history.
+// It identifies the latest user message, checks for new images (avoiding
+// false positives from historical images), and flags complex or vision-related
+// intent. The result feeds into DetectScenario and is also useful for logging
+// and debugging routing decisions.
 func AnalyzeRequestFacts(messages []MessageContent) RequestFacts {
 	facts := RequestFacts{}
 	latestIdx := -1

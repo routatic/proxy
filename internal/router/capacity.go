@@ -8,11 +8,20 @@ import (
 
 const minimumOutputTokens = 256
 
+// SkippedModel records a model that was excluded from the capacity decision,
+// along with the reason why. Callers inspect this list to understand why
+// certain models in the fallback chain were bypassed — for example, when
+// a model lacks vision support or its context window is too small for the
+// input size.
 type SkippedModel struct {
 	ModelID string `json:"model_id"`
 	Reason  string `json:"reason"`
 }
 
+// CapacityDecision captures the result of filtering a model chain by request
+// capacity. It includes the surviving models, the ones that were skipped
+// (with reasons), and metadata about the input and output token budget so
+// callers can log or inspect which constraints drove the selection.
 type CapacityDecision struct {
 	Models             []config.ModelConfig
 	Skipped            []SkippedModel
@@ -25,6 +34,12 @@ type CapacityDecision struct {
 	NeedsTools         bool
 }
 
+// FilterByCapacity examines each model in the fallback chain and removes those
+// that cannot handle the request's capacity requirements (context window,
+// vision, or tool support). The returned CapacityDecision contains the
+// surviving models plus the reasons any were skipped. Returns an error when
+// no model in the chain can satisfy the request, enabling the caller to
+// surface this to the user rather than attempting a doomed upstream call.
 func FilterByCapacity(chain []config.ModelConfig, inputTokens int, requestedMaxTokens int, needsVision bool, needsTools bool) (CapacityDecision, error) {
 	decision := CapacityDecision{
 		InputTokens:        inputTokens,

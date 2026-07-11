@@ -3,7 +3,11 @@ package config
 
 import "encoding/json"
 
-// Config holds the complete application configuration.
+// Config is the root configuration loaded from ~/.config/routatic-proxy/config.json.
+// It defines the server settings (host, port), provider connections (OpenCode Go,
+// OpenCode Zen, AWS Bedrock), model definitions, and fallback chains. The config
+// supports environment variable interpolation via ${VAR} syntax and hot-reloading
+// when hot_reload is enabled.
 type Config struct {
 	APIKey                         string                   `json:"api_key"`
 	APIKeys                        []string                 `json:"api_keys"`
@@ -66,8 +70,10 @@ type AWSBedrockConfig struct {
 	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
 }
 
-// EffectiveAPIKeys returns the pool of API keys for AWS Bedrock.
-// APIKeys takes precedence; falls back to the single APIKey field.
+// EffectiveAPIKeys returns the pool of API keys for AWS Bedrock. The APIKeys
+// array (for key rotation) takes precedence; if empty, falls back to the single
+// APIKey field. This precedence order allows a single key in config with an
+// override to multiple keys via environment variable (ROUTATIC_PROXY_AWS_BEDROCK_API_KEYS).
 func (c *AWSBedrockConfig) EffectiveAPIKeys() []string {
 	if len(c.APIKeys) > 0 {
 		return c.APIKeys
@@ -89,8 +95,10 @@ type OpenCodeGoConfig struct {
 	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
 }
 
-// EffectiveAPIKeys returns the pool of API keys for OpenCode Go.
-// APIKeys takes precedence; falls back to the single APIKey field.
+// EffectiveAPIKeys returns the pool of API keys for OpenCode Go. The APIKeys
+// array (for key rotation) takes precedence; if empty, falls back to the single
+// APIKey field. This precedence order allows a single key in config with an
+// override to multiple keys via environment variable (ROUTATIC_PROXY_OPENCODE_GO_API_KEYS).
 func (c *OpenCodeGoConfig) EffectiveAPIKeys() []string {
 	if len(c.APIKeys) > 0 {
 		return c.APIKeys
@@ -114,8 +122,10 @@ type OpenCodeZenConfig struct {
 	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
 }
 
-// EffectiveAPIKeys returns the pool of API keys for OpenCode Zen.
-// APIKeys takes precedence; falls back to the single APIKey field.
+// EffectiveAPIKeys returns the pool of API keys for OpenCode Zen. The APIKeys
+// array (for key rotation) takes precedence; if empty, falls back to the single
+// APIKey field. This precedence order allows a single key in config with an
+// override to multiple keys via environment variable (ROUTATIC_PROXY_OPENCODE_ZEN_API_KEYS).
 func (c *OpenCodeZenConfig) EffectiveAPIKeys() []string {
 	if len(c.APIKeys) > 0 {
 		return c.APIKeys
@@ -152,8 +162,11 @@ func (lc *LoggingConfig) EffectiveDebugCapture() DebugCapture {
 	return *lc.DebugCapture
 }
 
-// EffectiveAPIKeys returns the pool of API keys for rotation.
-// APIKeys takes precedence; falls back to the single APIKey field.
+// EffectiveAPIKeys returns the global pool of API keys for rotation. The APIKeys
+// array takes precedence; if empty, falls back to the single APIKey field. This
+// precedence order is used by providers that lack their own key configuration,
+// falling back to global keys when neither provider-specific keys nor environment
+// overrides are set.
 func (c *Config) EffectiveAPIKeys() []string {
 	if len(c.APIKeys) > 0 {
 		return c.APIKeys

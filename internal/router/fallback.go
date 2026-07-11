@@ -18,9 +18,9 @@ import (
 type CircuitState int
 
 const (
-	CircuitClosed   CircuitState = iota // Normal operation
-	CircuitHalfOpen                     // Testing if service recovered
-	CircuitOpen                         // Failing fast, not attempting calls
+	CircuitClosed   CircuitState = iota // Normal operation — requests flow freely
+	CircuitHalfOpen                     // Recovery probe — allowing limited test requests
+	CircuitOpen                         // Failing fast — blocking all requests until timeout
 )
 
 // CircuitBreaker tracks failure rates and prevents calls to failing models.
@@ -36,7 +36,11 @@ type CircuitBreaker struct {
 	halfOpenCalls    int
 }
 
-// NewCircuitBreaker creates a circuit breaker with default thresholds.
+// NewCircuitBreaker creates a circuit breaker that opens after threshold
+// consecutive failures and stays open for recoveryTimeout before allowing
+// a probe. The defaults in NewFallbackHandler are 3 failures and 30s timeout,
+// which balances quick recovery from transient issues with protection against
+// sustained outages.
 func NewCircuitBreaker(threshold int, recoveryTimeout time.Duration) *CircuitBreaker {
 	return &CircuitBreaker{
 		state:            CircuitClosed,
@@ -46,7 +50,11 @@ func NewCircuitBreaker(threshold int, recoveryTimeout time.Duration) *CircuitBre
 	}
 }
 
-// AllowRequest returns true if the circuit allows a request.
+// AllowRequest returns whether the circuit should permit a request. In the
+// closed state, all requests pass. In the open state, requests are blocked
+// until recoveryTimeout elapses, at which point the circuit transitions to
+// half-open and allows a limited number of probe requests. A successful probe
+// closes the circuit; a failure reopens it.
 func (cb *CircuitBreaker) AllowRequest() bool {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -72,7 +80,10 @@ func (cb *CircuitBreaker) AllowRequest() bool {
 	return false
 }
 
-// RecordSuccess records a successful call.
+// RecordSuccess transitions the circuit toward a healthy state. In half-open
+// mode, accumulating enough successes (halfOpenMaxCalls, default 3) closes
+// the circuit. In closed mode, this resets the failure counter so transient
+// failures don't accumulate over time.
 func (cb *CircuitBreaker) RecordSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -90,7 +101,10 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	}
 }
 
-// RecordFailure records a failed call.
+// RecordFailure transitions the circuit toward an unhealthy state. In half-open
+// mode, any failure immediately reopens the circuit. In closed mode, once the
+// failure count reaches the threshold, the circuit opens and blocks subsequent
+// requests until the recovery timeout elapses.
 func (cb *CircuitBreaker) RecordFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -109,7 +123,9 @@ func (cb *CircuitBreaker) RecordFailure() {
 	}
 }
 
-// State returns the current circuit state.
+// State returns the current circuit breaker state (CircuitClosed, CircuitHalfOpen,
+// or CircuitOpen). Use this to inspect whether a model is being skipped due to
+// recent failures, or to expose circuit state via metrics/health endpoints.
 func (cb *CircuitBreaker) State() CircuitState {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -135,7 +151,11 @@ type FallbackHandler struct {
 	atomicCfg       *config.AtomicConfig // Optional: for checking provider key counts
 }
 
-// NewFallbackHandler creates a new fallback handler with circuit breakers.
+// NewFallbackHandler creates a handler that tries models in sequence until one
+// succeeds, with per-model circuit breakers to skip failing models. Use this
+// when you need resilient upstream calls with automatic backoff — the handler
+// tracks failures per model and avoids hammering an already-failing endpoint.
+// Default threshold is 3 failures; default timeout is 30 seconds.
 func NewFallbackHandler(logger *slog.Logger, cbThreshold int, cbTimeout time.Duration) *FallbackHandler {
 	if logger == nil {
 		logger = slog.Default()

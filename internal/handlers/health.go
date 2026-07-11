@@ -69,6 +69,10 @@ func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
+// HandleStatusline serves the current proxy status snapshot as JSON for
+// consumption by the CLI status-line feature. It returns a status.Snapshot
+// (with schema version, source label, and staleness flag) so the CLI can
+// display real-time proxy health without polling the full /health endpoint.
 func (h *HealthHandler) HandleStatusline(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

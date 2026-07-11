@@ -129,7 +129,7 @@ Scenario detection is keyword-based. To add custom patterns, edit `internal/rout
 - `hasComplexPattern()` — keywords that trigger the `complex` scenario
 - `hasThinkingPattern()` — keywords that trigger the `think` scenario
 - `hasBackgroundPattern()` — keywords that trigger the `background` scenario
-- `hasVisualIntent()` — keywords that suggest image-related requests
+- Vision detection — automatically triggered when the latest user message contains a new image (deduplicated by hash via `imageHashesAreNewForLatest()`, not keyword-based)
 
 ## Verify Routing
 

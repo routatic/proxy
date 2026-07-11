@@ -117,6 +117,34 @@
 }
 ```
 
+## Anthropic 优先故障切换
+
+启用此模式以保持 Anthropic 作为 Claude Code 的主要 API，仅在 Anthropic 不可用时使用配置的 OpenCode 模型链：
+
+```json
+{
+  "anthropic_first": {
+    "enabled": true,
+    "base_url": "https://api.anthropic.com"
+  }
+}
+```
+
+仅使用代理地址配置 Claude Code：
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
+```
+
+保持凭证变量未设置可保留已保存的 Claude Pro、Max、Team 或 Enterprise 登录信息。代理将原始请求、OAuth 凭证、`anthropic-version` 和完整的 `anthropic-beta` 能力头转发给 Anthropic。
+
+故障切换在响应开始前对 HTTP 408、429、5xx 和传输失败触发。HTTP 400、401、403、404 和其他请求错误原样返回。失败后，代理遵循 `Retry-After`；否则使用从 30 秒到 15 分钟的指数退避。一个真实的用户请求会探测恢复，同时并发请求继续通过 OpenCode。不会发送合成的健康检查请求。
+
+一旦响应字节开始传输，失败的流无法在其他模型上重新启动而不重复内容。`/v1/messages/count_tokens` 保持本地处理，不影响可用性状态。
+
+当 OpenCode Go 返回 `GoUsageLimitError` 时，该请求跳过剩余的 Go 模型，链前进到 Zen。默认链使用 Qwen3.7 Plus、Qwen3.7 Max，然后是当前可用的 Zen 免费 Nemotron 3 Ultra、MiMo V2.5 和 DeepSeek V4 Flash 模型。免费的 Zen 端点有时间限制，可能根据 [OpenCode 的文档隐私条款](https://opencode.ai/docs/zen/#privacy) 保留数据。
+
 ## 提供商
 
 routatic-proxy 支持三个提供商进行上游 API 调用：

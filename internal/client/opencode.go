@@ -43,6 +43,10 @@ func (t *teeReadCloser) Read(p []byte) (n int, err error) {
 	return t.r.Read(p)
 }
 
+// Provider constants identify the upstream API that handles a model's request.
+// These are used throughout the codebase for endpoint selection, timeout
+// configuration, and provider-specific error handling (e.g., auth error
+// short-circuit logic).
 const (
 	ProviderOpenCodeGo  = "opencode-go"
 	ProviderOpenCodeZen = "opencode-zen"
@@ -133,7 +137,11 @@ func ProviderKeyCount(atomicCfg *config.AtomicConfig, provider string) int {
 	return len(keys)
 }
 
-// NewOpenCodeClient creates a new OpenCode client.
+// NewOpenCodeClient creates a client for sending requests to OpenCode Go,
+// OpenCode Zen, or AWS Bedrock endpoints. The client handles connection
+// pooling, API key rotation (round-robin across multiple keys when configured),
+// and request/response capture for debugging. Pass a non-nil captureLogger
+// to enable upstream traffic logging.
 func NewOpenCodeClient(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) *OpenCodeClient {
 	transport := &http.Transport{
 		MaxIdleConns:        100,
@@ -293,6 +301,9 @@ func IsBedrock(model config.ModelConfig) bool {
 // EndpointType determines which Zen endpoint format to use.
 type EndpointType int
 
+// EndpointType constants select the API format for a given model on Zen.
+// The proxy transforms requests to match the target endpoint's expected schema
+// (OpenAI Chat Completions, Anthropic Messages, OpenAI Responses, or Gemini).
 const (
 	EndpointChatCompletions EndpointType = iota // /v1/chat/completions (OpenAI-compatible)
 	EndpointAnthropic                           // /v1/messages (Anthropic format)

@@ -1,5 +1,8 @@
 # routatic-proxy
 
+[![Go Version](https://img.shields.io/github/go-mod/go-version/routatic/proxy)](https://go.dev/)
+[![License](https://img.shields.io/github/license/routatic/proxy)](./LICENSE)
+
 [Join us on Discord](https://discord.gg/pUrfwfTFxM)
 
 **[English](./README.md)** | [中文](./README-zh.md)
@@ -201,6 +204,10 @@ routatic-proxy --version          Show version
 | [docs/howto-add-model.md](docs/howto-add-model.md)           | Adding new models (zero code changes)                           |
 | [docs/howto-custom-routing.md](docs/howto-custom-routing.md) | Customizing scenario detection and model selection              |
 | [docs/howto-debug-routing.md](docs/howto-debug-routing.md)   | Debugging routing issues and common problems                    |
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, architecture overview, and how to submit pull requests.
 
 ## License
 
