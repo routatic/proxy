@@ -1,10 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-)
+import "fmt"
 
 // ProviderPreset contains provider-specific configuration defaults.
 type ProviderPreset struct {
@@ -45,25 +41,22 @@ var providerPresets = map[string]ProviderPreset{
 // getProviderConfig returns a config template optimized for a specific provider.
 // The provider must be one of: "opencode-go", "opencode-zen", "aws-bedrock", "openrouter".
 func getProviderConfig(provider string) (string, error) {
-	gen, ok := providerConfigGenerators[provider]
+	_, ok := providerPresets[provider]
 	if !ok {
-		supported := make([]string, 0, len(providerConfigGenerators))
-		for p := range providerConfigGenerators {
-			supported = append(supported, p)
-		}
-		sort.Strings(supported)
-		return "", fmt.Errorf("unknown provider %q; supported: %s", provider, strings.Join(supported, ", "))
+		return "", fmt.Errorf("unknown provider %q; supported: opencode-go, opencode-zen, aws-bedrock, openrouter", provider)
 	}
-	return gen(), nil
-}
 
-// providerConfigGenerators maps provider names to their config template functions.
-// Add a new entry here when supporting a new provider.
-var providerConfigGenerators = map[string]func() string{
-	"opencode-go":  getOpenCodeGoConfig,
-	"opencode-zen": getOpenCodeZenConfig,
-	"aws-bedrock":  getAWSBedrockConfig,
-	"openrouter":   getOpenRouterConfig,
+	switch provider {
+	case "openrouter":
+		return getOpenRouterConfig(), nil
+	case "aws-bedrock":
+		return getAWSBedrockConfig(), nil
+	case "opencode-zen":
+		return getOpenCodeZenConfig(), nil
+	default:
+		// Default to OpenCode Go config
+		return getOpenCodeGoConfig(), nil
+	}
 }
 
 // getOpenRouterConfig returns a config optimized for OpenRouter.
