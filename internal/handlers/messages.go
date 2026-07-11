@@ -553,18 +553,24 @@ func (h *MessagesHandler) handleStreaming(
 				"cache_read_input_tokens", rw.usage.cacheReadInputTokens,
 				"cache_creation_input_tokens", rw.usage.cacheCreationInputTokens,
 			)
+			rec := history.RequestRecord{
+				ID:           requestID,
+				Model:        model.ModelID,
+				Provider:     model.Provider,
+				Scenario:     string(scenario),
+				StartTime:    streamStart,
+				Duration:     latency,
+				InputTokens:  rw.usage.inputTokens,
+				OutputTokens: rw.usage.outputTokens,
+				Streaming:    true,
+				Success:      true,
+			}
 			if h.history != nil {
-				h.history.Add(history.RequestRecord{
-					Model:        model.ModelID,
-					Provider:     model.Provider,
-					Scenario:     string(scenario),
-					StartTime:    streamStart,
-					Duration:     latency,
-					InputTokens:  rw.usage.inputTokens,
-					OutputTokens: rw.usage.outputTokens,
-					Streaming:    true,
-					Success:      true,
-				})
+				h.history.Add(rec)
+			}
+			if h.storage != nil {
+				_ = h.storage.InsertRequest(rec)
+				_ = h.storage.InsertLatency(model.ModelID, latency)
 			}
 		}
 

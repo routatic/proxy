@@ -19,6 +19,7 @@ import (
 	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/handlers"
 	"github.com/routatic/proxy/internal/history"
+	"github.com/routatic/proxy/internal/history"
 	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/provider"
 	"github.com/routatic/proxy/internal/router"
@@ -102,6 +103,11 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	}
 
 	// Create handlers.
+	var storageWriter handlers.StorageWriter
+	if db != nil {
+		storageWriter = handlers.NewStorageAdapter(db)
+	}
+
 	messagesHandler := handlers.NewMessagesHandler(
 		openCodeClient,
 		providerRegistry,
@@ -111,6 +117,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 		metrics,
 		captureLogger,
 		hist,
+		storageWriter,
 	)
 	healthHandler := handlers.NewHealthHandler(tokenCounter, fallbackHandler, metrics, statusStore)
 
