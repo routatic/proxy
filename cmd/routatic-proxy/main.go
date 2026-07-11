@@ -544,7 +544,7 @@ func runModelsList(cmd *cobra.Command, configPath, provider string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open storage: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

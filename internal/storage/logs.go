@@ -85,7 +85,7 @@ func (l *Logs) Since(since time.Time, level string) ([]LogEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanLogs(rows)
 }

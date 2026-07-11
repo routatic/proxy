@@ -92,7 +92,7 @@ func (l *Latency) GetSuccessCounts(since time.Time) (map[string]int64, map[strin
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	successCounts := make(map[string]int64)
 	failureCounts := make(map[string]int64)

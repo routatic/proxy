@@ -68,7 +68,7 @@ func migrateTestCatalogToSQLite(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatalf("open storage: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
