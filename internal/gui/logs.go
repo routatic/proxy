@@ -155,6 +155,6 @@ func (h *LogHandler) WithGroup(name string) slog.Handler {
 
 func writeSSE(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
 	jsonData, _ := json.Marshal(data)
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
 	flusher.Flush()
 }

@@ -105,7 +105,7 @@ func (r *CatalogRepo) UpsertBatch(ctx context.Context, providers []ProviderRecor
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -178,7 +178,7 @@ func (r *CatalogRepo) Load(ctx context.Context) (*IndexedCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var p Provider
@@ -207,7 +207,7 @@ func (r *CatalogRepo) Load(ctx context.Context) (*IndexedCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var m Model
@@ -350,7 +350,7 @@ func (r *CatalogRepo) ListModelsByProvider(ctx context.Context, provider string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []Model
 	for rows.Next() {

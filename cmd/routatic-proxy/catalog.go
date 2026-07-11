@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/routatic/proxy/internal/catalog"
@@ -57,7 +58,7 @@ By default exports to the catalog directory as catalog-export.json.`,
 			}
 
 			dbPath := storage.DefaultConfig.DatabasePath
-			if dbPath[:2] == "~/" {
+			if strings.HasPrefix(dbPath, "~/") {
 				home, _ := os.UserHomeDir()
 				dbPath = filepath.Join(home, dbPath[2:])
 			}

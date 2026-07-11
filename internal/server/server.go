@@ -215,7 +215,7 @@ func (s *Server) Start() error {
 		}
 
 		if s.storage != nil {
-			s.storage.Close()
+			_ = s.storage.Close()
 		}
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

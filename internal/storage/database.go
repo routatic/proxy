@@ -59,7 +59,7 @@ func Open(cfg Config) (*Database, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
@@ -69,13 +69,13 @@ func Open(cfg Config) (*Database, error) {
 	}
 
 	if err := database.initSchema(ctx); err != nil {
-		database.Close()
+		_ = database.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
 	if cfg.VacuumOnStartup {
 		if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
-			database.Close()
+			_ = database.Close()
 			return nil, fmt.Errorf("vacuum: %w", err)
 		}
 	}

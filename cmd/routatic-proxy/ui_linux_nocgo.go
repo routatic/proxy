@@ -23,10 +23,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// globalGUIURL is set after the GUI server starts, so reuse on Open Console.
-var globalGUIURL string
-
-// openBrowser opens the default browser to the given URL using xdg-open.
 func openBrowser(target string) error {
 	cmd := exec.Command("xdg-open", target)
 	cmd.Stdin = nil
@@ -201,11 +197,10 @@ Press Ctrl+C to stop.`,
 			CatalogSourceURL: cfg.Catalog.SourceURL,
 		})
 
-		guiURL, err := guiSrv.Start(ctx)
-		if err != nil {
-			return fmt.Errorf("start gui server: %w", err)
-		}
-		globalGUIURL = guiURL
+	guiURL, err := guiSrv.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("start gui server: %w", err)
+	}
 
 		// ── 7. Open browser ─────────────────────────────────────────
 		slog.Info("Opening browser", "url", guiURL)

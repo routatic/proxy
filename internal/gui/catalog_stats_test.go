@@ -43,7 +43,7 @@ func TestHandleCatalogStats_EmptyCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open storage: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	s := &Server{storage: db}
 
@@ -77,7 +77,7 @@ func TestHandleCatalogStats_WithCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open storage: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := storage.NewCatalogRepo(db)
 	ctx := context.Background()

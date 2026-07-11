@@ -34,7 +34,7 @@ func anonymizeConfig(cfg *config.Config) *config.Config {
 
 	result := &config.Config{}
 	data, _ = json.Marshal(raw)
-	json.Unmarshal(data, result)
+	_ = json.Unmarshal(data, result)
 	return result
 }
 
