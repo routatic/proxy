@@ -17,22 +17,7 @@ Determine which upstream provider the model uses and which endpoint format it ac
 | `aws-bedrock` | `/v1/chat/completions` | OpenAI Chat Completions (Bedrock Mantle) |
 | `aws-bedrock` | `/v1/messages` | Anthropic Messages (Bedrock Mantle, requires `wire_format: "anthropic"`) |
 
-## Step 2: Add Model Metadata
-
-Edit `internal/config/model_registry.go` and add the model to `modelMetadata`:
-
-```go
-"my-new-model": {
-    ContextWindow:   256000,
-    MaxOutputTokens: 8192,
-    Vision:          false,
-    SupportsTools:   true,
-},
-```
-
-This metadata is used by `ResolveModelConfig` to fill in defaults when the model is referenced in config.
-
-## Step 3: Add Endpoint Classification (Zen only)
+## Step 2: Add Endpoint Classification (Zen only)
 
 If the model uses Zen, add it to the appropriate classifier in `internal/models/classifier.go`:
 
@@ -78,7 +63,7 @@ func IsAnthropicModel(modelID string) bool {
 
 **Note:** These classification functions are shared between `internal/client` and `internal/provider` packages to ensure consistent routing.
 
-## Step 4: Add to Config
+## Step 3: Add to Config
 
 Add the model to your `config.json`:
 
@@ -124,7 +109,7 @@ Add the model to your `config.json`:
 }
 ```
 
-## Step 5: Test
+## Step 4: Test
 
 ```bash
 # Validate config
@@ -173,17 +158,66 @@ This forces the request through the Chat Completions transform path.
 
 ### Models with vision support
 
-Set `"vision": true` in the model metadata to enable image routing:
+Set `"vision": true` in the model config to enable image routing:
 
-```go
-"my-vision-model": {
-    ContextWindow:   256000,
-    MaxOutputTokens: 8192,
-    Vision:          true,
-    SupportsTools:   true,
-},
+```json
+{
+  "my-vision-model": {
+    "provider": "opencode-go",
+    "model_id": "my-vision-model",
+    "vision": true
+  }
+}
 ```
 
 ### Temperature constraints
 
 Some models have hard temperature requirements (e.g., kimi-k2.7-code requires temperature=1). Add constraints in `constrainTemperature` in `internal/transformer/request.go`.
+
+## Cost-Based Routing
+
+When `cost_routing.enabled` is true, the proxy uses a catalog of model pricing data to automatically select the cheapest eligible model for each scenario.
+
+The catalog is downloaded from `models.dev` and cached locally in `~/.config/routatic-proxy/catalog/`. The catalog schema uses provider-prefixed model keys:
+
+```json
+{
+  "providers": {
+    "opencode-go": {
+      "name": "opencode-go",
+      "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
+      "enabled": true
+    }
+  },
+  "models": {
+    "opencode-go/my-new-model": {
+      "id": "opencode-go/my-new-model",
+      "name": "My New Model",
+      "limit": { "context": 128000 },
+      "rates": { "input": 1.0, "output": 2.0 },
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] }
+    }
+  }
+}
+```
+
+### Key catalog fields:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Full model key (`provider/model-name`) |
+| `name` | Display name |
+| `limit.context` | Context window size (tokens) |
+| `rates.input` | Cost per million input tokens |
+| `rates.output` | Cost per million output tokens |
+| `tool_call` | Whether the model supports tools |
+| `modalities.input` | Input types: `["text"]` or `["text", "image"]` for vision |
+| `modalities.output` | Output types: usually `["text"]` |
+| `reasoning` | Whether the model supports reasoning mode |
+
+To add a model to the cost-based routing catalog, submit a PR to the models.dev repository or run:
+
+```bash
+routatic-proxy catalog sync --force
+```

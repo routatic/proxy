@@ -73,6 +73,19 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 
 **Cost-based routing:** when `cost_routing.enabled` is set, `Selector` in `internal/router/selector.go` replaces the static primary model with automatic cheapest-model selection from the catalog. It applies `max_context_window` (hard cap on context window), `prefer_providers` (global provider filter, intersected with per-scenario preferences), and `penalty_per_provider` (per-provider cost penalty added during sort). Enabled via `cost_routing.enabled` or the legacy `enable_cost_based_routing` flag.
 
+**Catalog schema:** Models are keyed as `provider/model-name` (e.g., `opencode-go/glm-5.2`). The catalog (`~/.config/routatic-proxy/catalog/catalog.json`) contains:
+- `providers` — Provider definitions with `name`, `base_url`, `enabled`
+- `models` — Model definitions keyed by full key with fields:
+  - `id` — Full key (matches the map key)
+  - `name` — Display name
+  - `limit.context` — Context window size
+  - `rates.input`/`rates.output` — Cost per million tokens
+  - `tool_call` — Whether tools are supported
+  - `modalities.input`/`output` — Input/output types (`["text"]` or `["text", "image"]` for vision)
+  - `reasoning` — Whether reasoning mode is supported
+
+Resolution functions in `internal/catalog/resolve.go` extract the provider from the key prefix. `ResolvedModel.ModelID` is the model name only (without provider prefix); `ResolvedModel.CanonicalName` is the full key.
+
 For streaming, the router downgrades to fast models (Qwen3.7 Plus) for better TTFT.
 
 **Deprecated models:**
