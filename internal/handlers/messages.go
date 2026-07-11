@@ -370,9 +370,9 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	if isStreaming {
-		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario)
+		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	} else {
-			h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
+		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	}
 }
 
@@ -475,6 +475,7 @@ func (h *MessagesHandler) handleStreaming(
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
 	scenario router.Scenario,
+	requestID string,
 ) {
 	clientCtx := r.Context()
 
