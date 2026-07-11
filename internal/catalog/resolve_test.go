@@ -213,8 +213,11 @@ func TestResolveShort_Legacy(t *testing.T) {
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "opencode-go/deepseek-v4-flash" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/deepseek-v4-flash")
+	if got.ModelID != "deepseek-v4-flash" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "deepseek-v4-flash")
+	}
+	if got.CanonicalName != "opencode-go/deepseek-v4-flash" {
+		t.Errorf("CanonicalName = %q, want %q", got.CanonicalName, "opencode-go/deepseek-v4-flash")
 	}
 }
 
@@ -228,8 +231,11 @@ func TestResolveShort_Name(t *testing.T) {
 	if got.Provider != "opencode-go" {
 		t.Errorf("Provider = %q, want %q", got.Provider, "opencode-go")
 	}
-	if got.ModelID != "opencode-go/legacy-name" {
-		t.Errorf("ModelID = %q, want %q", got.ModelID, "opencode-go/legacy-name")
+	if got.ModelID != "legacy-name" {
+		t.Errorf("ModelID = %q, want %q", got.ModelID, "legacy-name")
+	}
+	if got.CanonicalName != "opencode-go/legacy-name" {
+		t.Errorf("CanonicalName = %q, want %q", got.CanonicalName, "opencode-go/legacy-name")
 	}
 }
 
@@ -255,7 +261,7 @@ func TestListProviderModels(t *testing.T) {
 		ids[i] = m.ModelID
 	}
 	sort.Strings(ids)
-	want := []string{"opencode-go/deepseek-v4-flash", "opencode-go/kimi-k2.6", "opencode-go/legacy-name"}
+	want := []string{"deepseek-v4-flash", "kimi-k2.6", "legacy-name"}
 	for i := range want {
 		if ids[i] != want[i] {
 			t.Errorf("model ids = %v, want %v", ids, want)

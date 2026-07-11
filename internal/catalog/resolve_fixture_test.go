@@ -128,13 +128,13 @@ func TestFixtureResolveShort(t *testing.T) {
 			name:         "first enabled provider",
 			short:        "DeepSeek V4 Flash",
 			wantProvider: "opencode-go",
-			wantModelID:  "opencode-go/deepseek-v4-flash",
+			wantModelID:  "deepseek-v4-flash",
 		},
 		{
 			name:         "resolve by key suffix",
 			short:        "deepseek-v4-flash",
 			wantProvider: "opencode-go",
-			wantModelID:  "opencode-go/deepseek-v4-flash",
+			wantModelID:  "deepseek-v4-flash",
 		},
 		{
 			name:    "only disabled provider",
@@ -174,12 +174,12 @@ func TestFixtureResolve_ListProviderModels(t *testing.T) {
 		{
 			name:     "opencode-go models",
 			provider: "opencode-go",
-			wantIDs: []string{"opencode-go/deepseek-v4-flash", "opencode-go/large-context", "opencode-go/tie-small-context"},
+			wantIDs:  []string{"deepseek-v4-flash", "large-context", "tie-small-context"},
 		},
 		{
 			name:     "openrouter models",
 			provider: "openrouter",
-			wantIDs:  []string{"openrouter/vision-model", "openrouter/reasoning-model"},
+			wantIDs:  []string{"reasoning-model", "vision-model"},
 		},
 		{
 			name:     "unknown provider",
