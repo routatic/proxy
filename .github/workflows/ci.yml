@@ -57,3 +57,5 @@ jobs:
         with:
           version: latest
           args: --timeout 5m
+        env:
+          CGO_ENABLED: "0"
