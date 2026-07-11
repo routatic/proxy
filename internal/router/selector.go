@@ -3,7 +3,6 @@ package router
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 
 	"github.com/routatic/proxy/internal/catalog"
