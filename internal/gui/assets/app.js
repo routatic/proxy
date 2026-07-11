@@ -1097,7 +1097,7 @@ document.addEventListener('keydown', function(e) {
   // Tab shortcuts: Cmd/Ctrl + 1/2/3/4/5/6
   if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4', '5', '6'].includes(e.key)) {
     e.preventDefault();
-    const tabs = ['overview', 'history', 'performance', 'fallback', 'logs', 'settings'];
+    const tabs = ['overview', 'history', 'logs', 'performance', 'fallback', 'settings'];
     document.querySelector(`[data-tab="${tabs[parseInt(e.key) - 1]}"]`)?.click();
   }
   // Escape to close modals (use if-else to ensure only one action)

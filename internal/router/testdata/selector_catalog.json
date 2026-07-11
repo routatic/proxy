@@ -26,7 +26,8 @@
       "reasoning": false,
       "tool_call": false,
       "modalities": { "input": ["text"], "output": ["text"] },
-      "limit": { "context": 128000, "output": 4096 }
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.5, "output": 1.5 }
     },
     "opencode-go/cheap-tools": {
       "id": "opencode-go/cheap-tools",
@@ -34,7 +35,8 @@
       "reasoning": false,
       "tool_call": true,
       "modalities": { "input": ["text"], "output": ["text"] },
-      "limit": { "context": 128000, "output": 4096 }
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.5, "output": 1.5 }
     },
     "openrouter/vision-model": {
       "id": "openrouter/vision-model",
@@ -42,7 +44,8 @@
       "reasoning": false,
       "tool_call": true,
       "modalities": { "input": ["text", "image"], "output": ["text"] },
-      "limit": { "context": 256000, "output": 8192 }
+      "limit": { "context": 256000, "output": 8192 },
+      "rates": { "input": 3.0, "output": 5.0 }
     },
     "openrouter/reasoning-model": {
       "id": "openrouter/reasoning-model",
@@ -50,7 +53,8 @@
       "reasoning": true,
       "tool_call": true,
       "modalities": { "input": ["text"], "output": ["text"] },
-      "limit": { "context": 200000, "output": 8192 }
+      "limit": { "context": 200000, "output": 8192 },
+      "rates": { "input": 2.0, "output": 6.0 }
     },
     "opencode-go/large-context": {
       "id": "opencode-go/large-context",
@@ -58,7 +62,8 @@
       "reasoning": false,
       "tool_call": true,
       "modalities": { "input": ["text"], "output": ["text"] },
-      "limit": { "context": 1000000, "output": 32768 }
+      "limit": { "context": 1000000, "output": 32768 },
+      "rates": { "input": 1.0, "output": 2.0 }
     },
     "opencode-go/tie-small-context": {
       "id": "opencode-go/tie-small-context",
@@ -66,7 +71,8 @@
       "reasoning": false,
       "tool_call": true,
       "modalities": { "input": ["text"], "output": ["text"] },
-      "limit": { "context": 128000, "output": 4096 }
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.5, "output": 1.5 }
     },
     "disabled-provider/only-disabled": {
       "id": "disabled-provider/only-disabled",
@@ -74,7 +80,8 @@
       "reasoning": false,
       "tool_call": false,
       "modalities": { "input": ["text"], "output": ["text"] },
-      "limit": { "context": 128000, "output": 4096 }
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.1, "output": 0.1 }
     }
   },
   "scenarios": {
