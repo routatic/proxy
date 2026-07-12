@@ -1748,7 +1748,7 @@ const TestModule = {
 
   populateModels() {
     const models = Object.keys(lastModelCounts).sort();
-    const configModels = currentProxyConfig?.models || [];
+    const configModels = Array.isArray(currentProxyConfig?.models) ? currentProxyConfig.models : [];
     const allModels = [...new Set([...models, ...configModels])].sort();
 
     if (this.testModelSelect) {
