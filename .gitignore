@@ -20,3 +20,4 @@ brag-output-**
 
 router.test
 .playwright-mcp
+.gstack/
