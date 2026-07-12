@@ -1778,7 +1778,7 @@ const AnalyticsModule = {
     document.getElementById('kpi-tokens').textContent = fmt(totTok);
     document.getElementById('kpi-tokens-in').textContent = fmt(s.input_tokens);
     document.getElementById('kpi-tokens-out').textContent = fmt(s.output_tokens);
-    const cost = s.estimated_cost_usd != null ? '$' + Number(s.estimated_cost_usd).toFixed(2) : '—';
+    const cost = s.est_cost_usd != null ? '$' + Number(s.est_cost_usd).toFixed(2) : '—';
     document.getElementById('kpi-cost').textContent = cost;
 
     // p95 avg
