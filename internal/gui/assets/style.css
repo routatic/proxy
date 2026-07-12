@@ -60,7 +60,7 @@
     --warning:      #ff9f0a;
     --shadow-sm:    0 1px 2px rgba(0,0,0,.2);
     --shadow-md:    0 2px 8px rgba(0,0,0,.3);
-     --shadow-focus: 0 0 0 3px rgba(99,102,241,.35);
+    --shadow-focus: 0 0 0 3px rgba(99,102,241,.35);
     --tab-active-bg: #2c2c2e;
   }
 }
