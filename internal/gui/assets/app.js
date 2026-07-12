@@ -946,7 +946,7 @@ function showHistoryDetail(record) {
     </div>
     <div class="detail-row">
       <span class="detail-label">Status</span>
-      <span class="detail-value" style="color: var(--${record.success ? 'success' : 'error'})">${record.success ? 'Success' : 'Failed'}</span>
+      <span class="detail-value" style="color: ${record.success ? '#30d158' : '#ff453a'}">${record.success ? 'Success' : 'Failed'}</span>
     </div>
   `;
   modal.classList.add('visible');
@@ -1173,14 +1173,14 @@ async function handleConfigImport(file) {
       <div class="detail-row">
         <span class="detail-label">${t('modal.importConfirm')}</span>
       </div>
-      <pre style="max-height: 300px; overflow: auto; background: var(--surface2); padding: 12px; border-radius: var(--radius-sm); font-size: 11px; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(config, null, 2))}</pre>
+      <pre style="max-height: 300px; overflow: auto; background: #3a3a3c; padding: 12px; border-radius: 4px; font-size: 11px; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(config, null, 2))}</pre>
     `;
 
     modalBody.innerHTML = previewHtml;
     document.getElementById('modal-title').textContent = t('modal.importPreview');
 
     const footerHtml = `
-      <div style="padding: 12px 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border);">
+      <div style="padding: 12px 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid #48484a;">
         <button class="btn btn-small" id="btn-import-cancel">${t('btn.cancel')}</button>
         <button class="btn btn-small btn-primary" id="btn-import-apply">${t('btn.apply')}</button>
       </div>

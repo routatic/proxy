@@ -756,7 +756,7 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		// Prevent MIME-type sniffing.
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		// Restrict scripts/styles to same origin (local GUI only).
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:; connect-src 'self' https://cdn.tailwindcss.com")
 		next.ServeHTTP(w, r)
 	})
 }
