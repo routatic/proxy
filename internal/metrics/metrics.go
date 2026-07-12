@@ -29,6 +29,12 @@ type Metrics struct {
 	modelCounts map[string]*atomic.Int64
 	modelMu     sync.RWMutex
 
+	// Per-model success/failure for accurate success rates
+	modelSuccess   map[string]int64
+	modelSuccessMu sync.RWMutex
+	modelFailed    map[string]int64
+	modelFailedMu  sync.RWMutex
+
 	// Per-model latency tracking
 	modelLatencies     map[string][]time.Duration
 	modelLatMu         sync.RWMutex
@@ -41,6 +47,8 @@ func New() *Metrics {
 		maxLatencySamples:  1000,
 		maxPerModelSamples: 100,
 		modelCounts:        make(map[string]*atomic.Int64),
+		modelSuccess:       make(map[string]int64),
+		modelFailed:        make(map[string]int64),
 		modelLatencies:     make(map[string][]time.Duration),
 	}
 }
@@ -60,10 +68,13 @@ func (m *Metrics) RecordSuccess(model string, latency time.Duration) {
 	m.recordLatency(latency)
 	m.recordModel(model)
 	m.recordModelLatency(model, latency)
+
+	m.modelSuccessMu.Lock()
+	m.modelSuccess[model]++
+	m.modelSuccessMu.Unlock()
 }
 
 // RecordFailure records a failed request.
-// Note: model-specific failure tracking requires the model ID; use RecordFailureForModel when available.
 func (m *Metrics) RecordFailure() {
 	m.requestsFailed.Add(1)
 }
@@ -72,9 +83,18 @@ func (m *Metrics) RecordFailure() {
 func (m *Metrics) RecordFailureForModel(model string) {
 	m.requestsFailed.Add(1)
 
-	m.modelStatsMu.Lock()
+	m.modelFailedMu.Lock()
 	m.modelFailed[model]++
-	m.modelStatsMu.Unlock()
+	m.modelFailedMu.Unlock()
+}
+
+// RecordFailureForModel records a failed request for a specific model.
+func (m *Metrics) RecordFailureForModel(model string) {
+	m.requestsFailed.Add(1)
+
+	m.modelFailedMu.Lock()
+	m.modelFailed[model]++
+	m.modelFailedMu.Unlock()
 }
 
 // RecordRateLimited records a rate-limited request.
@@ -137,14 +157,33 @@ func (m *Metrics) GetSnapshot() Snapshot {
 	// Collect per-model success/failure counts
 	modelSuccess := make(map[string]int64)
 	modelFailed := make(map[string]int64)
-	m.modelStatsMu.RLock()
+	m.modelSuccessMu.RLock()
 	for k, v := range m.modelSuccess {
 		modelSuccess[k] = v
 	}
+	m.modelSuccessMu.RUnlock()
+
+	m.modelFailedMu.RLock()
 	for k, v := range m.modelFailed {
 		modelFailed[k] = v
 	}
-	m.modelStatsMu.RUnlock()
+	m.modelFailedMu.RUnlock()
+
+	// Collect per-model success/failure counts
+	modelSuccess := make(map[string]int64)
+	modelFailed := make(map[string]int64)
+
+	m.modelSuccessMu.RLock()
+	for k, v := range m.modelSuccess {
+		modelSuccess[k] = v
+	}
+	m.modelSuccessMu.RUnlock()
+
+	m.modelFailedMu.RLock()
+	for k, v := range m.modelFailed {
+		modelFailed[k] = v
+	}
+	m.modelFailedMu.RUnlock()
 
 	return Snapshot{
 		RequestsReceived: m.requestsReceived.Load(),
@@ -159,6 +198,7 @@ func (m *Metrics) GetSnapshot() Snapshot {
 		ModelSuccess:     modelSuccess,
 		ModelFailed:      modelFailed,
 	}
+}
 }
 
 // Snapshot represents a point-in-time view of metrics.
