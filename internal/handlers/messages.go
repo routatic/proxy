@@ -212,6 +212,9 @@ func isLowValueResponse(scenario router.Scenario, outputTokens int, hasContent b
 	if outputTokens >= 64 {
 		return false
 	}
+	if hasContent {
+		return false
+	}
 	switch scenario {
 	case router.ScenarioLongContext, router.ScenarioComplex:
 		return true

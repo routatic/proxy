@@ -48,7 +48,7 @@ type Server struct {
 	proxyRunning      atomic.Bool
 	connectedExisting atomic.Bool
 	proxyPort         int
-	guiPort           int
+	guiPort           atomic.Int32
 	startProxy        func() error
 	stopProxy         func() error
 	catalogDir        string
@@ -144,7 +144,7 @@ func (s *Server) getProxyPort() int {
 // the URL that the webview should load. If another routatic-proxy instance
 // is using that port, it is killed before binding.
 func (s *Server) Start(ctx context.Context) (string, error) {
-	s.guiPort = 3445
+	s.guiPort.Store(3445)
 	// Ensure port 3445 is free, killing any existing routatic-proxy GUI.
 	if err := s.ensurePortAvailable(); err != nil {
 		return "", fmt.Errorf("gui port check: %w", err)
@@ -185,7 +185,7 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 		mux.HandleFunc("/api/analytics/latency", ah.LatencyStats)
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.guiPort))
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.guiPort.Load()))
 	if err != nil {
 		return "", fmt.Errorf("gui server listen: %w", err)
 	}
@@ -581,14 +581,14 @@ func writeJSON(w http.ResponseWriter, v any) {
 // If used by a different app, increments port (up to 3454) and notifies user.
 func (s *Server) ensurePortAvailable() error {
 	client := &http.Client{Timeout: 2 * time.Second}
-	startPort := s.guiPort
+	startPort := int(s.guiPort.Load())
 
 	for p := startPort; p < startPort+10; p++ {
 		// Try to bind
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 		if err == nil {
 			_ = ln.Close()
-			s.guiPort = p
+			s.guiPort.Store(int32(p))
 			return nil
 		}
 
@@ -616,7 +616,7 @@ func (s *Server) ensurePortAvailable() error {
 			ln2, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 			if err == nil {
 				_ = ln2.Close()
-				s.guiPort = p
+				s.guiPort.Store(int32(p))
 				return nil
 			}
 			// Still blocked, continue to next port
@@ -654,12 +654,22 @@ func (s *Server) killProcessOnPort(port int) error {
 		}
 
 		// Verify it's routatic-proxy before killing
-		cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-		if err != nil {
-			continue
+		var isOurProcess bool
+		if runtime.GOOS == "linux" {
+			cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+			if err == nil {
+				// cmdline uses null bytes as separators
+				isOurProcess = strings.Contains(string(cmdline), "routatic-proxy")
+			}
+		} else {
+			// macOS / other Unix: use ps to get process name
+			output, err := exec.Command("ps", "-p", pidStr, "-o", "comm=").Output()
+			if err == nil {
+				name := strings.TrimSpace(string(output))
+				isOurProcess = strings.Contains(name, "routatic-proxy") || strings.Contains(name, "proxy")
+			}
 		}
-		// cmdline uses null bytes as separators
-		if strings.Contains(string(cmdline), "routatic-proxy") {
+		if isOurProcess {
 			s.logger.Info("terminating routatic-proxy process", "pid", pid)
 			p, _ := os.FindProcess(pid)
 			if p != nil {
