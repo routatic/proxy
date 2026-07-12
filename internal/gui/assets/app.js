@@ -8,7 +8,9 @@ const TRANSLATIONS = {
     'status.connected': 'Connected',
     'tab.overview': 'Overview',
     'tab.history': 'History',
+    'tab.performance': 'Performance',
     'tab.fallback': 'Fallback',
+    'tab.analytics': 'Analytics',
     'tab.settings': 'Settings',
     'metric.total': 'Total Requests',
     'metric.success': 'Success',
@@ -1262,8 +1264,30 @@ const FallbackModule = {
       if (!r.ok) return;
       const config = await r.json();
 
-      this.availableModels = config.models || [];
+      // Store raw config for save reconstruction
+      this.rawConfig = config;
 
+      // Build model list from scenario models + fallback entries
+      const modelMap = new Map();
+      if (config.models) {
+        for (const [scenario, m] of Object.entries(config.models)) {
+          if (m.model_id) {
+            modelMap.set(m.model_id, { id: m.model_id, display_name: m.model_id + ' (' + scenario + ')', provider: m.provider || 'unknown' });
+          }
+        }
+      }
+      if (config.fallbacks) {
+        for (const models of Object.values(config.fallbacks)) {
+          for (const m of models) {
+            if (m.model_id && !modelMap.has(m.model_id)) {
+              modelMap.set(m.model_id, { id: m.model_id, display_name: m.model_id, provider: m.provider || 'unknown' });
+            }
+          }
+        }
+      }
+      this.availableModels = [...modelMap.values()];
+
+      // Parse fallback chains from config.fallbacks (store full objects)
       this.chains = {
         default: this.parseFallbackChain(config, 'default'),
         streaming: this.parseFallbackChain(config, 'streaming'),
@@ -1279,8 +1303,9 @@ const FallbackModule = {
 
   parseFallbackChain(config, scenario) {
     const key = scenario === 'long-context' ? 'long_context' : scenario;
-    if (config.router_config && config.router_config.scenario_fallbacks && config.router_config.scenario_fallbacks[key]) {
-      return [...config.router_config.scenario_fallbacks[key]];
+    if (config.fallbacks && config.fallbacks[key]) {
+      // Store full model config objects, not just IDs
+      return config.fallbacks[key].map(m => ({...m}));
     }
     return [];
   },
@@ -1296,10 +1321,11 @@ const FallbackModule = {
     }
 
     list.classList.add('has-items');
-    list.innerHTML = chain.map((modelId, index) => {
+    list.innerHTML = chain.map((entry, index) => {
+      const modelId = entry.model_id || entry;
       const model = this.availableModels.find(m => m.id === modelId);
       const displayName = model ? (model.display_name || model.id) : modelId;
-      const provider = model ? model.provider : '';
+      const provider = entry.provider || (model ? model.provider : '');
       return `
         <li class="fallback-item" draggable="true" data-index="${index}" role="option">
           <span class="handle">⋮⋮</span>
@@ -1374,8 +1400,9 @@ const FallbackModule = {
   },
 
   addModel() {
+    const chain = this.chains[this.currentScenario];
     const modelOptions = this.availableModels
-      .filter(m => !this.chains[this.currentScenario].includes(m.id))
+      .filter(m => !chain.some(e => (e.model_id || e) === m.id))
       .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.display_name || m.id)} (${escapeHtml(m.provider)})</option>`)
       .join('');
 
@@ -1387,20 +1414,20 @@ const FallbackModule = {
     const selectHtml = `<select id="new-model-select" class="filter-select">${modelOptions}</select>`;
     const confirmed = confirm(
       (currentLang === 'zh' ? '选择模型添加到降级链:\n\n' : 'Select a model to add:\n\n') +
-      this.availableModels.filter(m => !this.chains[this.currentScenario].includes(m.id))
+      this.availableModels.filter(m => !chain.some(e => (e.model_id || e) === m.id))
         .map(m => `${m.display_name || m.id} (${m.provider})`).join('\n')
     );
 
     if (confirmed) {
       const modelId = prompt(
         currentLang === 'zh' ? '输入模型ID:' : 'Enter model ID:',
-        this.availableModels.filter(m => !this.chains[this.currentScenario].includes(m.id))[0]?.id || ''
+        this.availableModels.filter(m => !chain.some(e => (e.model_id || e) === m.id))[0]?.id || ''
       );
 
-      if (modelId && !this.chains[this.currentScenario].includes(modelId)) {
+      if (modelId && !chain.some(e => (e.model_id || e) === modelId)) {
         const model = this.availableModels.find(m => m.id === modelId);
         if (model) {
-          this.chains[this.currentScenario].push(modelId);
+          chain.push({ model_id: modelId, provider: model.provider, temperature: 0, max_tokens: 0 });
           this.renderChain();
         } else {
           alert(currentLang === 'zh' ? '无效的模型ID' : 'Invalid model ID');
@@ -1423,7 +1450,8 @@ const FallbackModule = {
       contentEl.innerHTML = '<div class="empty-state">' + t('fallback.empty') + '</div>';
     } else {
       contentEl.innerHTML = '<div class="fallback-preview-chain">' +
-        chain.map((modelId, i) => {
+        chain.map((entry, i) => {
+          const modelId = entry.model_id || entry;
           const model = this.availableModels.find(m => m.id === modelId);
           const displayName = model ? (model.display_name || model.id) : modelId;
           return `
@@ -1455,12 +1483,10 @@ const FallbackModule = {
 
     try {
       const patch = {
-        router_config: {
-          scenario_fallbacks: {
-            default: this.chains.default,
-            streaming: this.chains.streaming,
-            long_context: this.chains['long-context']
-          }
+        fallbacks: {
+          default: this.chains.default,
+          streaming: this.chains.streaming,
+          long_context: this.chains['long-context']
         }
       };
 
