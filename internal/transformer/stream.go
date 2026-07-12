@@ -27,8 +27,12 @@ var ErrStreamIdle = fmt.Errorf("upstream stream idle")
 // readBufPool pools read buffers for streaming operations.
 // sync.Pool reduces GC pressure under concurrent stream load by reusing
 // 4KB buffers across goroutines instead of allocating fresh ones per read.
+// Pool stores pointers to slices to avoid allocation on Put (SA6002).
 var readBufPool = sync.Pool{
-	New: func() any { return make([]byte, 4096) },
+	New: func() any {
+		b := make([]byte, 4096)
+		return &b
+	},
 }
 
 // IsIdleTimeout reports whether err is a read-timeout (network deadline
@@ -221,7 +225,7 @@ func (h *StreamHandler) ProxyStream(
 	decodeErrors := 0                     // consecutive SSE decode failures
 
 	// Get a buffer from the pool; return it when done.
-	readBuf := readBufPool.Get().([]byte)
+	readBuf := readBufPool.Get().(*[]byte)
 	defer readBufPool.Put(readBuf)
 
 	// Start the idle watchdog. Each successful read pings the watchdog so
@@ -239,14 +243,14 @@ func (h *StreamHandler) ProxyStream(
 		}
 
 		// Read chunk from upstream
-		n, err := openaiResp.Read(readBuf)
+		n, err := openaiResp.Read(*readBuf)
 		if n > 0 {
 			// Data is flowing — reset the idle watchdog so the stream
 			// lives as long as data keeps arriving.
 			ping()
 			// Process bytes immediately
 			for i := 0; i < n; i++ {
-				b := readBuf[i]
+				b := (*readBuf)[i]
 				if b == '\n' {
 					// Process complete line
 					if err := h.processSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
@@ -826,7 +830,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 	var lineBuf []byte
 	contentStarted := false
 	stopSent := false
-	readBuf := readBufPool.Get().([]byte)
+	readBuf := readBufPool.Get().(*[]byte)
 	defer readBufPool.Put(readBuf)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
@@ -838,11 +842,11 @@ func (h *StreamHandler) ProxyResponsesStream(
 		default:
 		}
 
-		n, err := responsesResp.Read(readBuf)
+		n, err := responsesResp.Read(*readBuf)
 		if n > 0 {
 			ping()
 			for i := 0; i < n; i++ {
-				b := readBuf[i]
+				b := (*readBuf)[i]
 				if b == '\n' {
 					if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
 						return err
@@ -1017,7 +1021,7 @@ func (h *StreamHandler) ProxyGeminiStream(
 	var lineBuf []byte
 	contentStarted := false
 	stopSent := false
-	readBuf := readBufPool.Get().([]byte)
+	readBuf := readBufPool.Get().(*[]byte)
 	defer readBufPool.Put(readBuf)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
@@ -1029,11 +1033,11 @@ func (h *StreamHandler) ProxyGeminiStream(
 		default:
 		}
 
-		n, err := geminiResp.Read(readBuf)
+		n, err := geminiResp.Read(*readBuf)
 		if n > 0 {
 			ping()
 			for i := 0; i < n; i++ {
-				b := readBuf[i]
+				b := (*readBuf)[i]
 				if b == '\n' {
 					if err := h.processGeminiSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
 						return err
