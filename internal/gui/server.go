@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,7 +52,7 @@ type Server struct {
 	srv               *http.Server
 	logger            *slog.Logger
 	catalogMu         sync.Mutex
-	logBuffer         *LogBuffer
+
 	storage           *storage.Database
 }
 
@@ -86,7 +85,7 @@ func New(opts Options) *Server {
 		catalogDir:       opts.CatalogDir,
 		catalogSourceURL: opts.CatalogSourceURL,
 		logger:           opts.Logger,
-		logBuffer:        NewLogBuffer(1000),
+
 		storage:          opts.Storage,
 	}
 	// Check initial autostart state.
@@ -160,8 +159,7 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 	mux.HandleFunc("/api/catalog/sync", s.handleCatalogSync)
 
 	// New endpoints for advanced GUI features
-	mux.HandleFunc("/api/logs/stream", s.handleLogsStream)
-	mux.HandleFunc("/api/logs/history", s.handleLogsHistory)
+
 	mux.HandleFunc("/api/config/export", s.handleConfigExport)
 	mux.HandleFunc("/api/config/import", s.handleConfigImport)
 	mux.HandleFunc("/api/perf/models", s.handlePerformance)
@@ -544,58 +542,6 @@ func (s *Server) handleCatalogStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, resp)
-}
-
-func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-
-	writeSSE(w, flusher, "connected", map[string]string{"status": "connected"})
-
-	ch := s.logBuffer.Subscribe()
-	defer s.logBuffer.Unsubscribe(ch)
-
-	lastLogs := s.logBuffer.Last(50)
-	for _, entry := range lastLogs {
-		writeSSE(w, flusher, "log", entry)
-	}
-
-	ctx := r.Context()
-	for {
-		select {
-		case entry := <-ch:
-			writeSSE(w, flusher, "log", entry)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (s *Server) handleLogsHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	n := 200
-	if nStr := r.URL.Query().Get("n"); nStr != "" {
-		if num, err := strconv.Atoi(nStr); err == nil && num > 0 {
-			n = num
-		}
-	}
-
-	_ = r.URL.Query().Get("level")
-
-	logs := s.logBuffer.Last(n)
-	writeJSON(w, logs)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
