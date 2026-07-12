@@ -1064,7 +1064,7 @@ function executeCommand(action) {
       break;
   }
 }
-}
+
 
 commandPalette?.addEventListener('click', function(e) {
   if (e.target === commandPalette) closeCommandPalette();

@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/routatic/proxy/pkg/types"
@@ -23,6 +22,13 @@ var ErrClientDisconnected = fmt.Errorf("client disconnected")
 // upstream stream. The connection is stale (e.g. backend hang or network
 // partition). The handler decides whether to fall back to another model.
 var ErrStreamIdle = fmt.Errorf("upstream stream idle")
+
+// readBufPool pools read buffers for streaming operations.
+// sync.Pool reduces GC pressure under concurrent stream load by reusing
+// 4KB buffers across goroutines instead of allocating fresh ones per read.
+var readBufPool = sync.Pool{
+	New: func() any { return make([]byte, 4096) },
+}
 
 // IsIdleTimeout reports whether err is a read-timeout (network deadline
 // exceeded on an otherwise live stream).
@@ -213,8 +219,9 @@ func (h *StreamHandler) ProxyStream(
 	startedToolCalls := make(map[int]int) // maps OpenAI tool call index → Anthropic content block index
 	decodeErrors := 0                     // consecutive SSE decode failures
 
-	// Read in larger chunks for efficiency, then parse lines
-	readBuf := make([]byte, 4096)
+	// Get a buffer from the pool; return it when done.
+	readBuf := readBufPool.Get().([]byte)
+	defer readBufPool.Put(readBuf)
 
 	// Start the idle watchdog. Each successful read pings the watchdog so
 	// the stream lives as long as data keeps flowing. If no bytes arrive
@@ -821,7 +828,10 @@ func (h *StreamHandler) ProxyResponsesStream(
 	var lineBuf bytes.Buffer
 	contentStarted := false
 	stopSent := false
-	readBuf := make([]byte, 4096)
+
+	// Get a buffer from the pool; return it when done.
+	readBuf := readBufPool.Get().([]byte)
+	defer readBufPool.Put(readBuf)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
 
@@ -1013,7 +1023,10 @@ func (h *StreamHandler) ProxyGeminiStream(
 	var lineBuf bytes.Buffer
 	contentStarted := false
 	stopSent := false
-	readBuf := make([]byte, 4096)
+
+	// Get a buffer from the pool; return it when done.
+	readBuf := readBufPool.Get().([]byte)
+	defer readBufPool.Put(readBuf)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
 

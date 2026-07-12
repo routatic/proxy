@@ -130,6 +130,7 @@ Press Ctrl+C to stop.`,
 
 		// ── 5. Start proxy ──────────────────────────────────────────
 		var isProxyRunning bool
+		var connectedToExisting bool
 		var proxySrvMu sync.Mutex
 		var guiSrv *gui.Server
 
@@ -145,7 +146,28 @@ Press Ctrl+C to stop.`,
 				(currentCfg.OpenCodeZen.APIKey == "" || strings.Contains(currentCfg.OpenCodeZen.APIKey, "${")) {
 				return fmt.Errorf("API Key is empty. Please set it in Settings first")
 			}
+
+			// Check for existing proxy on the configured port
+			healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", currentCfg.Port)
+			client := &http.Client{Timeout: 2 * time.Second}
+			resp, probeErr := client.Get(healthURL)
+			if probeErr == nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					slog.Info("Existing proxy detected on port, connecting to it", "port", currentCfg.Port)
+					isProxyRunning = true
+					connectedToExisting = true
+					if guiSrv != nil {
+						guiSrv.SetProxyRunning(true)
+						guiSrv.SetConnectedToExisting(true)
+					}
+					return nil
+				}
+			}
+
 			isProxyRunning = true
+			connectedToExisting = false
 			if guiSrv != nil {
 				guiSrv.SetProxyRunning(true)
 			}
