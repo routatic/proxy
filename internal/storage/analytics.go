@@ -21,7 +21,7 @@ type TokenSummary struct {
 	InputTokens   int64     `json:"input_tokens"`
 	OutputTokens  int64     `json:"output_tokens"`
 	SuccessRate   float64   `json:"success_rate"` // 0-1
-	EstCostUSD    float64   `json:"estimated_cost_usd"`
+	EstCostUSD    float64   `json:"est_cost_usd"`
 	PeriodStart   time.Time `json:"period_start"`
 	PeriodEnd     time.Time `json:"period_end"`
 }
@@ -50,8 +50,8 @@ func (a *Analytics) GetTokenSummary(days int) (*TokenSummary, error) {
 				ELSE 0
 			END AS success_rate,
 			COALESCE(
-				(SUM(input_tokens) * COALESCE(m.cost_input_per_m, 0) +
-				 SUM(output_tokens) * COALESCE(m.cost_output_per_m, 0)) / 1000000,
+				(SUM(input_tokens * COALESCE(m.cost_input_per_m, 0)) +
+				 SUM(output_tokens * COALESCE(m.cost_output_per_m, 0))) / 1000000,
 				0
 			) AS est_cost_usd
 		FROM requests r
@@ -100,8 +100,8 @@ func (a *Analytics) GetModelBreakdown(days int) ([]ModelBreakdown, error) {
 				ELSE 0 
 			END AS success_rate,
 			COALESCE(
-				(SUM(r.input_tokens) * COALESCE(m.cost_input_per_m, 0) + 
-				 SUM(r.output_tokens) * COALESCE(m.cost_output_per_m, 0)) / 1000000,
+				(SUM(r.input_tokens * COALESCE(m.cost_input_per_m, 0)) + 
+				 SUM(r.output_tokens * COALESCE(m.cost_output_per_m, 0))) / 1000000,
 				0
 			) AS est_cost_usd
 		FROM requests r
