@@ -53,7 +53,7 @@ type Server struct {
 	logger            *slog.Logger
 	catalogMu         sync.Mutex
 
-	storage           *storage.Database
+	storage *storage.Database
 }
 
 // Options configures the GUI server.
@@ -86,7 +86,7 @@ func New(opts Options) *Server {
 		catalogSourceURL: opts.CatalogSourceURL,
 		logger:           opts.Logger,
 
-		storage:          opts.Storage,
+		storage: opts.Storage,
 	}
 	// Check initial autostart state.
 	s.cfg.Autostart = isAutostartEnabled()
