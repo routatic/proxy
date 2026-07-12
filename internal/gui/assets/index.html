@@ -35,7 +35,6 @@
   <nav class="tabs">
     <button class="tab active" data-tab="overview" data-i18n="tab.overview">Overview</button>
     <button class="tab" data-tab="history" data-i18n="tab.history">History</button>
-    <button class="tab" data-tab="logs" data-i18n="tab.logs">Logs</button>
     <button class="tab" data-tab="performance" data-i18n="tab.performance">Performance</button>
     <button class="tab" data-tab="fallback" data-i18n="tab.fallback">Fallback</button>
     <button class="tab" data-tab="settings" data-i18n="tab.settings">Settings</button>
@@ -100,31 +99,6 @@
         </tbody>
       </table>
     </div>
-  </div>
-
-  <!-- Logs Tab -->
-  <div class="tab-content" id="tab-logs">
-    <div class="log-toolbar">
-      <div class="log-toolbar-left">
-        <select class="filter-select" id="log-level-filter" aria-label="Filter by log level">
-          <option value="" data-i18n="logs.allLevels">All Levels</option>
-          <option value="debug">debug</option>
-          <option value="info" selected>info</option>
-          <option value="warn">warn</option>
-          <option value="error">error</option>
-        </select>
-        <input type="text" id="log-search" placeholder="Search logs..." aria-label="Search logs" class="log-search-input">
-      </div>
-      <div class="log-toolbar-right">
-        <label class="log-toggle">
-          <input type="checkbox" id="log-auto-scroll" checked>
-          <span data-i18n="logs.autoScroll">Auto-scroll</span>
-        </label>
-        <button class="btn btn-small" id="log-pause-btn" data-i18n="logs.pause">Pause</button>
-        <button class="btn btn-small" id="log-clear-btn" data-i18n="logs.clear">Clear</button>
-      </div>
-    </div>
-    <div class="log-container" id="log-container"></div>
   </div>
 
   <!-- Quick Model Test Modal -->

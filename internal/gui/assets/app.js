@@ -1031,8 +1031,6 @@ function executeCommand(action) {
     case 'goto-history':
       document.querySelector('[data-tab="history"]').click();
       break;
-      document.querySelector('[data-tab="logs"]').click();
-      break;
     case 'goto-performance':
       document.querySelector('[data-tab="performance"]').click();
       break;

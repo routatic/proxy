@@ -160,22 +160,6 @@ func (m *Metrics) GetSnapshot() Snapshot {
 	}
 	m.modelFailedMu.RUnlock()
 
-	// Collect per-model success/failure counts
-	modelSuccess = make(map[string]int64)
-	modelFailed = make(map[string]int64)
-
-	m.modelSuccessMu.RLock()
-	for k, v := range m.modelSuccess {
-		modelSuccess[k] = v
-	}
-	m.modelSuccessMu.RUnlock()
-
-	m.modelFailedMu.RLock()
-	for k, v := range m.modelFailed {
-		modelFailed[k] = v
-	}
-	m.modelFailedMu.RUnlock()
-
 	return Snapshot{
 		RequestsReceived: m.requestsReceived.Load(),
 		RequestsStreamed: m.requestsStreamed.Load(),
