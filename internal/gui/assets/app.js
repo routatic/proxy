@@ -1602,6 +1602,13 @@ const TestModule = {
       const latency = Math.round(performance.now() - start);
       if (this.testLatency) this.testLatency.textContent = latency + ' ms';
 
+      if (!r.ok) {
+        this.testResponse.innerHTML = '';
+        const pre = document.createElement('pre');
+        pre.textContent = t('test.error') + r.status + ': ' + (await r.text());
+        this.testResponse.appendChild(pre);
+        return;
+      }
       const text = await r.text();
       let content = text;
       try {
