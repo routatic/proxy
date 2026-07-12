@@ -48,6 +48,7 @@ type Server struct {
 	proxyRunning      atomic.Bool
 	connectedExisting atomic.Bool
 	proxyPort         int
+	guiPort           int
 	startProxy        func() error
 	stopProxy         func() error
 	catalogDir        string
@@ -139,14 +140,13 @@ func (s *Server) getProxyPort() int {
 	return s.proxyPort
 }
 
-var guiPort = 3445
-
 // Start starts the embedded HTTP server on port 3445 and returns
 // the URL that the webview should load. If another routatic-proxy instance
 // is using that port, it is killed before binding.
 func (s *Server) Start(ctx context.Context) (string, error) {
+	s.guiPort = 3445
 	// Ensure port 3445 is free, killing any existing routatic-proxy GUI.
-	if err := s.ensurePortAvailable(guiPort); err != nil {
+	if err := s.ensurePortAvailable(); err != nil {
 		return "", fmt.Errorf("gui port check: %w", err)
 	}
 
@@ -185,7 +185,7 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 		mux.HandleFunc("/api/analytics/latency", ah.LatencyStats)
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", guiPort))
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.guiPort))
 	if err != nil {
 		return "", fmt.Errorf("gui server listen: %w", err)
 	}
@@ -579,15 +579,16 @@ func writeJSON(w http.ResponseWriter, v any) {
 // ensurePortAvailable finds an available port for the GUI.
 // If 3445 is free, uses it. If used by another routatic-proxy, kills it.
 // If used by a different app, increments port (up to 3454) and notifies user.
-func (s *Server) ensurePortAvailable(startPort int) error {
+func (s *Server) ensurePortAvailable() error {
 	client := &http.Client{Timeout: 2 * time.Second}
+	startPort := s.guiPort
 
 	for p := startPort; p < startPort+10; p++ {
 		// Try to bind
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 		if err == nil {
 			_ = ln.Close()
-			guiPort = p
+			s.guiPort = p
 			return nil
 		}
 
@@ -615,7 +616,7 @@ func (s *Server) ensurePortAvailable(startPort int) error {
 			ln2, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 			if err == nil {
 				_ = ln2.Close()
-				guiPort = p
+				s.guiPort = p
 				return nil
 			}
 			// Still blocked, continue to next port
