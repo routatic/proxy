@@ -513,8 +513,10 @@ func (h *MessagesHandler) handleStreaming(
 
 	streamStart := time.Now()
 	blockedProviders := make(map[string]bool)
+	lastModelID := ""
 
 	for _, model := range modelChain {
+		lastModelID = model.ModelID
 		select {
 		case <-clientCtx.Done():
 			h.logger.Debug("client disconnected, stopping streaming fallbacks")
