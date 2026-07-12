@@ -88,15 +88,6 @@ func (m *Metrics) RecordFailureForModel(model string) {
 	m.modelFailedMu.Unlock()
 }
 
-// RecordFailureForModel records a failed request for a specific model.
-func (m *Metrics) RecordFailureForModel(model string) {
-	m.requestsFailed.Add(1)
-
-	m.modelFailedMu.Lock()
-	m.modelFailed[model]++
-	m.modelFailedMu.Unlock()
-}
-
 // RecordRateLimited records a rate-limited request.
 func (m *Metrics) RecordRateLimited() {
 	m.rateLimited.Add(1)
@@ -170,8 +161,8 @@ func (m *Metrics) GetSnapshot() Snapshot {
 	m.modelFailedMu.RUnlock()
 
 	// Collect per-model success/failure counts
-	modelSuccess := make(map[string]int64)
-	modelFailed := make(map[string]int64)
+	modelSuccess = make(map[string]int64)
+	modelFailed = make(map[string]int64)
 
 	m.modelSuccessMu.RLock()
 	for k, v := range m.modelSuccess {
