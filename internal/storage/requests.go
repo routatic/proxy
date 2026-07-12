@@ -79,7 +79,7 @@ func (r *Requests) Since(since time.Time) ([]history.RequestRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanRequests(rows)
 }
