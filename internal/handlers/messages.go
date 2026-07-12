@@ -588,7 +588,7 @@ func (h *MessagesHandler) handleStreaming(
 					"model", model.ModelID, "idle_timeout", idleTimeout)
 				if rw.ssePayloadWritten {
 					h.sendStreamError(rw, "stream idle after SSE payload started")
-					h.metrics.RecordFailure()
+					h.metrics.RecordFailureForModel(model.ModelID)
 					return false // abort
 				}
 				return true // continue to next model
@@ -596,7 +596,7 @@ func (h *MessagesHandler) handleStreaming(
 			h.logger.Warn(action+" streaming failed", "model", model.ModelID, "error", err)
 			if rw.ssePayloadWritten {
 				h.sendStreamError(rw, "all upstream models failed after SSE payload started")
-				h.metrics.RecordFailure()
+				h.metrics.RecordFailureForModel(model.ModelID)
 				return false // abort — cannot fallback after SSE payload started
 			}
 			return true // continue to next model
@@ -773,7 +773,7 @@ func (h *MessagesHandler) handleStreaming(
 		return
 	}
 
-	h.metrics.RecordFailure()
+	h.metrics.RecordFailureForModel(model.ModelID)
 	if rw.ssePayloadWritten {
 		// SSE payload was already sent — do not attempt further writes
 		// beyond the error event.  The client has a partial stream.
@@ -1096,7 +1096,7 @@ func (h *MessagesHandler) handleNonStreaming(
 			h.logger.Info("request context canceled during non-streaming fallback", "error", err)
 			return
 		}
-		h.metrics.RecordFailure()
+		h.metrics.RecordFailureForModel(result.ModelID)
 		h.sendError(w, http.StatusBadGateway, "all models failed", err)
 		return
 	}
