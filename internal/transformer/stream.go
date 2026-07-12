@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -358,7 +357,7 @@ func (h *StreamHandler) ProxyStream(
 func (h *StreamHandler) processSSELine(
 	w http.ResponseWriter,
 	flusher http.Flusher,
-	line string,
+	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
 	reasoningStarted *bool,
@@ -371,7 +370,7 @@ func (h *StreamHandler) processSSELine(
 	line = bytes.TrimSpace(line)
 
 	// Skip empty lines
-	if len(line) == 0 {
+	if line == "" {
 		return nil
 	}
 
@@ -830,10 +829,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 	var lineBuf bytes.Buffer
 	contentStarted := false
 	stopSent := false
-
-	// Get a buffer from the pool; return it when done.
-	readBuf := readBufPool.Get().([]byte)
-	defer readBufPool.Put(readBuf)
+	readBuf := make([]byte, 4096)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
 
@@ -919,14 +915,14 @@ func (h *StreamHandler) ProxyResponsesStream(
 func (h *StreamHandler) processResponsesSSELine(
 	w http.ResponseWriter,
 	flusher http.Flusher,
-	line string,
+	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
 	stopSent *bool,
 	originalModel string,
 ) error {
 	line = bytes.TrimSpace(line)
-	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
+	if line == "" || !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
@@ -1025,10 +1021,7 @@ func (h *StreamHandler) ProxyGeminiStream(
 	var lineBuf bytes.Buffer
 	contentStarted := false
 	stopSent := false
-
-	// Get a buffer from the pool; return it when done.
-	readBuf := readBufPool.Get().([]byte)
-	defer readBufPool.Put(readBuf)
+	readBuf := make([]byte, 4096)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
 
@@ -1114,14 +1107,14 @@ func (h *StreamHandler) ProxyGeminiStream(
 func (h *StreamHandler) processGeminiSSELine(
 	w http.ResponseWriter,
 	flusher http.Flusher,
-	line string,
+	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
 	stopSent *bool,
 	originalModel string,
 ) error {
 	line = bytes.TrimSpace(line)
-	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
+	if line == "" || !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
