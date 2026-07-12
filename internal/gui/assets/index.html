@@ -244,11 +244,7 @@ tailwind.config = {
       <div class="flex items-end justify-between gap-3 mb-4">
         <div class="mb-0">
           <label for="fallback-scenario" class="block text-xs font-medium mb-1 text-[#f5f5f7]" data-i18n="fallback.scenario">Scenario</label>
-          <select id="fallback-scenario" onchange="FallbackModule.onScenarioChange()" class="px-3 py-2 border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] text-xs min-w-[180px] cursor-pointer">
-            <option value="default" data-i18n="fallback.default">Default</option>
-            <option value="streaming" data-i18n="fallback.streaming">Streaming</option>
-            <option value="long-context" data-i18n="fallback.longContext">Long Context</option>
-          </select>
+          <select id="fallback-scenario" onchange="FallbackModule.onScenarioChange()" class="px-3 py-2 border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] text-xs min-w-[180px] cursor-pointer"></select>
         </div>
         <div class="fallback-actions flex gap-2">
           <button class="btn btn-small" onclick="FallbackModule.preview()" data-i18n="fallback.preview">Preview</button>
@@ -259,7 +255,7 @@ tailwind.config = {
       <div class="mt-3">
         <div class="flex items-center justify-between mb-2 text-sm font-semibold text-[#98989d]">
           <span data-i18n="fallback.chainOrder">Fallback Chain Order</span>
-          <button class="btn btn-small" onclick="FallbackModule.addModel()" data-i18n="fallback.addModel">+ Add Model</button>
+          <select id="fallback-add-model" onchange="FallbackModule.onAddSelectChange()" class="px-3 py-2 border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] text-xs min-w-[180px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"><option value=""><span data-i18n="fallback.addModel">+ Add Model</span></option></select>
         </div>
         <ul class="fallback-chain" id="fallback-chain" role="listbox" aria-label="Fallback chain models">
           <li class="empty-state text-center text-[#98989d] py-6 text-[13px]" data-i18n="fallback.empty">No models configured</li>
