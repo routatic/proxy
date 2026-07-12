@@ -113,7 +113,7 @@ select:focus-visible {
   padding: 16px 24px;
   background: linear-gradient(90deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border-bottom: 1px solid var(--border);
-}
+  -webkit-app-region: drag;
 
 .logo {
   display: flex;
