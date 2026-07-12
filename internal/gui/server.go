@@ -757,8 +757,8 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Prevent MIME-type sniffing.
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		// Allow same-origin resources + Tailwind CDN for dashboard styling.
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:; connect-src 'self' https://cdn.tailwindcss.com")
+		// Restrict all resources to same-origin (all assets bundled in binary).
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 		next.ServeHTTP(w, r)
 	})
 }

@@ -9,13 +9,17 @@ CMD = ./cmd/routatic-proxy
 
 # ── Development ────────────────────────────────────────────────────
 
-build:
+build: build-css
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
 	@ln -sf $(BINARY) bin/$(LEGACY_BINARY)
 
-build-ui:
+build-ui: build-css
 	CGO_ENABLED=1 go build -tags darwin -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
 	@ln -sf $(BINARY) bin/$(LEGACY_BINARY)
+
+build-css:
+	@echo "Building Tailwind CSS..."
+	@npx tailwindcss -i internal/gui/assets/tailwind-input.css -o internal/gui/assets/compiled-tailwind.css --minify 2>&1 | grep -v "Browserslist:"
 
 dmg: build-ui
 	@./scripts/build_dmg.sh "$(VERSION)"
