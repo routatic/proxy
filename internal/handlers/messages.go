@@ -513,10 +513,8 @@ func (h *MessagesHandler) handleStreaming(
 
 	streamStart := time.Now()
 	blockedProviders := make(map[string]bool)
-	lastModelID := ""
 
 	for _, model := range modelChain {
-		lastModelID = model.ModelID
 		select {
 		case <-clientCtx.Done():
 			h.logger.Debug("client disconnected, stopping streaming fallbacks")
@@ -775,7 +773,7 @@ func (h *MessagesHandler) handleStreaming(
 		return
 	}
 
-	h.metrics.RecordFailureForModel(lastModelID)
+	h.metrics.RecordFailure()
 	if rw.ssePayloadWritten {
 		// SSE payload was already sent — do not attempt further writes
 		// beyond the error event.  The client has a partial stream.
