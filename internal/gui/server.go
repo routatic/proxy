@@ -672,7 +672,7 @@ func (s *Server) killProcessOnPort(port int) error {
 func (s *Server) findPIDsOnPort(port int) ([]int, error) {
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.Command("cmd", "/c", fmt.Sprintf("netstat -ano | findstr :%d", port))
+		cmd := exec.Command("cmd", "/c", fmt.Sprintf("netstat -ano | findstr /r /c:\":%d \"", port))
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, err
