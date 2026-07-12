@@ -135,6 +135,27 @@ Press Ctrl+C to stop.`,
 		var proxySrvMu sync.Mutex
 		var guiSrv *gui.Server
 
+		// Function to check and connect to existing proxy
+		checkExistingProxy := func() bool {
+			currentCfg := atomic.Get()
+			healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", currentCfg.Port)
+			client := &http.Client{Timeout: 2 * time.Second}
+			resp, probeErr := client.Get(healthURL)
+			if probeErr == nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					slog.Info("Existing proxy detected on port, connecting to it", "port", currentCfg.Port)
+					return true
+				}
+			}
+			return false
+		}
+
+		// Check for existing proxy BEFORE creating GUI server
+		connectedToExisting = checkExistingProxy()
+		isProxyRunning = connectedToExisting
+
 		startProxy = func() error {
 			proxySrvMu.Lock()
 			defer proxySrvMu.Unlock()
@@ -148,29 +169,11 @@ Press Ctrl+C to stop.`,
 				return fmt.Errorf("API Key is empty. Please set it in Settings first")
 			}
 
-			// Check for existing proxy on the configured port
-			healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", currentCfg.Port)
-			client := &http.Client{Timeout: 2 * time.Second}
-			resp, probeErr := client.Get(healthURL)
-			if probeErr == nil {
-				_, _ = io.Copy(io.Discard, resp.Body)
-				_ = resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					slog.Info("Existing proxy detected on port, connecting to it", "port", currentCfg.Port)
-					isProxyRunning = true
-					connectedToExisting = true
-					if guiSrv != nil {
-						guiSrv.SetProxyRunning(true)
-						guiSrv.SetConnectedToExisting(true)
-					}
-					return nil
-				}
-			}
-
 			isProxyRunning = true
 			connectedToExisting = false
 			if guiSrv != nil {
 				guiSrv.SetProxyRunning(true)
+				guiSrv.SetConnectedToExisting(false)
 			}
 			go func() {
 				srvErr := proxySrv.Start()
@@ -225,6 +228,10 @@ Press Ctrl+C to stop.`,
 			CatalogDir:       resolveCatalogDir(configPath),
 			CatalogSourceURL: cfg.Catalog.SourceURL,
 		})
+
+		// Set the connected flag now that guiSrv exists
+		guiSrv.SetProxyRunning(isProxyRunning)
+		guiSrv.SetConnectedToExisting(connectedToExisting)
 
 		guiURL, err := guiSrv.Start(ctx)
 		if err != nil {
