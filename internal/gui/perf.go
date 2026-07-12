@@ -82,10 +82,16 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for model, count := range snap.ModelCounts {
-			if _, exists := result[model]; !exists {
+			if perf, exists := result[model]; exists {
+				perf.Success = snap.ModelSuccess[model]
+				perf.Failed = snap.ModelFailed[model]
+				result[model] = perf
+			} else {
 				result[model] = modelPerf{
-					Model: model,
-					Count: count,
+					Model:   model,
+					Count:   count,
+					Success: snap.ModelSuccess[model],
+					Failed:  snap.ModelFailed[model],
 				}
 			}
 		}

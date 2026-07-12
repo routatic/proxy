@@ -63,8 +63,18 @@ func (m *Metrics) RecordSuccess(model string, latency time.Duration) {
 }
 
 // RecordFailure records a failed request.
+// Note: model-specific failure tracking requires the model ID; use RecordFailureForModel when available.
 func (m *Metrics) RecordFailure() {
 	m.requestsFailed.Add(1)
+}
+
+// RecordFailureForModel records a failed request for a specific model.
+func (m *Metrics) RecordFailureForModel(model string) {
+	m.requestsFailed.Add(1)
+
+	m.modelStatsMu.Lock()
+	m.modelFailed[model]++
+	m.modelStatsMu.Unlock()
 }
 
 // RecordRateLimited records a rate-limited request.
@@ -124,6 +134,18 @@ func (m *Metrics) GetSnapshot() Snapshot {
 	}
 	m.modelMu.RUnlock()
 
+	// Collect per-model success/failure counts
+	modelSuccess := make(map[string]int64)
+	modelFailed := make(map[string]int64)
+	m.modelStatsMu.RLock()
+	for k, v := range m.modelSuccess {
+		modelSuccess[k] = v
+	}
+	for k, v := range m.modelFailed {
+		modelFailed[k] = v
+	}
+	m.modelStatsMu.RUnlock()
+
 	return Snapshot{
 		RequestsReceived: m.requestsReceived.Load(),
 		RequestsStreamed: m.requestsStreamed.Load(),
@@ -134,6 +156,8 @@ func (m *Metrics) GetSnapshot() Snapshot {
 		Deduplicated:     m.deduplicated.Load(),
 		Latencies:        latencies,
 		ModelCounts:      modelCounts,
+		ModelSuccess:     modelSuccess,
+		ModelFailed:      modelFailed,
 	}
 }
 
@@ -148,6 +172,8 @@ type Snapshot struct {
 	Deduplicated     int64
 	Latencies        []time.Duration
 	ModelCounts      map[string]int64
+	ModelSuccess     map[string]int64 // Per-model success counts
+	ModelFailed      map[string]int64 // Per-model failure counts
 }
 
 // ModelLatencyStats holds latency statistics for a single model.
