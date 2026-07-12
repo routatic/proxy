@@ -1774,10 +1774,10 @@ const AnalyticsModule = {
     const s = data.summary || {};
     const fmt = (n) => n != null ? Number(n).toLocaleString() : '—';
     document.getElementById('kpi-requests').textContent = fmt(s.total_requests);
-    const totTok = (s.total_tokens_input||0) + (s.total_tokens_output||0);
+    const totTok = (s.input_tokens||0) + (s.output_tokens||0);
     document.getElementById('kpi-tokens').textContent = fmt(totTok);
-    document.getElementById('kpi-tokens-in').textContent = fmt(s.total_tokens_input);
-    document.getElementById('kpi-tokens-out').textContent = fmt(s.total_tokens_output);
+    document.getElementById('kpi-tokens-in').textContent = fmt(s.input_tokens);
+    document.getElementById('kpi-tokens-out').textContent = fmt(s.output_tokens);
     const cost = s.estimated_cost_usd != null ? '$' + Number(s.estimated_cost_usd).toFixed(2) : '—';
     document.getElementById('kpi-cost').textContent = cost;
 
