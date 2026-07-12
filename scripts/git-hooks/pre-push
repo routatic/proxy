@@ -37,7 +37,7 @@ if is_protected_branch; then
 fi
 
 # Check 1: Format check (gofmt)
-echo -e "${YELLOW}[1/4] Checking code formatting...${NC}"
+echo -e "${YELLOW}[1/5] Checking code formatting...${NC}"
 FORMAT_ISSUES=$(gofmt -d .)
 if [ -n "$FORMAT_ISSUES" ]; then
     echo -e "${RED}✗ Code is not properly formatted${NC}"
@@ -50,13 +50,27 @@ echo -e "${GREEN}✓ Code formatting check passed${NC}"
 echo ""
 
 # Check 2: Lint check (go vet)
-echo -e "${YELLOW}[2/4] Running go vet...${NC}"
+echo -e "${YELLOW}[2/5] Running go vet...${NC}"
 CGO_ENABLED=0 go vet ./...
 echo -e "${GREEN}✓ Go vet passed${NC}"
 echo ""
 
-# Check 3: Tests
-echo -e "${YELLOW}[3/4] Running tests...${NC}"
+# Check 3: golangci-lint
+echo -e "${YELLOW}[3/5] Running golangci-lint...${NC}"
+if command -v golangci-lint &> /dev/null; then
+    if ! golangci-lint run --timeout 5m; then
+        echo -e "${RED}✗ golangci-lint failed${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ golangci-lint passed${NC}"
+else
+    echo -e "${YELLOW}⚠ golangci-lint not installed, skipping${NC}"
+    echo "  Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+fi
+echo ""
+
+# Check 4: Tests
+echo -e "${YELLOW}[4/5] Running tests...${NC}"
 go test ./internal/... ./pkg/... ./cmd/... -v -race 2>&1 | while IFS= read -r line; do
     # Suppress verbose test output, show summary
     if [[ "$line" =~ ^(PASS|FAIL|===\s+RUN|---\s+(PASS|FAIL)|coverage:) ]]; then
@@ -66,8 +80,8 @@ done
 echo -e "${GREEN}✓ Tests passed${NC}"
 echo ""
 
-# Check 4: Build
-echo -e "${YELLOW}[4/4] Building project...${NC}"
+# Check 5: Build
+echo -e "${YELLOW}[5/5] Building project...${NC}"
 CGO_ENABLED=0 go build -o /tmp/routatic-proxy-build-test ./cmd/routatic-proxy
 rm -f /tmp/routatic-proxy-build-test
 echo -e "${GREEN}✓ Build successful${NC}"
