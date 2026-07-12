@@ -30,10 +30,12 @@ func openGUI(guiURL string) error {
 			wv.Dispatch(func() {
 				wv.Terminate()
 			})
+			systray.Quit()
 		}()
 
 		wv.Run()
 		wv.Destroy()
+		systray.Quit()
 	}, nil)
 
 	return nil

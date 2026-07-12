@@ -409,7 +409,9 @@ Press Ctrl+C to stop the server.`,
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
 			_ = srv.Shutdown(shutdownCtx)
-			_ = guiSrv.Shutdown(shutdownCtx)
+			if guiSrv != nil {
+				_ = guiSrv.Shutdown(shutdownCtx)
+			}
 
 			return nil
 		},
@@ -418,6 +420,7 @@ Press Ctrl+C to stop the server.`,
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file")
 	cmd.Flags().IntVarP(&port, "port", "p", 0, "Override proxy listen port")
 	cmd.Flags().BoolVarP(&background, "background", "b", false, "Run as background daemon")
+	cmd.Flags().BoolVarP(&headless, "headless", "H", false, "Skip dashboard (run proxy only)")
 	cmd.Flags().BoolVar(&daemonize, "_daemonize", false, "Internal use only")
 	_ = cmd.Flags().MarkHidden("_daemonize")
 

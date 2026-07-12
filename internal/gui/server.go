@@ -633,51 +633,21 @@ func (s *Server) ensurePortAvailable() error {
 }
 
 // killProcessOnPort terminates the process listening on the given port.
+// Platform-aware: uses lsof+ps on Unix, netstat+tasklist on Windows.
 func (s *Server) killProcessOnPort(port int) error {
-	// Use lsof to find the PID
-	cmd := exec.Command("lsof", "-t", "-i", fmt.Sprintf(":%d", port))
-	output, err := cmd.Output()
-	if err != nil {
-		// lsof failed or returned nothing - port might be free now
+	pids, err := s.findPIDsOnPort(port)
+	if err != nil || len(pids) == 0 {
 		return nil
 	}
 
-	pids := strings.Split(strings.TrimSpace(string(output)), "\n")
 	killed := false
-	for _, pidStr := range pids {
-		if pidStr == "" {
+	for _, pid := range pids {
+		if !s.isRoutaticProxyProcess(pid) {
 			continue
 		}
-		pid, err := strconv.Atoi(pidStr)
-		if err != nil {
-			continue
-		}
-
-		// Verify it's routatic-proxy before killing
-		var isOurProcess bool
-		if runtime.GOOS == "linux" {
-			cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-			if err == nil {
-				// cmdline uses null bytes as separators
-				isOurProcess = strings.Contains(string(cmdline), "routatic-proxy")
-			}
-		} else {
-			// macOS / other Unix: use ps to get process name
-			output, err := exec.Command("ps", "-p", pidStr, "-o", "comm=").Output()
-			if err == nil {
-				name := strings.TrimSpace(string(output))
-				isOurProcess = strings.Contains(name, "routatic-proxy") || strings.Contains(name, "proxy")
-			}
-		}
-		if isOurProcess {
-			s.logger.Info("terminating routatic-proxy process", "pid", pid)
-			p, _ := os.FindProcess(pid)
-			if p != nil {
-				_ = p.Signal(os.Interrupt)
-				time.Sleep(500 * time.Millisecond)
-				_ = p.Kill()
-				killed = true
-			}
+		s.logger.Info("terminating routatic-proxy process", "pid", pid)
+		if s.killProcess(pid) {
+			killed = true
 		}
 	}
 
@@ -689,7 +659,6 @@ func (s *Server) killProcessOnPort(port int) error {
 	for i := 0; i < 10; i++ {
 		conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
-			// Port is now free
 			return nil
 		}
 		_ = conn.Close()
@@ -697,6 +666,88 @@ func (s *Server) killProcessOnPort(port int) error {
 	}
 
 	return fmt.Errorf("port %d not released after killing process", port)
+}
+
+// findPIDsOnPort returns PIDs listening on the given port.
+func (s *Server) findPIDsOnPort(port int) ([]int, error) {
+	switch runtime.GOOS {
+	case "windows":
+		cmd := exec.Command("cmd", "/c", fmt.Sprintf("netstat -ano | findstr :%d", port))
+		output, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+		var pids []int
+		for _, line := range strings.Split(string(output), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 5 {
+				if pid, err := strconv.Atoi(fields[len(fields)-1]); err == nil && pid > 0 {
+					pids = append(pids, pid)
+				}
+			}
+		}
+		return pids, nil
+	default:
+		cmd := exec.Command("lsof", "-t", "-i", fmt.Sprintf(":%d", port))
+		output, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+		var pids []int
+		for _, pidStr := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if pidStr == "" {
+				continue
+			}
+			if pid, err := strconv.Atoi(pidStr); err == nil {
+				pids = append(pids, pid)
+			}
+		}
+		return pids, nil
+	}
+}
+
+// isRoutaticProxyProcess checks if the PID belongs to routatic-proxy.
+func (s *Server) isRoutaticProxyProcess(pid int) bool {
+	switch runtime.GOOS {
+	case "windows":
+		cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
+		output, err := cmd.Output()
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), "routatic-proxy")
+	case "linux":
+		cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(cmdline), "routatic-proxy")
+	default:
+		output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+		if err != nil {
+			return false
+		}
+		name := strings.TrimSpace(string(output))
+		return strings.Contains(name, "routatic-proxy") || strings.Contains(name, "proxy")
+	}
+}
+
+// killProcess terminates a process by PID. Returns true if successful.
+func (s *Server) killProcess(pid int) bool {
+	switch runtime.GOOS {
+	case "windows":
+		cmd := exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid))
+		return cmd.Run() == nil
+	default:
+		p, err := os.FindProcess(pid)
+		if err != nil {
+			return false
+		}
+		_ = p.Signal(os.Interrupt)
+		time.Sleep(500 * time.Millisecond)
+		_ = p.Kill()
+		return true
+	}
 }
 
 // securityHeadersMiddleware adds security headers to all responses.
