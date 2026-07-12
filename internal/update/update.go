@@ -9,6 +9,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/routatic/proxy/internal/buildinfo"
+	"golang.org/x/mod/semver"
 )
 
 // GitHubRelease represents a GitHub release
@@ -179,9 +182,8 @@ func CheckForUpdate(currentVersion string, channel string) (*GitHubRelease, erro
 		return nil, err
 	}
 
-	// Compare versions (simple string comparison for now)
-	// In production, you'd want proper semantic version comparison
-	if release.TagName != currentVersion && release.TagName > currentVersion {
+	// Compare versions using semantic versioning
+	if IsNewerVersion(currentVersion, release.TagName) {
 		return release, nil
 	}
 
