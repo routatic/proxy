@@ -592,10 +592,7 @@ func (s *Server) handleLogsHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	level := LogLevel(r.URL.Query().Get("level"))
-	if level == "" {
-		level = LogLevelInfo
-	}
+	_ = r.URL.Query().Get("level")
 
 	logs := s.logBuffer.Last(n)
 	writeJSON(w, logs)
