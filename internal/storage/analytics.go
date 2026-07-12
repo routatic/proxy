@@ -21,6 +21,7 @@ type TokenSummary struct {
 	InputTokens   int64     `json:"input_tokens"`
 	OutputTokens  int64     `json:"output_tokens"`
 	SuccessRate   float64   `json:"success_rate"` // 0-1
+	EstCostUSD    float64   `json:"estimated_cost_usd"`
 	PeriodStart   time.Time `json:"period_start"`
 	PeriodEnd     time.Time `json:"period_end"`
 }
@@ -40,19 +41,25 @@ func (a *Analytics) GetTokenSummary(days int) (*TokenSummary, error) {
 	summary.PeriodEnd = time.Now()
 
 	row := a.db.DB().QueryRowContext(ctx, `
-		SELECT 
+		SELECT
 			COUNT(*) AS total_requests,
 			COALESCE(SUM(input_tokens), 0) AS input_tokens,
 			COALESCE(SUM(output_tokens), 0) AS output_tokens,
-			CASE 
+			CASE
 				WHEN COUNT(*) > 0 THEN CAST(SUM(success) AS FLOAT) / COUNT(*)
-				ELSE 0 
-			END AS success_rate
-		FROM requests 
-		WHERE created_at >= ?
+				ELSE 0
+			END AS success_rate,
+			COALESCE(
+				(SUM(input_tokens) * COALESCE(m.cost_input_per_m, 0) +
+				 SUM(output_tokens) * COALESCE(m.cost_output_per_m, 0)) / 1000000,
+				0
+			) AS est_cost_usd
+		FROM requests r
+		LEFT JOIN models m ON m.id = r.model
+		WHERE r.created_at >= ?
 	`, since.Format(time.RFC3339Nano))
 
-	if err := row.Scan(&summary.TotalRequests, &summary.InputTokens, &summary.OutputTokens, &summary.SuccessRate); err != nil {
+	if err := row.Scan(&summary.TotalRequests, &summary.InputTokens, &summary.OutputTokens, &summary.SuccessRate, &summary.EstCostUSD); err != nil {
 		return nil, err
 	}
 	return &summary, nil
