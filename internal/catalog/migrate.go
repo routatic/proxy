@@ -179,27 +179,12 @@ func syncToSQLite(ctx context.Context, db *storage.Database, sourceURL string) (
 
 	providers := make([]storage.ProviderRecord, 0, len(catalog.Providers))
 	for name, p := range catalog.Providers {
-		providers = append(providers, storage.ProviderRecord{
-			Name:                   name,
-			BaseURL:                p.BaseURL,
-			APIKey:                 p.APIKey,
-			Enabled:                p.Enabled,
-			AnthropicToolsDisabled: p.AnthropicToolsDisabled,
-		})
+		providers = append(providers, providerToStorageRecord(name, p))
 	}
 
 	models := make([]storage.ModelRecord, 0, len(catalog.Models))
 	for key, m := range catalog.Models {
-		models = append(models, storage.ModelRecord{
-			ID:            key,
-			Name:          m.Name,
-			Reasoning:     m.Reasoning,
-			ToolCall:      m.ToolCall,
-			Vision:        m.SupportsVision(),
-			ContextWindow: m.ContextWindow(),
-			CostInput:     m.CostInputPerM(),
-			CostOutput:    m.CostOutputPerM(),
-		})
+		models = append(models, modelToStorageRecord(key, m))
 	}
 
 	repo := storage.NewCatalogRepo(db)
@@ -235,4 +220,52 @@ func SyncToSQLiteWithStats(ctx context.Context, db *storage.Database, sourceURL 
 		Models:    models,
 		Duration:  time.Since(start),
 	}, nil
+}
+
+func providerToStorageRecord(name string, p Provider) storage.ProviderRecord {
+	return storage.ProviderRecord{
+		Name:                   name,
+		BaseURL:                p.BaseURL,
+		APIKey:                 p.APIKey,
+		Enabled:                p.Enabled,
+		AnthropicToolsDisabled: p.AnthropicToolsDisabled,
+	}
+}
+
+func modelToStorageRecord(key string, m Model) storage.ModelRecord {
+	return storage.ModelRecord{
+		ID:            key,
+		Name:          m.Name,
+		Reasoning:     m.Reasoning,
+		ToolCall:      m.ToolCall,
+		Vision:        m.SupportsVision(),
+		ContextWindow: m.ContextWindow(),
+		CostInput:     m.CostInputPerM(),
+		CostOutput:    m.CostOutputPerM(),
+	}
+}
+
+func storageModelToCatalogModel(m storage.Model) Model {
+	model := Model{
+		ID:        m.ID,
+		Name:      m.Name,
+		Reasoning: m.Reasoning,
+		ToolCall:  m.ToolCall,
+	}
+	if m.Vision {
+		model.Modalities.Input = []string{"text", "image"}
+	} else {
+		model.Modalities.Input = []string{"text"}
+	}
+	model.Modalities.Output = []string{"text"}
+	if m.Limit != nil {
+		model.Limit = &Limit{Context: m.Limit.Context}
+	}
+	if m.Rates != nil {
+		model.Rates = &Rates{
+			Input:  m.Rates.Input,
+			Output: m.Rates.Output,
+		}
+	}
+	return model
 }

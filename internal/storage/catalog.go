@@ -39,18 +39,6 @@ type ModelRecord struct {
 	CostOutput    float64
 }
 
-// Model holds a full model definition with nested limit and pricing details.
-type Model struct {
-	ID            string
-	Name          string
-	Reasoning     bool
-	ToolCall      bool
-	Vision        bool
-	ContextWindow int64
-	CostInput     float64
-	CostOutput    float64
-}
-
 // Provider holds a provider's configuration as loaded from the database.
 type Provider struct {
 	Name                   string
