@@ -773,7 +773,7 @@ func (h *MessagesHandler) handleStreaming(
 		return
 	}
 
-	h.metrics.RecordFailureForModel(model.ModelID)
+	h.metrics.RecordFailureForModel(lastModelID)
 	if rw.ssePayloadWritten {
 		// SSE payload was already sent — do not attempt further writes
 		// beyond the error event.  The client has a partial stream.
