@@ -73,17 +73,30 @@ This file defines the review standards for routatic-proxy. It is designed for LL
 | T36 | Port numbers are configurable via env var or CLI flag, not hardcoded | ADVISORY | Deploy flexibility |
 | T37 | Config file writes are atomic (write temp, rename) | REQUIRED | Crash safety |
 
-### 1.5 Duplication & Reuse
+### 1.5 Documentation Completeness
 
 | # | Check | Severity | Rationale |
 |---|-------|----------|-----------|
-| T38 | New code first searches for existing helpers, types, or packages that already serve the purpose — no reinventing | REQUIRED | DRY, consistency |
-| T39 | Shared logic (field mapping, type conversion, JSON construction) is extracted to named helpers, not duplicated inline | REQUIRED | Single source of truth |
-| T40 | Repeated field-map patterns between types use a helper function, not copy-paste blocks | REQUIRED | `internal/catalog/migrate.go` precedent |
-| T41 | New scenarios, fallbacks, or model configs use existing mechanisms (scenario map, config struct, catalog), not inline conditionals | REQUIRED | Config-driven architecture |
-| T42 | Common transformations (Anthropic↔OpenAI field renames, token math, cost lookups) use the existing `internal/transformer/` or `internal/catalog/` packages — no ad-hoc reimplementation | REQUIRED | Correctness, maintainability |
-| T43 | New types reuse existing project types (e.g. `pkg/types.Message`), not inline structs | REQUIRED | API contract integrity |
-| T44 | Existing constructor, error, logger, and mutex patterns are followed — not one-off alternatives | ADVISORY | `rules/auto-detected/` consistency |
+| T38 | Every exported symbol has a `// <Name>` doc comment — packages, types, funcs, consts, vars | REQUIRED | CONTRIBUTING.md, godoc |
+| T39 | Package-level doc comments describe the package's responsibility, not its file contents | REQUIRED | Go convention |
+| T40 | Non-obvious logic has inline comments explaining *why*, not *what* | REQUIRED | Maintainability |
+| T41 | Config changes (new fields, changed defaults, removed keys) update the example config and CLAUDE.md | REQUIRED | First-run UX, LLM accuracy |
+| T42 | API endpoint changes update any user-facing docs (README, ARCHITECTURE, CLAUDE.md) | REQUIRED | Alignment — code vs docs |
+| T43 | CHANGELOG or release notes updated for user-facing changes (new features, breaking changes, deprecations) | REQUIRED | Release readiness |
+| T44 | `docs/` directory or inline `.md` files in the affected package are updated to reflect the change | ADVISORY | Discoverability |
+| T45 | Deprecated symbols use `// Deprecated:` doc comment with migration path | ADVISORY | API hygiene |
+
+### 1.6 Duplication & Reuse
+
+| # | Check | Severity | Rationale |
+|---|-------|----------|-----------|
+| T46 | New code first searches for existing helpers, types, or packages that already serve the purpose — no reinventing | REQUIRED | DRY, consistency |
+| T47 | Shared logic (field mapping, type conversion, JSON construction) is extracted to named helpers, not duplicated inline | REQUIRED | Single source of truth |
+| T48 | Repeated field-map patterns between types use a helper function, not copy-paste blocks | REQUIRED | `internal/catalog/migrate.go` precedent |
+| T49 | New scenarios, fallbacks, or model configs use existing mechanisms (scenario map, config struct, catalog), not inline conditionals | REQUIRED | Config-driven architecture |
+| T50 | Common transformations (Anthropic↔OpenAI field renames, token math, cost lookups) use the existing `internal/transformer/` or `internal/catalog/` packages — no ad-hoc reimplementation | REQUIRED | Correctness, maintainability |
+| T51 | New types reuse existing project types (e.g. `pkg/types.Message`), not inline structs | REQUIRED | API contract integrity |
+| T52 | Existing constructor, error, logger, and mutex patterns are followed — not one-off alternatives | ADVISORY | `rules/auto-detected/` consistency |
 
 ---
 
@@ -179,7 +192,7 @@ These are always judgement calls. A documented repo standard overrides any smell
 | # | Smell | What to look for | Severity |
 |---|-------|------------------|----------|
 | S1 | **Mysterious Name** | Function/variable/type name doesn't reveal what it does or holds | ADVISORY |
-| S2 | **Duplicated Code** | Same logic shape in more than one hunk or file → check T38–T40 | ADVISORY |
+| S2 | **Duplicated Code** | Same logic shape in more than one hunk or file → check T46–T48 | ADVISORY |
 | S3 | **Feature Envy** | Method reaches into another object's data more than its own | ADVISORY |
 | S4 | **Data Clumps** | Same fields/params travelling together ← extract to a type | ADVISORY |
 | S5 | **Primitive Obsession** | String for a domain concept that deserves its own small type | ADVISORY |
