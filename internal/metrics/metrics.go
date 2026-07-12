@@ -199,7 +199,6 @@ func (m *Metrics) GetSnapshot() Snapshot {
 		ModelFailed:      modelFailed,
 	}
 }
-}
 
 // Snapshot represents a point-in-time view of metrics.
 type Snapshot struct {
