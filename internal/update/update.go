@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/routatic/proxy/internal/buildinfo"
 	"golang.org/x/mod/semver"
 )
 
@@ -173,6 +172,16 @@ func DownloadAndInstall(url, filename string) error {
 	}
 
 	return nil
+}
+
+// IsNewerVersion reports whether candidate is a newer version than current.
+// Uses semantic version comparison via golang.org/x/mod/semver.
+func IsNewerVersion(current, candidate string) bool {
+	if semver.IsValid(candidate) && semver.IsValid(current) {
+		return semver.Compare(candidate, current) > 0
+	}
+	// Fallback for dev versions or non-semver strings
+	return candidate != current && candidate > current
 }
 
 // CheckForUpdate checks if a newer version is available
