@@ -262,7 +262,7 @@ Report them side by side, never reranked into a single score — a change can pa
 
 ## 6. Quick Reference: File-to-Rule Mapping
 
-**Universal rules (all files):** T38 (search before invent), T39 (extract shared logic), T40 (no copy-paste mapping), T42 (reuse transformer/catalog), T43 (reuse project types), T44 (follow established patterns), S2 (no duplicated code), S6 (no repeated switches), S7 (shotgun surgery).
+**Universal rules (all files):** T38–T45 (documentation), T46 (search before invent), T47 (extract shared logic), T48 (no copy-paste mapping), T50 (reuse transformer/catalog), T51 (reuse project types), T52 (follow established patterns), S2 (no duplicated code), S6 (no repeated switches), S7 (shotgun surgery).
 
 | File / Package | Applicable Rules |
 |----------------|-----------------|
