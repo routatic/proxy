@@ -1245,11 +1245,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* ── Fallback Chain Editor ─────────────────────────────────────── */
 const FallbackModule = {
-  chains: {
-    default: [],
-    streaming: [],
-    'long-context': []
-  },
+  chains: {},
   currentScenario: 'default',
   originalChains: null,
   availableModels: [],
@@ -1264,15 +1260,12 @@ const FallbackModule = {
       if (!r.ok) return;
       const config = await r.json();
 
-      // Store raw config for save reconstruction
-      this.rawConfig = config;
-
       // Build model list from scenario models + fallback entries
       const modelMap = new Map();
       if (config.models) {
-        for (const [scenario, m] of Object.entries(config.models)) {
-          if (m.model_id) {
-            modelMap.set(m.model_id, { id: m.model_id, display_name: m.model_id + ' (' + scenario + ')', provider: m.provider || 'unknown' });
+        for (const [, m] of Object.entries(config.models)) {
+          if (m.model_id && !modelMap.has(m.model_id)) {
+            modelMap.set(m.model_id, { id: m.model_id, display_name: m.model_id, provider: m.provider || 'unknown' });
           }
         }
       }
@@ -1287,13 +1280,24 @@ const FallbackModule = {
       }
       this.availableModels = [...modelMap.values()];
 
-      // Parse fallback chains from config.fallbacks (store full objects)
-      this.chains = {
-        default: this.parseFallbackChain(config, 'default'),
-        streaming: this.parseFallbackChain(config, 'streaming'),
-        'long-context': this.parseFallbackChain(config, 'long_context')
-      };
+      // Discover all scenario keys from config.models
+      const scenarioKeys = Object.keys(config.models || {});
+      this.chains = {};
+      for (const key of scenarioKeys) {
+        this.chains[key] = this.parseFallbackChain(config, key);
+      }
 
+      // Populate scenario dropdown
+      const sel = document.getElementById('fallback-scenario');
+      if (sel) {
+        sel.innerHTML = scenarioKeys.map(k =>
+          `<option value="${k}">${k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>`
+        ).join('');
+        this.currentScenario = scenarioKeys[0] || 'default';
+        sel.value = this.currentScenario;
+      }
+
+      this.populateAddSelect();
       this.originalChains = JSON.parse(JSON.stringify(this.chains));
       this.renderChain();
     } catch (e) {
@@ -1302,12 +1306,36 @@ const FallbackModule = {
   },
 
   parseFallbackChain(config, scenario) {
-    const key = scenario === 'long-context' ? 'long_context' : scenario;
-    if (config.fallbacks && config.fallbacks[key]) {
-      // Store full model config objects, not just IDs
-      return config.fallbacks[key].map(m => ({...m}));
+    if (config.fallbacks && config.fallbacks[scenario]) {
+      return config.fallbacks[scenario].map(m => ({...m}));
     }
     return [];
+  },
+
+  populateAddSelect() {
+    const addSel = document.getElementById('fallback-add-model');
+    if (!addSel) return;
+    const chain = this.chains[this.currentScenario] || [];
+    const available = this.availableModels
+      .filter(m => !chain.some(e => (e.model_id || e) === m.id));
+    addSel.innerHTML = '<option value="">' + t('fallback.selectModel') + '</option>' +
+      available.map(m =>
+        `<option value="${escapeHtml(m.id)}">${escapeHtml(m.display_name || m.id)} (${escapeHtml(m.provider)})</option>`
+      ).join('');
+    addSel.disabled = available.length === 0;
+  },
+
+  onAddSelectChange() {
+    const addSel = document.getElementById('fallback-add-model');
+    const modelId = addSel.value;
+    if (!modelId) return;
+    const model = this.availableModels.find(m => m.id === modelId);
+    if (model) {
+      (this.chains[this.currentScenario] || []).push({ model_id: modelId, provider: model.provider, temperature: 0, max_tokens: 0 });
+      this.renderChain();
+    }
+    addSel.value = '';
+    this.populateAddSelect();
   },
 
   renderChain() {
@@ -1317,6 +1345,7 @@ const FallbackModule = {
     if (!chain || chain.length === 0) {
       list.innerHTML = '<li class="empty-state">' + t('fallback.empty') + '</li>';
       list.classList.remove('has-items');
+      this.populateAddSelect();
       return;
     }
 
@@ -1336,6 +1365,7 @@ const FallbackModule = {
       `;
     }).join('');
 
+    this.populateAddSelect();
     this.setupDragDrop();
   },
 
@@ -1396,49 +1426,16 @@ const FallbackModule = {
     const select = document.getElementById('fallback-scenario');
     this.currentScenario = select.value;
     this.renderChain();
+    this.populateAddSelect();
     document.getElementById('fallback-preview').style.display = 'none';
   },
 
-  addModel() {
-    const chain = this.chains[this.currentScenario];
-    const modelOptions = this.availableModels
-      .filter(m => !chain.some(e => (e.model_id || e) === m.id))
-      .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.display_name || m.id)} (${escapeHtml(m.provider)})</option>`)
-      .join('');
-
-    if (!modelOptions) {
-      alert(currentLang === 'zh' ? '没有可用模型' : 'No available models');
-      return;
-    }
-
-    const selectHtml = `<select id="new-model-select" class="filter-select">${modelOptions}</select>`;
-    const confirmed = confirm(
-      (currentLang === 'zh' ? '选择模型添加到降级链:\n\n' : 'Select a model to add:\n\n') +
-      this.availableModels.filter(m => !chain.some(e => (e.model_id || e) === m.id))
-        .map(m => `${m.display_name || m.id} (${m.provider})`).join('\n')
-    );
-
-    if (confirmed) {
-      const modelId = prompt(
-        currentLang === 'zh' ? '输入模型ID:' : 'Enter model ID:',
-        this.availableModels.filter(m => !chain.some(e => (e.model_id || e) === m.id))[0]?.id || ''
-      );
-
-      if (modelId && !chain.some(e => (e.model_id || e) === modelId)) {
-        const model = this.availableModels.find(m => m.id === modelId);
-        if (model) {
-          chain.push({ model_id: modelId, provider: model.provider, temperature: 0, max_tokens: 0 });
-          this.renderChain();
-        } else {
-          alert(currentLang === 'zh' ? '无效的模型ID' : 'Invalid model ID');
-        }
-      }
-    }
-  },
-
   removeModel(index) {
-    this.chains[this.currentScenario].splice(index, 1);
-    this.renderChain();
+    const chain = this.chains[this.currentScenario];
+    if (chain) {
+      chain.splice(index, 1);
+      this.renderChain();
+    }
   },
 
   preview() {
@@ -1482,14 +1479,7 @@ const FallbackModule = {
     }
 
     try {
-      const patch = {
-        fallbacks: {
-          default: this.chains.default,
-          streaming: this.chains.streaming,
-          long_context: this.chains['long-context']
-        }
-      };
-
+      const patch = { fallbacks: { ...this.chains } };
       const r = await fetch('/api/proxy/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
