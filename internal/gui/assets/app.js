@@ -387,7 +387,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     const contentId = 'tab-' + tab.dataset.tab;
     document.getElementById(contentId).classList.add('active');
     if (tab.dataset.tab === 'analytics') {
-      AnalyticsModule.load();
+      AnalyticsModule.load(true);
     }
   });
 });
@@ -1729,24 +1729,30 @@ document.addEventListener('DOMContentLoaded', () => TestModule.init());
 
 /* ── Analytics Tab (minimal, vanilla JS + SVG/CSS) ─────────────── */
 const AnalyticsModule = {
-  loaded: false,
   palette: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'],
 
   init() {
     const daysSel = document.getElementById('analytics-days');
     const refreshBtn = document.getElementById('btn-refresh-analytics');
-    if (daysSel) daysSel.addEventListener('change', () => this.load());
+    if (daysSel) daysSel.addEventListener('change', () => this.load(true));
     if (refreshBtn) refreshBtn.addEventListener('click', () => this.load(true));
   },
 
-  async load(force = false) {
-    if (this.loaded && !force) return;
+  loadingHtml() {
+    return '<div class="flex items-center justify-center py-12"><svg class="animate-spin h-6 w-6 text-[#98989d]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="ml-2 text-xs text-[#98989d]">Loading analytics…</span></div>';
+  },
+
+  async load(force) {
     const daysEl = document.getElementById('analytics-days');
     const days = daysEl ? daysEl.value : 30;
     const genEl = document.getElementById('analytics-generated');
-    if (genEl) genEl.textContent = 'Loading…';
+    if (genEl) genEl.textContent = '';
+    ['kpi-requests','kpi-tokens','kpi-tokens-in','kpi-tokens-out','kpi-cost','kpi-p95'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '…';
+    });
 
-    this.setLoading(true);
+    this.showLoading();
 
     try {
       const [summaryRes, trendRes, latencyRes] = await Promise.all([
@@ -1759,7 +1765,6 @@ const AnalyticsModule = {
       const trend = trendRes.ok ? await trendRes.json() : { trend: [] };
       const latencyData = latencyRes.ok ? await latencyRes.json() : { stats: [] };
 
-      // merge latency into summary for KPI calc if needed
       summary.latency = latencyData;
 
       this.renderKPIs(summary);
@@ -1769,20 +1774,17 @@ const AnalyticsModule = {
         const ts = summary.generated_at ? new Date(summary.generated_at) : new Date();
         genEl.textContent = '· ' + ts.toLocaleDateString(undefined, {month:'short', day:'numeric'});
       }
-      this.loaded = true;
     } catch (e) {
       console.error('Analytics error:', e);
       this.renderEmpty('Failed to load analytics');
       if (genEl) genEl.textContent = 'Error';
-    } finally {
-      this.setLoading(false);
     }
   },
 
-  setLoading(isLoading) {
+  showLoading() {
     ['model-donut','provider-donut','token-trend'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.style.opacity = isLoading ? '0.5' : '';
+      if (el) el.innerHTML = this.loadingHtml();
     });
   },
 
@@ -1797,7 +1799,6 @@ const AnalyticsModule = {
     const cost = s.est_cost_usd != null ? '$' + Number(s.est_cost_usd).toFixed(2) : '—';
     document.getElementById('kpi-cost').textContent = cost;
 
-    // p95 avg
     const stats = (data.latency && data.latency.stats) || [];
     let p95Val = '—';
     if (stats.length) {
@@ -1909,12 +1910,8 @@ const AnalyticsModule = {
   }
 };
 
-// Boot analytics module (listeners + first load if tab already active)
+// Boot analytics module (listeners only; data loads when tab is clicked)
 setTimeout(() => {
   AnalyticsModule.init();
-  // If analytics tab is the initial active one (rare), load it
-  if (document.getElementById('tab-analytics')?.classList.contains('active')) {
-    AnalyticsModule.load();
-  }
 }, 250);
 
