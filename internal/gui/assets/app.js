@@ -1802,7 +1802,7 @@ const AnalyticsModule = {
     wrap.innerHTML = '';
 
     if (!items.length) {
-      wrap.innerHTML = '<div class="empty-state">No data</div>';
+      wrap.innerHTML = '<div class="empty-state">No usage data yet</div>';
       return;
     }
 
@@ -1822,7 +1822,8 @@ const AnalyticsModule = {
       const col = this.palette[idx % this.palette.length];
       segs += `${col} ${off.toFixed(1)}% ${(off + pct).toFixed(1)}%, `;
       off += pct;
-      legend.push(`<div class="legend-item"><span class="legend-swatch" style="background:${col}"></span><span class="legend-label">${this.escapeHtml(it.name||'Unknown')}</span><span class="legend-value">${v}</span></div>`);
+      const label = it.model || it.provider || it.name || 'Unknown';
+      legend.push(`<div class="legend-item"><span class="legend-swatch" style="background:${col}"></span><span class="legend-label">${this.escapeHtml(label)}</span><span class="legend-value">${v}</span></div>`);
     });
 
     const html = `<div class="donut-wrapper"><div class="donut" style="--donut-segments: ${segs.slice(0,-2)}"></div><div class="donut-legend">${legend.join('')}</div></div>`;
@@ -1834,7 +1835,7 @@ const AnalyticsModule = {
     if (!wrap) return;
     wrap.innerHTML = '';
     if (!points.length) {
-      wrap.innerHTML = '<div class="empty-state">No trend data</div>';
+      wrap.innerHTML = '<div class="empty-state">No trend data yet. Run some requests to see analytics.</div>';
       return;
     }
 
@@ -1880,7 +1881,7 @@ const AnalyticsModule = {
     wrap.innerHTML = svg;
   },
 
-  renderEmpty(msg = 'No data') {
+  renderEmpty(msg = 'No usage data yet. Run some requests or configure a model to see analytics.') {
     ['model-donut','provider-donut','token-trend'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = `<div class="empty-state">${msg}</div>`;

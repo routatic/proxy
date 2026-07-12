@@ -7,8 +7,8 @@
   --border:       #d8d8dc;
   --text:         #1d1d1f;
   --text-muted:   #6e6e73;
-  --accent:       #0071e3;
-  --accent-hover: #0077ed;
+  --accent:       #6366f1;
+  --accent-hover: #4f46e5;
   --success:      #28a745;
   --error:        #dc3545;
   --warning:      #fd7e14;
@@ -37,7 +37,7 @@
   /* Shadows (functional, not decorative) */
   --shadow-sm:    0 1px 2px rgba(0,0,0,.04);
   --shadow-md:    0 2px 8px rgba(0,0,0,.06);
-  --shadow-focus: 0 0 0 3px rgba(0,113,227,.25);
+  --shadow-focus: 0 0 0 3px rgba(99,102,241,.25);
 
   /* Legacy aliases */
   --radius:       var(--radius-lg);
@@ -53,14 +53,14 @@
     --border:       #48484a;
     --text:         #f5f5f7;
     --text-muted:   #98989d;
-    --accent:       #0a84ff;
-    --accent-hover: #409cff;
+    --accent:       #6366f1;
+    --accent-hover: #4f46e5;
     --success:      #30d158;
     --error:        #ff453a;
     --warning:      #ff9f0a;
     --shadow-sm:    0 1px 2px rgba(0,0,0,.2);
     --shadow-md:    0 2px 8px rgba(0,0,0,.3);
-    --shadow-focus: 0 0 0 3px rgba(10,132,255,.35);
+     --shadow-focus: 0 0 0 3px rgba(99,102,241,.35);
     --tab-active-bg: #2c2c2e;
   }
 }
@@ -108,12 +108,11 @@ select:focus-visible {
 /* ── Header ────────────────────────────────────────────────────── */
 .header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--surface);
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(90deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
 }
 
 .logo {
@@ -166,7 +165,12 @@ select:focus-visible {
   transition: color 0.15s, background 0.15s;
 }
 
-.tab:hover { color: var(--text); background: var(--surface2); }
+.tab:hover {
+  color: var(--text);
+  background: var(--surface2);
+  transform: scale(1.02);
+  transition: transform 0.1s ease, background 0.15s ease;
+}
 .tab.active {
   color: var(--accent);
   background: var(--tab-active-bg);
@@ -192,11 +196,11 @@ select:focus-visible {
 }
 
 .metric-card {
-  background: var(--surface);
+  background: linear-gradient(145deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  box-shadow: var(--shadow);
+  border-radius: 12px;
+  padding: 20px;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
