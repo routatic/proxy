@@ -728,7 +728,7 @@ func (s *Server) isRoutaticProxyProcess(pid int) bool {
 			return false
 		}
 		name := strings.TrimSpace(string(output))
-		return strings.Contains(name, "routatic-proxy") || strings.Contains(name, "proxy")
+		return strings.Contains(name, "routatic-proxy")
 	}
 }
 
