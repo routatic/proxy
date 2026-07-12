@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -192,13 +193,19 @@ Press Ctrl+C to stop.`,
 			if !isProxyRunning {
 				return nil
 			}
+			wasConnected := connectedToExisting
 			isProxyRunning = false
+			connectedToExisting = false
 			if guiSrv != nil {
 				guiSrv.SetProxyRunning(false)
+				guiSrv.SetConnectedToExisting(false)
 			}
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer shutdownCancel()
-			return proxySrv.Shutdown(shutdownCtx)
+			if !wasConnected {
+				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer shutdownCancel()
+				return proxySrv.Shutdown(shutdownCtx)
+			}
+			return nil
 		}
 
 		if initialConfigValid {

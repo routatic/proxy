@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/routatic/proxy/pkg/types"
@@ -366,19 +368,19 @@ func (h *StreamHandler) processSSELine(
 	originalModel string,
 	decodeErrors *int,
 ) error {
-	line = strings.TrimSpace(line)
+	line = bytes.TrimSpace(line)
 
 	// Skip empty lines
-	if line == "" {
+	if len(line) == 0 {
 		return nil
 	}
 
 	// Skip non-data lines (event: lines, id: lines, etc.)
-	if !strings.HasPrefix(line, "data: ") {
+	if !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
-	data := strings.TrimPrefix(line, "data: ")
+	data := line[6:]
 	if data == "" {
 		return nil
 	}
@@ -394,11 +396,11 @@ func (h *StreamHandler) processSSELine(
 	// correctly. Otherwise reasoning_content gets silently dropped, and on the
 	// next turn DeepSeek rejects the request with:
 	//   "The reasoning_content in the thinking mode must be passed back to the API."
-	if !strings.Contains(data, `"reasoning_content"`) &&
-		!strings.Contains(data, `"finish_reason"`) &&
-		!strings.Contains(data, `"tool_calls"`) &&
-		!strings.Contains(data, `"usage"`) {
-		if idx := strings.Index(data, `"delta":{"content":"`); idx != -1 {
+	if !bytes.Contains(data, []byte(`"reasoning_content"`)) &&
+		!bytes.Contains(data, []byte(`"finish_reason"`)) &&
+		!bytes.Contains(data, []byte(`"tool_calls"`)) &&
+		!bytes.Contains(data, []byte(`"usage"`)) {
+		if idx := bytes.Index(data, []byte(`"delta":{"content":"`)); idx != -1 {
 			// Walk past JSON escape sequences to find the real closing
 			// quote. A naive strings.Index would stop at an escaped
 			// \" inside the content.
@@ -923,12 +925,12 @@ func (h *StreamHandler) processResponsesSSELine(
 	stopSent *bool,
 	originalModel string,
 ) error {
-	line = strings.TrimSpace(line)
-	if line == "" || !strings.HasPrefix(line, "data: ") {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
-	data := strings.TrimPrefix(line, "data: ")
+	data := line[6:]
 	if data == "" || data == "[DONE]" {
 		return nil
 	}
@@ -1118,12 +1120,12 @@ func (h *StreamHandler) processGeminiSSELine(
 	stopSent *bool,
 	originalModel string,
 ) error {
-	line = strings.TrimSpace(line)
-	if line == "" || !strings.HasPrefix(line, "data: ") {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
-	data := strings.TrimPrefix(line, "data: ")
+	data := line[6:]
 	if data == "" {
 		return nil
 	}
