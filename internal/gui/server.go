@@ -613,7 +613,7 @@ func (s *Server) ensurePortAvailable() error {
 			ProxyRunning bool `json:"proxy_running"`
 		}
 		decodeErr := json.NewDecoder(resp.Body).Decode(&m)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if decodeErr == nil {
 			// Our GUI — kill the existing instance
