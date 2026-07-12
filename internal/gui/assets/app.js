@@ -1493,23 +1493,33 @@ document.addEventListener('DOMContentLoaded', () => {
 loadProxyConfig();
 startPolling();
 
-/* ── Logs Module ────────────────────────────────────────────────── */
-const LogsModule = {
-  eventSource: null,
-  paused: false,
-  logs: [],
-  maxLogs: 1000,
-  levelFilter: '',
-  searchQuery: '',
-  reconnectAttempts: 0,
-  testLatency: document.getElementById('test-latency'),
-  testTokens: document.getElementById('test-tokens'),
-  testSendBtn: document.getElementById('btn-test-send'),
-  testCopyBtn: document.getElementById('btn-test-copy'),
-  testModalClose: document.getElementById('test-modal-close'),
-  testHistoryHint: document.getElementById('test-history-hint'),
+const TestModule = {
+  testModal: null,
+  testPrompt: null,
+  testResponse: null,
+  testModelSelect: null,
+  testLatency: null,
+  testTokens: null,
+  testSendBtn: null,
+  testCopyBtn: null,
+  testModalClose: null,
+  testHistoryHint: null,
+
+  STORAGE_KEY: 'routatic-test-prompt-history',
+  MAX_HISTORY: 5,
 
   init() {
+    this.testModal = document.getElementById('test-modal');
+    this.testPrompt = document.getElementById('test-prompt');
+    this.testResponse = document.getElementById('test-response');
+    this.testModelSelect = document.getElementById('test-model');
+    this.testLatency = document.getElementById('test-latency');
+    this.testTokens = document.getElementById('test-tokens');
+    this.testSendBtn = document.getElementById('btn-test-send');
+    this.testCopyBtn = document.getElementById('btn-test-copy');
+    this.testModalClose = document.getElementById('test-modal-close');
+    this.testHistoryHint = document.getElementById('test-history-hint');
+
     document.getElementById('btn-test-model')?.addEventListener('click', () => this.open());
     this.testModalClose?.addEventListener('click', () => this.close());
     this.testModal?.addEventListener('click', (e) => {
@@ -1540,94 +1550,294 @@ const LogsModule = {
     this.testModal?.classList.remove('visible');
   },
 
-  populateModels() {
-    const models = Object.keys(lastModelCounts).sort();
-    const configModels = Array.isArray(currentProxyConfig?.models) ? currentProxyConfig.models : [];
-    const allModels = [...new Set([...models, ...configModels])].sort();
+  async populateModels() {
+    if (!this.testModelSelect) return;
+    this.testModelSelect.innerHTML = '<option value="">Select a model...</option>';
 
-    if (this.testModelSelect) {
-      const current = this.testModelSelect.value;
-      this.testModelSelect.innerHTML = `<option value="">${t('test.selectModel')}</option>` +
-        allModels.map(m => `<option value="${escapeHtml(m)}"${m === current ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('');
-    }
+    try {
+      const r = await fetch('/api/metrics');
+      if (!r.ok) return;
+      const data = await r.json();
+      const models = Object.keys(data.model_counts || {});
+      models.sort().forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        this.testModelSelect.appendChild(opt);
+      });
+    } catch (e) {}
+  },
+
+  resetResponse() {
+    if (this.testResponse) this.testResponse.innerHTML = '';
+    if (this.testLatency) this.testLatency.textContent = '—';
+    if (this.testTokens) this.testTokens.textContent = '—';
   },
 
   async sendTest() {
-    const model = this.testModelSelect?.value;
-    const prompt = this.testPrompt?.value?.trim();
+    if (!this.testPrompt || !this.testModelSelect || !this.testResponse) return;
 
-    if (!model) {
-      this.showError(t('test.noModel'));
-      return;
-    }
-    if (!prompt) {
-      this.showError(t('test.noPrompt'));
-      return;
-    }
+    const model = this.testModelSelect.value;
+    const prompt = this.testPrompt.value.trim();
+    if (!model) { alert(t('test.noModel')); return; }
+    if (!prompt) { alert(t('test.noPrompt')); return; }
 
     this.saveToHistory(prompt);
-    this.setLoading(true);
+    this.testSendBtn.disabled = true;
+    this.testSendBtn.textContent = t('test.sending');
+    this.resetResponse();
 
-    const startTime = Date.now();
-
+    const start = performance.now();
     try {
-      const response = await fetch('/v1/chat/completions', {
+      const r = await fetch('/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: model,
-          messages: [{ role: 'user', content: prompt }],
-          stream: false
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }]
         })
       });
 
-      const latency = Date.now() - startTime;
-      this.testLatency.textContent = latency + 'ms';
+      const latency = Math.round(performance.now() - start);
+      if (this.testLatency) this.testLatency.textContent = latency + ' ms';
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.showError(t('test.error') + (response.status + ': ' + errorText));
-        return;
+      const text = await r.text();
+      let content = text;
+      try {
+        const j = JSON.parse(text);
+        if (j.content && Array.isArray(j.content)) {
+          content = j.content.map(c => c.text || '').join('\n');
+        } else if (j.error) {
+          content = 'Error: ' + (j.error.message || JSON.stringify(j.error));
+        }
+      } catch (_) {}
+
+      const pre = document.createElement('pre');
+      pre.textContent = content;
+      this.testResponse.innerHTML = '';
+      this.testResponse.appendChild(pre);
+
+      const usage = this.extractUsage(text);
+      if (usage && this.testTokens) {
+        this.testTokens.textContent = `${usage.input || 0} in / ${usage.output || 0} out`;
       }
-
-      const data = await response.json();
-      this.testResponse.classList.remove('error', 'loading');
-      this.testResponse.querySelector('pre').textContent = JSON.stringify(data, null, 2);
-
-      let totalTokens = 0;
-      if (data.usage) {
-        totalTokens = (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0);
-      }
-      this.testTokens.textContent = totalTokens > 0 ? totalTokens.toLocaleString() : '--';
     } catch (e) {
-      this.testLatency.textContent = '--';
-      this.showError(t('test.networkError') + ': ' + e.message);
+      const pre = document.createElement('pre');
+      pre.textContent = t('test.error') + e.message;
+      this.testResponse.innerHTML = '';
+      this.testResponse.appendChild(pre);
     } finally {
-      this.setLoading(false);
+      this.testSendBtn.disabled = false;
+      this.testSendBtn.textContent = t('test.send');
     }
   },
 
-  setLoading(loading) {
-    this.testSendBtn.disabled = loading;
-    this.testSendBtn.textContent = loading ? t('test.sending') : t('test.send');
-    if (loading) {
-      this.testResponse.classList.add('loading');
-      this.testResponse.querySelector('pre').textContent = '...';
-    }
+  extractUsage(text) {
+    try {
+      const j = JSON.parse(text);
+      if (j.usage) return { input: j.usage.input_tokens, output: j.usage.output_tokens };
+    } catch (_) {}
+    const m = text.match(/"input_tokens":\s*(\d+).*?"output_tokens":\s*(\d+)/s);
+    if (m) return { input: parseInt(m[1]), output: parseInt(m[2]) };
+    return null;
   },
 
-  showError(message) {
-    this.testResponse.classList.add('error');
-    this.testResponse.classList.remove('loading');
-    this.testResponse.querySelector('pre').textContent = message;
-    this.testTokens.textContent = '--';
+  loadHistory() {
+    try {
+      const history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+      if (history.length > 0 && this.testHistoryHint) {
+        this.testHistoryHint.innerHTML = history.slice(0, this.MAX_HISTORY)
+          .map(p => `<span title="${escapeHtml(p)}">${escapeHtml(p.substring(0, 20))}${p.length > 20 ? '...' : ''}</span>`)
+          .join('');
+        this.testHistoryHint.querySelectorAll('span').forEach((el, i) => {
+          el.addEventListener('click', () => {
+            const history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+            if (history[i]) {
+              this.testPrompt.value = history[i];
+              this.testPrompt.focus();
+            }
+          });
+        });
+      }
+    } catch (e) {}
+  },
+
+  saveToHistory(prompt) {
+    try {
+      let history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+      history = [prompt, ...history.filter(p => p !== prompt)].slice(0, this.MAX_HISTORY);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(history));
+      this.loadHistory();
+    } catch (e) {}
+  },
+
+  async copyResponse() {
+    const pre = this.testResponse.querySelector('pre');
+    if (!pre || !pre.textContent) return;
+
+    try {
+      await navigator.clipboard.writeText(pre.textContent);
+      const originalText = this.testCopyBtn.innerHTML;
+      this.testCopyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>${t('test.copied')}`;
+      this.testCopyBtn.classList.add('copied');
+      setTimeout(() => {
+        this.testCopyBtn.innerHTML = originalText;
+        this.testCopyBtn.classList.remove('copied');
+      }, 2000);
+    } catch (e) {}
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => TestModule.init());
+
+/* ── Logs Module ────────────────────────────────────────────────── */
+  testPrompt: null,
+  testResponse: null,
+  testModelSelect: null,
+  testLatency: null,
+  testTokens: null,
+  testSendBtn: null,
+  testCopyBtn: null,
+  testModalClose: null,
+  testHistoryHint: null,
+
+  STORAGE_KEY: 'routatic-test-prompt-history',
+  MAX_HISTORY: 5,
+
+  init() {
+    this.testModal = document.getElementById('test-modal');
+    this.testPrompt = document.getElementById('test-prompt');
+    this.testResponse = document.getElementById('test-response');
+    this.testModelSelect = document.getElementById('test-model');
+    this.testLatency = document.getElementById('test-latency');
+    this.testTokens = document.getElementById('test-tokens');
+    this.testSendBtn = document.getElementById('btn-test-send');
+    this.testCopyBtn = document.getElementById('btn-test-copy');
+    this.testModalClose = document.getElementById('test-modal-close');
+    this.testHistoryHint = document.getElementById('test-history-hint');
+
+    document.getElementById('btn-test-model')?.addEventListener('click', () => this.open());
+    this.testModalClose?.addEventListener('click', () => this.close());
+    this.testModal?.addEventListener('click', (e) => {
+      if (e.target === this.testModal) this.close();
+    });
+    this.testSendBtn?.addEventListener('click', () => this.sendTest());
+    this.testCopyBtn?.addEventListener('click', () => this.copyResponse());
+    this.testPrompt?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.sendTest();
+      }
+    });
+    this.loadHistory();
+  },
+
+  open() {
+    this.populateModels();
+    this.testModal?.classList.add('visible');
+    if (this.testPrompt) {
+      this.testPrompt.value = '';
+      this.testPrompt.focus();
+    }
+    this.resetResponse();
+  },
+
+  close() {
+    this.testModal?.classList.remove('visible');
+  },
+
+  async populateModels() {
+    if (!this.testModelSelect) return;
+    this.testModelSelect.innerHTML = '<option value="">Select a model...</option>';
+
+    try {
+      const r = await fetch('/api/metrics');
+      if (!r.ok) return;
+      const data = await r.json();
+      const models = Object.keys(data.model_counts || {});
+      models.sort().forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        this.testModelSelect.appendChild(opt);
+      });
+    } catch (e) {}
   },
 
   resetResponse() {
-    this.testResponse.classList.remove('error', 'loading');
-    this.testResponse.querySelector('pre').textContent = '';
-    this.testLatency.textContent = '--';
-    this.testTokens.textContent = '--';
+    if (this.testResponse) this.testResponse.innerHTML = '';
+    if (this.testLatency) this.testLatency.textContent = '—';
+    if (this.testTokens) this.testTokens.textContent = '—';
+  },
+
+  async sendTest() {
+    if (!this.testPrompt || !this.testModelSelect || !this.testResponse) return;
+
+    const model = this.testModelSelect.value;
+    const prompt = this.testPrompt.value.trim();
+    if (!model) { alert(t('test.noModel')); return; }
+    if (!prompt) { alert(t('test.noPrompt')); return; }
+
+    this.saveToHistory(prompt);
+    this.testSendBtn.disabled = true;
+    this.testSendBtn.textContent = t('test.sending');
+    this.resetResponse();
+
+    const start = performance.now();
+    try {
+      const r = await fetch('/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      const latency = Math.round(performance.now() - start);
+      if (this.testLatency) this.testLatency.textContent = latency + ' ms';
+
+      const text = await r.text();
+      let content = text;
+      try {
+        const j = JSON.parse(text);
+        if (j.content && Array.isArray(j.content)) {
+          content = j.content.map(c => c.text || '').join('\n');
+        } else if (j.error) {
+          content = 'Error: ' + (j.error.message || JSON.stringify(j.error));
+        }
+      } catch (_) {}
+
+      const pre = document.createElement('pre');
+      pre.textContent = content;
+      this.testResponse.innerHTML = '';
+      this.testResponse.appendChild(pre);
+
+      const usage = this.extractUsage(text);
+      if (usage && this.testTokens) {
+        this.testTokens.textContent = `${usage.input || 0} in / ${usage.output || 0} out`;
+      }
+    } catch (e) {
+      const pre = document.createElement('pre');
+      pre.textContent = t('test.error') + e.message;
+      this.testResponse.innerHTML = '';
+      this.testResponse.appendChild(pre);
+    } finally {
+      this.testSendBtn.disabled = false;
+      this.testSendBtn.textContent = t('test.send');
+    }
+  },
+
+  extractUsage(text) {
+    try {
+      const j = JSON.parse(text);
+      if (j.usage) return { input: j.usage.input_tokens, output: j.usage.output_tokens };
+    } catch (_) {}
+    const m = text.match(/"input_tokens":\s*(\d+).*?"output_tokens":\s*(\d+)/s);
+    if (m) return { input: parseInt(m[1]), output: parseInt(m[2]) };
+    return null;
   },
 
   loadHistory() {
