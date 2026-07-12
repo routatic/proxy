@@ -11,13 +11,17 @@ import (
 
 // AnalyticsHandler serves analytics endpoints for the dashboard.
 type AnalyticsHandler struct {
-	store *storage.Analytics
+	store   *storage.Analytics
+	latency *storage.Latency
 }
 
 // NewAnalyticsHandler creates a handler backed by the given database.
-// It internally creates an Analytics store.
+// It internally creates an Analytics store and a Latency store.
 func NewAnalyticsHandler(db *storage.Database) *AnalyticsHandler {
-	return &AnalyticsHandler{store: storage.NewAnalytics(db)}
+	return &AnalyticsHandler{
+		store:   storage.NewAnalytics(db),
+		latency: storage.NewLatency(db),
+	}
 }
 
 func (h *AnalyticsHandler) writeJSON(w http.ResponseWriter, v any) {
@@ -85,7 +89,8 @@ func (h *AnalyticsHandler) TokenTrend(w http.ResponseWriter, r *http.Request) {
 // LatencyStats returns latency stats per model.
 func (h *AnalyticsHandler) LatencyStats(w http.ResponseWriter, r *http.Request) {
 	days := h.getDays(r)
-	stats, err := h.store.GetModelBreakdown(days)
+	since := time.Now().AddDate(0, 0, -days)
+	stats, err := h.latency.GetStats(since)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

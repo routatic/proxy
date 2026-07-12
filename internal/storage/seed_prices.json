@@ -1,8 +1,11 @@
 [
+  {"_comment": "Free-tier variants (explicit)"},
   {"match": "nemotron-3-ultra-free", "input": 0.00, "output": 0.00},
   {"match": "mimo-v2.5-free", "input": 0.00, "output": 0.00},
   {"match": "deepseek-v4-flash-free", "input": 0.00, "output": 0.00},
+  {"_comment": "Generic free-tier catch-all (must come after specific free entries)"},
   {"match": "-free", "input": 0.00, "output": 0.00},
+  {"_comment": "Paid models below"},
   {"match": "glm-5", "input": 0.55, "output": 2.20},
   {"match": "kimi-k2", "input": 0.95, "output": 3.20},
   {"match": "qwen3", "input": 0.25, "output": 1.00},

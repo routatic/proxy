@@ -145,7 +145,13 @@ func (s *Server) getProxyPort() int {
 // is using that port, it is killed before binding.
 func (s *Server) Start(ctx context.Context) (string, error) {
 	s.guiPort.Store(3445)
-	// Ensure port 3445 is free, killing any existing routatic-proxy GUI.
+	// Allow GUI port override via environment variable.
+	if envPort := os.Getenv("ROUTATIC_PROXY_GUI_PORT"); envPort != "" {
+		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p < 65536 {
+			s.guiPort.Store(int32(p))
+		}
+	}
+	// Ensure port is free, killing any existing routatic-proxy GUI.
 	if err := s.ensurePortAvailable(); err != nil {
 		return "", fmt.Errorf("gui port check: %w", err)
 	}
@@ -185,9 +191,21 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 		mux.HandleFunc("/api/analytics/latency", ah.LatencyStats)
 	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", s.guiPort.Load()))
-	if err != nil {
-		return "", fmt.Errorf("gui server listen: %w", err)
+	startPort := int(s.guiPort.Load())
+	var ln net.Listener
+	for p := startPort; p < startPort+10; p++ {
+		var err error
+		ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+		if err == nil {
+			s.guiPort.Store(int32(p))
+			break
+		}
+		if p == startPort {
+			fmt.Printf("Port %d in use by another app, trying port %d for GUI\n", p, p+1)
+		}
+	}
+	if ln == nil {
+		return "", fmt.Errorf("gui server listen: no available port in range %d-%d", startPort, startPort+9)
 	}
 
 	// Wrap with security headers middleware.
@@ -576,51 +594,35 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// ensurePortAvailable finds an available port for the GUI.
-// If 3445 is free, uses it. If used by another routatic-proxy, kills it.
-// If used by a different app, increments port (up to 3454) and notifies user.
+// ensurePortAvailable checks if an existing routatic-proxy GUI is running on
+// the configured port and kills it if found. It does not test-bind — the caller
+// handles binding and will retry with higher ports on failure.
 func (s *Server) ensurePortAvailable() error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	startPort := int(s.guiPort.Load())
 
 	for p := startPort; p < startPort+10; p++ {
-		// Try to bind
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			_ = ln.Close()
-			s.guiPort.Store(int32(p))
-			return nil
-		}
-
-		// Port in use - check if it's our GUI
+		// Check if this port responds to the routatic-proxy metrics endpoint
 		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/metrics", p))
 		if err != nil {
-			// No HTTP response → another app is using it
-			if p == startPort {
-				fmt.Printf("Port %d in use by another app, trying port %d for GUI\n", p, p+1)
-			}
+			// No HTTP response → port is free or another app
 			continue
 		}
-		defer func() { _ = resp.Body.Close() }()
 
 		var m struct {
 			ProxyRunning bool `json:"proxy_running"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&m); err == nil {
-			// Our GUI - kill the existing instance
+		decodeErr := json.NewDecoder(resp.Body).Decode(&m)
+		resp.Body.Close()
+
+		if decodeErr == nil {
+			// Our GUI — kill the existing instance
 			s.logger.Info("killing existing routatic-proxy GUI on port", "port", p)
 			if err := s.killProcessOnPort(p); err != nil {
 				return fmt.Errorf("failed to kill existing instance: %w", err)
 			}
-			// Try bind again after kill
-			ln2, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-			if err == nil {
-				_ = ln2.Close()
-				s.guiPort.Store(int32(p))
-				return nil
-			}
-			// Still blocked, continue to next port
-			continue
+			s.guiPort.Store(int32(p))
+			return nil
 		}
 
 		// Responded but not our metrics format → another app
@@ -629,7 +631,7 @@ func (s *Server) ensurePortAvailable() error {
 		}
 	}
 
-	return fmt.Errorf("no available GUI port in range %d-%d", startPort, startPort+9)
+	return nil
 }
 
 // killProcessOnPort terminates the process listening on the given port.
@@ -755,7 +757,7 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Prevent MIME-type sniffing.
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		// Restrict scripts/styles to same origin (local GUI only).
+		// Allow same-origin resources + Tailwind CDN for dashboard styling.
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:; connect-src 'self' https://cdn.tailwindcss.com")
 		next.ServeHTTP(w, r)
 	})

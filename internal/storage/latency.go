@@ -7,14 +7,17 @@ import (
 	"time"
 )
 
+// Latency provides methods for recording and querying latency samples.
 type Latency struct {
 	db *Database
 }
 
+// NewLatency creates a new Latency repository backed by the given database.
 func NewLatency(db *Database) *Latency {
 	return &Latency{db: db}
 }
 
+// Insert records a latency sample for a model.
 func (l *Latency) Insert(model string, latency time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -27,6 +30,7 @@ func (l *Latency) Insert(model string, latency time.Duration) error {
 	return err
 }
 
+// ModelLatencyStats holds latency percentiles and counts for a single model.
 type ModelLatencyStats struct {
 	Model string
 	Count int64
@@ -38,6 +42,7 @@ type ModelLatencyStats struct {
 	Max   time.Duration
 }
 
+// GetStats returns latency statistics for all models with samples recorded after the given time.
 func (l *Latency) GetStats(since time.Time) ([]ModelLatencyStats, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -77,6 +82,7 @@ func (l *Latency) GetStats(since time.Time) ([]ModelLatencyStats, error) {
 	return stats, nil
 }
 
+// GetSuccessCounts returns the count of successful and failed requests per model since the given time.
 func (l *Latency) GetSuccessCounts(since time.Time) (map[string]int64, map[string]int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -113,6 +119,7 @@ func (l *Latency) GetSuccessCounts(since time.Time) (map[string]int64, map[strin
 	return successCounts, failureCounts, rows.Err()
 }
 
+// DeleteBefore removes latency samples older than the given time.
 func (l *Latency) DeleteBefore(before time.Time) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -178,6 +185,8 @@ func calculateStats(model string, samples []int64) ModelLatencyStats {
 	}
 }
 
+// ParseTimeRange parses a range parameter ("1h", "24h", "7d", "30d") and returns
+// the corresponding point in the past.
 func ParseTimeRange(rangeParam string) time.Time {
 	switch rangeParam {
 	case "1h":

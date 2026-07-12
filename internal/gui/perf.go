@@ -7,22 +7,35 @@ import (
 	"github.com/routatic/proxy/internal/storage"
 )
 
+type modelPerf struct {
+	Model   string `json:"model"`
+	Count   int64  `json:"count"`
+	Success int64  `json:"success"`
+	Failed  int64  `json:"failed"`
+	AvgMs   int64  `json:"avg_ms"`
+	P50Ms   int64  `json:"p50_ms"`
+	P90Ms   int64  `json:"p90_ms"`
+	P99Ms   int64  `json:"p99_ms"`
+	MinMs   int64  `json:"min_ms"`
+	MaxMs   int64  `json:"max_ms"`
+}
+
+func modelPerfFromFields(model string, count int64, avg, p50, p90, p99, min, max time.Duration) modelPerf {
+	return modelPerf{
+		Model: model,
+		Count: count,
+		AvgMs: avg.Milliseconds(),
+		P50Ms: p50.Milliseconds(),
+		P90Ms: p90.Milliseconds(),
+		P99Ms: p99.Milliseconds(),
+		MinMs: min.Milliseconds(),
+		MaxMs: max.Milliseconds(),
+	}
+}
+
 func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 	rangeParam := r.URL.Query().Get("range")
 	since := storage.ParseTimeRange(rangeParam)
-
-	type modelPerf struct {
-		Model   string `json:"model"`
-		Count   int64  `json:"count"`
-		Success int64  `json:"success"`
-		Failed  int64  `json:"failed"`
-		AvgMs   int64  `json:"avg_ms"`
-		P50Ms   int64  `json:"p50_ms"`
-		P90Ms   int64  `json:"p90_ms"`
-		P99Ms   int64  `json:"p99_ms"`
-		MinMs   int64  `json:"min_ms"`
-		MaxMs   int64  `json:"max_ms"`
-	}
 
 	result := make(map[string]modelPerf)
 
@@ -32,16 +45,7 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		modelStats, err := latency.GetStats(since)
 		if err == nil {
 			for _, stat := range modelStats {
-				result[stat.Model] = modelPerf{
-					Model: stat.Model,
-					Count: stat.Count,
-					AvgMs: stat.Avg.Milliseconds(),
-					P50Ms: stat.P50.Milliseconds(),
-					P90Ms: stat.P90.Milliseconds(),
-					P99Ms: stat.P99.Milliseconds(),
-					MinMs: stat.Min.Milliseconds(),
-					MaxMs: stat.Max.Milliseconds(),
-				}
+				result[stat.Model] = modelPerfFromFields(stat.Model, stat.Count, stat.Avg, stat.P50, stat.P90, stat.P99, stat.Min, stat.Max)
 			}
 		}
 
@@ -62,6 +66,11 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 			if perf, exists := result[model]; exists {
 				perf.Failed = count
 				result[model] = perf
+			} else {
+				result[model] = modelPerf{
+					Model:  model,
+					Failed: count,
+				}
 			}
 		}
 	} else if s.met != nil {
@@ -69,16 +78,7 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		modelStats := s.met.GetModelLatencyStats()
 
 		for _, stat := range modelStats {
-			result[stat.Model] = modelPerf{
-				Model: stat.Model,
-				Count: stat.Count,
-				AvgMs: stat.Avg.Milliseconds(),
-				P50Ms: stat.P50.Milliseconds(),
-				P90Ms: stat.P90.Milliseconds(),
-				P99Ms: stat.P99.Milliseconds(),
-				MinMs: stat.Min.Milliseconds(),
-				MaxMs: stat.Max.Milliseconds(),
-			}
+			result[stat.Model] = modelPerfFromFields(stat.Model, stat.Count, stat.Avg, stat.P50, stat.P90, stat.P99, stat.Min, stat.Max)
 		}
 
 		for model, count := range snap.ModelCounts {

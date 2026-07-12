@@ -8,14 +8,17 @@ import (
 	"time"
 )
 
+// CatalogRepo provides methods for persisting and loading catalog provider and model records.
 type CatalogRepo struct {
 	db *Database
 }
 
+// NewCatalogRepo creates a new CatalogRepo backed by the given database.
 func NewCatalogRepo(db *Database) *CatalogRepo {
 	return &CatalogRepo{db: db}
 }
 
+// ProviderRecord represents a provider entry persisted in the catalog.
 type ProviderRecord struct {
 	Name                   string
 	BaseURL                string
@@ -24,6 +27,7 @@ type ProviderRecord struct {
 	AnthropicToolsDisabled bool
 }
 
+// ModelRecord represents a model entry persisted in the catalog.
 type ModelRecord struct {
 	ID            string
 	Name          string
@@ -35,6 +39,19 @@ type ModelRecord struct {
 	CostOutput    float64
 }
 
+// Model holds a full model definition with nested limit and pricing details.
+type Model struct {
+	ID            string
+	Name          string
+	Reasoning     bool
+	ToolCall      bool
+	Vision        bool
+	ContextWindow int64
+	CostInput     float64
+	CostOutput    float64
+}
+
+// Provider holds a provider's configuration as loaded from the database.
 type Provider struct {
 	Name                   string
 	BaseURL                string
@@ -43,21 +60,25 @@ type Provider struct {
 	AnthropicToolsDisabled bool
 }
 
+// Modalities describes the input and output data types a model supports.
 type Modalities struct {
 	Input  []string
 	Output []string
 }
 
+// Limit describes the context window and output token limits for a model.
 type Limit struct {
 	Context int64
 	Output  int64
 }
 
+// Rates holds per-million-token pricing for a model.
 type Rates struct {
 	Input  float64
 	Output float64
 }
 
+// Model holds a full model definition with nested limit and pricing details.
 type Model struct {
 	ID         string
 	Name       string
@@ -69,16 +90,19 @@ type Model struct {
 	Rates      *Rates
 }
 
+// Catalog holds the parsed provider and model maps as loaded from the database.
 type Catalog struct {
 	Providers map[string]Provider
 	Models    map[string]Model
 }
 
+// IndexedCatalog extends Catalog with an index from provider name to its models.
 type IndexedCatalog struct {
 	Catalog
 	ProviderModels map[string][]Model
 }
 
+// ContextWindow returns the model's context window limit, or 0 if unknown.
 func (m Model) ContextWindow() int64 {
 	if m.Limit != nil {
 		return m.Limit.Context
@@ -86,6 +110,7 @@ func (m Model) ContextWindow() int64 {
 	return 0
 }
 
+// CostInputPerM returns the input cost per million tokens, or 0 if unknown.
 func (m Model) CostInputPerM() float64 {
 	if m.Rates != nil {
 		return m.Rates.Input
@@ -93,6 +118,7 @@ func (m Model) CostInputPerM() float64 {
 	return 0
 }
 
+// CostOutputPerM returns the output cost per million tokens, or 0 if unknown.
 func (m Model) CostOutputPerM() float64 {
 	if m.Rates != nil {
 		return m.Rates.Output
@@ -100,6 +126,7 @@ func (m Model) CostOutputPerM() float64 {
 	return 0
 }
 
+// UpsertBatch atomically inserts or replaces provider and model records in a single transaction.
 func (r *CatalogRepo) UpsertBatch(ctx context.Context, providers []ProviderRecord, models []ModelRecord) error {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -167,6 +194,7 @@ func (r *CatalogRepo) UpsertBatch(ctx context.Context, providers []ProviderRecor
 	return tx.Commit()
 }
 
+// Load reads all providers and models from the database and returns an indexed catalog.
 func (r *CatalogRepo) Load(ctx context.Context) (*IndexedCatalog, error) {
 	providers := make(map[string]Provider)
 	models := make(map[string]Model)
@@ -290,6 +318,7 @@ func (r *CatalogRepo) Load(ctx context.Context) (*IndexedCatalog, error) {
 	return idx, nil
 }
 
+// GetModel retrieves a single model by its ID. Returns nil, nil if not found.
 func (r *CatalogRepo) GetModel(ctx context.Context, id string) (*Model, error) {
 	var m Model
 	var displayName string
@@ -340,6 +369,7 @@ func (r *CatalogRepo) GetModel(ctx context.Context, id string) (*Model, error) {
 	return &m, nil
 }
 
+// ListModelsByProvider returns all models that belong to the given provider.
 func (r *CatalogRepo) ListModelsByProvider(ctx context.Context, provider string) ([]Model, error) {
 	rows, err := r.db.DB().QueryContext(ctx, `
 		SELECT id, name, context_window, cost_input_per_m, cost_output_per_m,
@@ -396,6 +426,7 @@ func (r *CatalogRepo) ListModelsByProvider(ctx context.Context, provider string)
 	return result, rows.Err()
 }
 
+// LastSync returns the timestamp of the last catalog sync, or zero time if never synced.
 func (r *CatalogRepo) LastSync(ctx context.Context) (time.Time, error) {
 	var syncedAt sql.NullString
 	err := r.db.DB().QueryRowContext(ctx, `
@@ -415,6 +446,7 @@ func (r *CatalogRepo) LastSync(ctx context.Context) (time.Time, error) {
 	return time.Parse(time.RFC3339, syncedAt.String)
 }
 
+// SetLastSync records the timestamp of a catalog sync.
 func (r *CatalogRepo) SetLastSync(ctx context.Context, t time.Time) error {
 	_, err := r.db.DB().ExecContext(ctx, `
 		INSERT OR REPLACE INTO schema_info (key, value) VALUES ('catalog_last_sync', ?)
@@ -438,6 +470,7 @@ func modelNameFromKey(key string) string {
 	return key[idx+1:]
 }
 
+// ProviderModel is a flattened model entry used for display in provider listings.
 type ProviderModel struct {
 	ModelID     string
 	DisplayName string
@@ -449,10 +482,12 @@ type ProviderModel struct {
 	CostOutput  float64
 }
 
+// ModelsForProvider returns the models that support the named provider.
 func (ic *IndexedCatalog) ModelsForProvider(provider string) []Model {
 	return ic.ProviderModels[provider]
 }
 
+// ListProviderModels returns a flattened ProviderModel slice for the given provider.
 func (ic *IndexedCatalog) ListProviderModels(provider string) []ProviderModel {
 	models := ic.ProviderModels[provider]
 	if models == nil {
@@ -478,6 +513,7 @@ func (ic *IndexedCatalog) ListProviderModels(provider string) []ProviderModel {
 	return result
 }
 
+// ModelNameFromKey extracts the model name portion from a model key of the form "provider/model-name".
 func ModelNameFromKey(key string) string {
 	idx := strings.IndexByte(key, '/')
 	if idx < 0 {

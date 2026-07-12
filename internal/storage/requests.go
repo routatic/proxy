@@ -8,14 +8,17 @@ import (
 	"github.com/routatic/proxy/internal/history"
 )
 
+// Requests provides methods for reading and writing request records.
 type Requests struct {
 	db *Database
 }
 
+// NewRequests creates a new Requests repository backed by the given database.
 func NewRequests(db *Database) *Requests {
 	return &Requests{db: db}
 }
 
+// Insert stores a request record, replacing any existing record with the same ID.
 func (r *Requests) Insert(rec history.RequestRecord) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -48,6 +51,7 @@ func (r *Requests) Insert(rec history.RequestRecord) error {
 	return err
 }
 
+// Last returns the most recent n request records ordered by start time.
 func (r *Requests) Last(n int) ([]history.RequestRecord, error) {
 	if n <= 0 {
 		n = 1000
@@ -71,6 +75,7 @@ func (r *Requests) Last(n int) ([]history.RequestRecord, error) {
 	return scanRequests(rows)
 }
 
+// Since returns all request records with start time after the given time.
 func (r *Requests) Since(since time.Time) ([]history.RequestRecord, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -90,6 +95,7 @@ func (r *Requests) Since(since time.Time) ([]history.RequestRecord, error) {
 	return scanRequests(rows)
 }
 
+// Count returns the total number of request records.
 func (r *Requests) Count() (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -99,6 +105,7 @@ func (r *Requests) Count() (int64, error) {
 	return count, err
 }
 
+// CountSince returns the number of request records with start time after the given time.
 func (r *Requests) CountSince(since time.Time) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -110,6 +117,7 @@ func (r *Requests) CountSince(since time.Time) (int64, error) {
 	return count, err
 }
 
+// DeleteBefore removes request records older than the given time.
 func (r *Requests) DeleteBefore(before time.Time) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

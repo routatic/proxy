@@ -37,27 +37,12 @@ func MigrateFromJSON(ctx context.Context, db *storage.Database, jsonPath string)
 
 	providers := make([]storage.ProviderRecord, 0, len(idx.Providers))
 	for name, p := range idx.Providers {
-		providers = append(providers, storage.ProviderRecord{
-			Name:                   name,
-			BaseURL:                p.BaseURL,
-			APIKey:                 p.APIKey,
-			Enabled:                p.Enabled,
-			AnthropicToolsDisabled: p.AnthropicToolsDisabled,
-		})
+		providers = append(providers, providerToStorageRecord(name, p))
 	}
 
 	models := make([]storage.ModelRecord, 0, len(idx.Models))
 	for key, m := range idx.Models {
-		models = append(models, storage.ModelRecord{
-			ID:            key,
-			Name:          m.Name,
-			Reasoning:     m.Reasoning,
-			ToolCall:      m.ToolCall,
-			Vision:        m.SupportsVision(),
-			ContextWindow: m.ContextWindow(),
-			CostInput:     m.CostInputPerM(),
-			CostOutput:    m.CostOutputPerM(),
-		})
+		models = append(models, modelToStorageRecord(key, m))
 	}
 
 	if err := repo.UpsertBatch(ctx, providers, models); err != nil {
@@ -92,30 +77,8 @@ func ExportJSON(ctx context.Context, db *storage.Database, jsonPath string) erro
 	}
 
 	for key, m := range idx.Models {
-		model := Model{
-			ID:        ModelNameFromKey(key),
-			Name:      m.Name,
-			Reasoning: m.Reasoning,
-			ToolCall:  m.ToolCall,
-		}
-
-		if m.Vision {
-			model.Modalities.Input = []string{"text", "image"}
-		} else {
-			model.Modalities.Input = []string{"text"}
-		}
-		model.Modalities.Output = []string{"text"}
-
-		if m.Limit != nil {
-			model.Limit = &Limit{Context: m.Limit.Context}
-		}
-		if m.Rates != nil {
-			model.Rates = &Rates{
-				Input:  m.Rates.Input,
-				Output: m.Rates.Output,
-			}
-		}
-
+		model := storageModelToCatalogModel(m)
+		model.ID = ModelNameFromKey(key)
 		catalog.Models[key] = model
 	}
 
@@ -147,30 +110,8 @@ func LoadFromSQLite(ctx context.Context, db *storage.Database) (*IndexedCatalog,
 	}
 
 	for key, m := range storageIdx.Models {
-		model := Model{
-			ID:        ModelNameFromKey(key),
-			Name:      m.Name,
-			Reasoning: m.Reasoning,
-			ToolCall:  m.ToolCall,
-		}
-
-		if m.Vision {
-			model.Modalities.Input = []string{"text", "image"}
-		} else {
-			model.Modalities.Input = []string{"text"}
-		}
-		model.Modalities.Output = []string{"text"}
-
-		if m.Limit != nil {
-			model.Limit = &Limit{Context: m.Limit.Context}
-		}
-		if m.Rates != nil {
-			model.Rates = &Rates{
-				Input:  m.Rates.Input,
-				Output: m.Rates.Output,
-			}
-		}
-
+		model := storageModelToCatalogModel(m)
+		model.ID = ModelNameFromKey(key)
 		cat.Models[key] = model
 	}
 
@@ -182,24 +123,7 @@ func LoadFromSQLite(ctx context.Context, db *storage.Database) (*IndexedCatalog,
 	for prov, models := range storageIdx.ProviderModels {
 		converted := make([]Model, len(models))
 		for i, m := range models {
-			converted[i] = Model{
-				ID:        m.ID,
-				Name:      m.Name,
-				Reasoning: m.Reasoning,
-				ToolCall:  m.ToolCall,
-			}
-			if m.Vision {
-				converted[i].Modalities.Input = []string{"text", "image"}
-			} else {
-				converted[i].Modalities.Input = []string{"text"}
-			}
-			converted[i].Modalities.Output = []string{"text"}
-			if m.Limit != nil {
-				converted[i].Limit = &Limit{Context: m.Limit.Context}
-			}
-			if m.Rates != nil {
-				converted[i].Rates = &Rates{Input: m.Rates.Input, Output: m.Rates.Output}
-			}
+			converted[i] = storageModelToCatalogModel(m)
 		}
 		idx.ProviderModels[prov] = converted
 	}
@@ -207,49 +131,50 @@ func LoadFromSQLite(ctx context.Context, db *storage.Database) (*IndexedCatalog,
 	return idx, nil
 }
 
-// SyncToSQLite downloads the catalog from sourceURL and imports it to SQLite.
-func SyncToSQLite(ctx context.Context, db *storage.Database, sourceURL string) error {
+// syncToSQLite is the shared core that fetches, parses, and upserts the
+// catalog into SQLite. Returns the number of providers and models imported.
+func syncToSQLite(ctx context.Context, db *storage.Database, sourceURL string) (int, int, error) {
 	if sourceURL == "" {
-		return fmt.Errorf("source URL is required")
+		return 0, 0, fmt.Errorf("source URL is required")
 	}
 	if db == nil {
-		return fmt.Errorf("database is required")
+		return 0, 0, fmt.Errorf("database is required")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return 0, 0, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("fetch catalog: %w", err)
+		return 0, 0, fmt.Errorf("fetch catalog: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
+		return 0, 0, fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
 	}
 
 	limited := http.MaxBytesReader(nil, resp.Body, maxCatalogBytes)
 	body, err := io.ReadAll(limited)
 	if err != nil {
-		return fmt.Errorf("read catalog: %w", err)
+		return 0, 0, fmt.Errorf("read catalog: %w", err)
 	}
 
 	var env envelope
 	if err := json.Unmarshal(body, &env); err != nil {
-		return fmt.Errorf("parse catalog: %w", err)
+		return 0, 0, fmt.Errorf("parse catalog: %w", err)
 	}
 	if env.Models == nil || env.Providers == nil {
-		return fmt.Errorf("catalog must contain models and providers objects")
+		return 0, 0, fmt.Errorf("catalog must contain models and providers objects")
 	}
 
 	var catalog Catalog
 	if err := json.Unmarshal(body, &catalog); err != nil {
-		return fmt.Errorf("parse catalog contents: %w", err)
+		return 0, 0, fmt.Errorf("parse catalog contents: %w", err)
 	}
 
 	providers := make([]storage.ProviderRecord, 0, len(catalog.Providers))
@@ -279,10 +204,16 @@ func SyncToSQLite(ctx context.Context, db *storage.Database, sourceURL string) e
 
 	repo := storage.NewCatalogRepo(db)
 	if err := repo.UpsertBatch(ctx, providers, models); err != nil {
-		return fmt.Errorf("upsert catalog: %w", err)
+		return 0, 0, fmt.Errorf("upsert catalog: %w", err)
 	}
 
-	return nil
+	return len(providers), len(models), nil
+}
+
+// SyncToSQLite downloads the catalog from sourceURL and imports it to SQLite.
+func SyncToSQLite(ctx context.Context, db *storage.Database, sourceURL string) error {
+	_, _, err := syncToSQLite(ctx, db, sourceURL)
+	return err
 }
 
 // SyncStats holds statistics from a catalog sync operation.
@@ -295,83 +226,13 @@ type SyncStats struct {
 // SyncToSQLiteWithStats downloads the catalog and returns sync statistics.
 func SyncToSQLiteWithStats(ctx context.Context, db *storage.Database, sourceURL string) (*SyncStats, error) {
 	start := time.Now()
-
-	if sourceURL == "" {
-		return nil, fmt.Errorf("source URL is required")
-	}
-	if db == nil {
-		return nil, fmt.Errorf("database is required")
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	providers, models, err := syncToSQLite(ctx, db, sourceURL)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch catalog: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
-	}
-
-	limited := http.MaxBytesReader(nil, resp.Body, maxCatalogBytes)
-	body, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, fmt.Errorf("read catalog: %w", err)
-	}
-
-	var env envelope
-	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, fmt.Errorf("parse catalog: %w", err)
-	}
-	if env.Models == nil || env.Providers == nil {
-		return nil, fmt.Errorf("catalog must contain models and providers objects")
-	}
-
-	var catalog Catalog
-	if err := json.Unmarshal(body, &catalog); err != nil {
-		return nil, fmt.Errorf("parse catalog contents: %w", err)
-	}
-
-	providers := make([]storage.ProviderRecord, 0, len(catalog.Providers))
-	for name, p := range catalog.Providers {
-		providers = append(providers, storage.ProviderRecord{
-			Name:                   name,
-			BaseURL:                p.BaseURL,
-			APIKey:                 p.APIKey,
-			Enabled:                p.Enabled,
-			AnthropicToolsDisabled: p.AnthropicToolsDisabled,
-		})
-	}
-
-	models := make([]storage.ModelRecord, 0, len(catalog.Models))
-	for key, m := range catalog.Models {
-		models = append(models, storage.ModelRecord{
-			ID:            key,
-			Name:          m.Name,
-			Reasoning:     m.Reasoning,
-			ToolCall:      m.ToolCall,
-			Vision:        m.SupportsVision(),
-			ContextWindow: m.ContextWindow(),
-			CostInput:     m.CostInputPerM(),
-			CostOutput:    m.CostOutputPerM(),
-		})
-	}
-
-	repo := storage.NewCatalogRepo(db)
-	if err := repo.UpsertBatch(ctx, providers, models); err != nil {
-		return nil, fmt.Errorf("upsert catalog: %w", err)
-	}
-
 	return &SyncStats{
-		Providers: len(providers),
-		Models:    len(models),
+		Providers: providers,
+		Models:    models,
 		Duration:  time.Since(start),
 	}, nil
 }

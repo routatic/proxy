@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ func NewModelRouterWithCatalog(atomic *config.AtomicConfig, catalogPath string) 
 
 func (r *ModelRouter) catalog() (*catalog.IndexedCatalog, error) {
 	if r.db == nil && r.catalogPath == "" {
+		slog.Warn("catalog not available — model resolution falling back to legacy config")
 		return nil, nil
 	}
 
@@ -164,7 +166,6 @@ func requestConstraints(messages []MessageContent, tokenCount int) ScenarioConst
 func hasToolUsage(messages []MessageContent) bool {
 	toolKeywords := []string{
 		"tool", "function", "execute", "run command",
-		"bash", "shell", "python",
 	}
 	for _, msg := range messages {
 		if msg.Role == "tool" || msg.Role == "function" {
