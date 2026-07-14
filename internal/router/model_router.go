@@ -355,10 +355,14 @@ func (r *ModelRouter) ListModels(ctx context.Context) []ModelInfo {
 		seen[id] = existing
 	}
 
-	for alias, mc := range cfg.Models {
+	// ModelOverrides is walked before Models so that, for a key present in
+	// both, the override's provider is what surfaces in the listing — matching
+	// the routing precedence (model_overrides wins). add() keeps the first
+	// source's fields, so first-write must be the winning source.
+	for alias, mc := range cfg.ModelOverrides {
 		add(alias, "", mc.Provider)
 	}
-	for alias, mc := range cfg.ModelOverrides {
+	for alias, mc := range cfg.Models {
 		add(alias, "", mc.Provider)
 	}
 

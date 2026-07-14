@@ -950,6 +950,32 @@ func TestListModels_MergesConfigAndOverrides(t *testing.T) {
 	}
 }
 
+func TestListModels_OverrideProviderWinsOnCollision(t *testing.T) {
+	// A key present in both models and model_overrides must surface the
+	// override's provider, matching routing precedence (model_overrides wins).
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"claude-sonnet-4-5-20250929": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-sonnet-4-5-20250929": {Provider: "opencode-zen", ModelID: "minimax"},
+		},
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+	models := router.ListModels(context.Background())
+
+	var got string
+	for _, m := range models {
+		if m.ID == "claude-sonnet-4-5-20250929" {
+			got = m.Provider
+		}
+	}
+	if got != "opencode-zen" {
+		t.Errorf("expected override provider opencode-zen to win, got %q", got)
+	}
+}
+
 func TestListModels_Empty(t *testing.T) {
 	router := NewModelRouter(newTestAtomicConfig(&config.Config{}))
 	if models := router.ListModels(context.Background()); len(models) != 0 {
