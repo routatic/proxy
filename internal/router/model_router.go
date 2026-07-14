@@ -323,7 +323,12 @@ func (r *ModelRouter) RouteWithFamilyOverride(requestedModel string) (RouteResul
 	for family := range cfg.ModelFamilyOverrides {
 		families = append(families, family)
 	}
-	sort.Slice(families, func(i, j int) bool { return len(families[i]) > len(families[j]) })
+	sort.Slice(families, func(i, j int) bool {
+		if len(families[i]) != len(families[j]) {
+			return len(families[i]) > len(families[j])
+		}
+		return families[i] < families[j]
+	})
 
 	lower := strings.ToLower(requestedModel)
 	for _, family := range families {
