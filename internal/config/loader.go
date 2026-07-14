@@ -456,7 +456,9 @@ func validateModelOverrides(overrides map[string]ModelConfig) error {
 // non-empty family key, a non-empty model_id, and a recognized provider.
 func validateModelFamilyOverrides(overrides map[string]ModelConfig) error {
 	for key := range overrides {
-		if key == "" {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("model_family_overrides has an empty family key")
+		}
 			return fmt.Errorf("model_family_overrides has an empty family key")
 		}
 	}
