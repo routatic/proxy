@@ -459,8 +459,6 @@ func validateModelFamilyOverrides(overrides map[string]ModelConfig) error {
 		if strings.TrimSpace(key) == "" {
 			return fmt.Errorf("model_family_overrides has an empty family key")
 		}
-			return fmt.Errorf("model_family_overrides has an empty family key")
-		}
 	}
 	return validateOverrideMap("model_family_overrides", overrides)
 }

@@ -335,18 +335,7 @@ func (r *ModelRouter) RouteWithFamilyOverride(requestedModel string) (RouteResul
 		if family == "" {
 			continue
 		}
-	lowerFamilies := make([]string, 0, len(families))
-	for _, f := range families {
-		lowerFamilies = append(lowerFamilies, strings.ToLower(f))
-	}
-	for i, family := range lowerFamilies {
-		if family == "" {
-			continue
-		}
-		if strings.Contains(lower, family) {
-			return buildOverrideResult(cfg, cfg.ModelFamilyOverrides[families[i]], families[i]), true
-		}
-	}
+		if strings.Contains(lower, strings.ToLower(family)) {
 			return buildOverrideResult(cfg, cfg.ModelFamilyOverrides[family], family), true
 		}
 	}
