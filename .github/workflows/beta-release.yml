@@ -252,7 +252,6 @@ jobs:
             type=raw,value=${{ needs.release.outputs.beta_tag }}
             type=raw,value=beta-${{ needs.release.outputs.prod_version }}
             type=raw,value=beta
-            type=raw,value=latest
 
       - name: Strip v prefix from version
         id: version
