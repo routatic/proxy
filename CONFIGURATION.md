@@ -623,6 +623,40 @@ Recommended setup for Claude Code review workflows:
 
 Use the `fast` scenario for short/simple requests. Use `complex` or `long_context` for code review, multi-agent dispatch, large diffs, many tools, or long-context Claude Code sessions.
 
+## Claude Code Model Picker
+
+You can select proxy models from Claude Code's `/model` picker in two ways.
+
+### Type any model name (always works)
+
+Claude Code's `/model` picker also accepts a free-form model name. Type any value the proxy understands — a scenario alias (`default`, `fast`, `complex`, …), a `model_overrides` key, or a catalog canonical name like `opencode-go/kimi-k2.6` — and the proxy routes it. No extra configuration is needed; this works regardless of Claude Code version.
+
+### Gateway model discovery (opt-in, adds entries to the picker)
+
+Recent Claude Code versions can auto-populate the picker by querying the proxy's [`GET /v1/models`](docs/reference-api.md#get-v1models) endpoint. When enabled, discovered models appear in `/model` labeled **"From gateway"** alongside the built-in entries (Sonnet, Opus, …).
+
+Enable it by setting, alongside `ANTHROPIC_BASE_URL`:
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+export ANTHROPIC_AUTH_TOKEN=unused
+export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+```
+
+Discovery only runs when all of these hold: `ANTHROPIC_BASE_URL` is set, `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, no `CLAUDE_CODE_USE_*` provider variable is set, the base URL is not `api.anthropic.com`, and the Claude Code version supports it (≥ 2.1.129). Results are cached to `~/.claude/cache/gateway-models.json`.
+
+> **Important — Claude Code filters discovered model IDs.** Claude Code only shows discovered models whose `id` begins with **`claude`** or **`anthropic`**. The proxy's scenario aliases (`default`, `fast`, …) and catalog names (`opencode-go/kimi-k2.6`) are therefore **filtered out of the picker**. To make a proxy model appear via discovery, give it a `claude-*` name — the natural fit is a [`model_overrides`](#model-overrides-model_overrides) key:
+>
+> ```json
+> {
+>   "model_overrides": {
+>     "claude-glm-5.2": { "provider": "opencode-go", "model_id": "glm-5.2" }
+>   }
+> }
+> ```
+>
+> `claude-glm-5.2` then appears in the picker (labeled "From gateway"), and selecting it routes to GLM-5.2. Models with non-`claude`/`anthropic` IDs remain fully usable — just type them into `/model` directly.
+
 ## Using with CC-Switch
 
 [CC-Switch](https://github.com/farion1231/cc-switch) is a desktop app for managing and hot-switching Claude Code providers. routatic-proxy works with it out of the box — the proxy speaks the Anthropic API that Claude Code (and therefore CC-Switch) already expects, so you add it like any other custom provider.

@@ -44,6 +44,11 @@ func TestHandleListModels_ReturnsOpenAIEnvelope(t *testing.T) {
 		if m.Object != "model" {
 			t.Errorf("model %q object = %q, want \"model\"", m.ID, m.Object)
 		}
+		// name and display_name carry the same value so both OpenAI clients
+		// (CC-Switch) and Claude Code gateway discovery see a label.
+		if m.Name != m.DisplayName {
+			t.Errorf("model %q: name %q != display_name %q", m.ID, m.Name, m.DisplayName)
+		}
 		ids[m.ID] = m
 	}
 	for _, want := range []string{"default", "kimi-k2.6", "claude-sonnet-4-5-20250929"} {

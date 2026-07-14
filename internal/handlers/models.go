@@ -24,11 +24,17 @@ func NewModelsHandler(modelRouter *router.ModelRouter) *ModelsHandler {
 
 // openAIModel mirrors an entry in the OpenAI /v1/models response. Fields beyond
 // "id" are informational; clients key off "id".
+//
+// display_name is included for Claude Code's gateway model discovery, which
+// reads that field when it queries GET /v1/models?limit=1000. Note that Claude
+// Code only surfaces discovered models whose id begins with "claude" or
+// "anthropic"; other ids are silently filtered from its picker.
 type openAIModel struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	OwnedBy string `json:"owned_by,omitempty"`
-	Name    string `json:"name,omitempty"`
+	ID          string `json:"id"`
+	Object      string `json:"object"`
+	OwnedBy     string `json:"owned_by,omitempty"`
+	Name        string `json:"name,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // openAIModelList is the OpenAI /v1/models envelope: {"object":"list","data":[...]}.
@@ -48,10 +54,11 @@ func (h *ModelsHandler) HandleListModels(w http.ResponseWriter, r *http.Request)
 	data := make([]openAIModel, 0, len(infos))
 	for _, info := range infos {
 		data = append(data, openAIModel{
-			ID:      info.ID,
-			Object:  "model",
-			OwnedBy: info.Provider,
-			Name:    info.DisplayName,
+			ID:          info.ID,
+			Object:      "model",
+			OwnedBy:     info.Provider,
+			Name:        info.DisplayName,
+			DisplayName: info.DisplayName,
 		})
 	}
 
