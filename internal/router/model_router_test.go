@@ -755,6 +755,117 @@ func TestRoute_ModelOverridesPrecedence(t *testing.T) {
 	}
 }
 
+func TestRouteWithFamilyOverride_MatchesSubstring(t *testing.T) {
+	cfg := &config.Config{
+		ModelFamilyOverrides: map[string]config.ModelConfig{
+			"opus":   {Provider: "opencode-go", ModelID: "glm-5.1", Temperature: 0.4, MaxTokens: 8192},
+			"sonnet": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+			"haiku":  {Provider: "opencode-go", ModelID: "qwen3.7-plus"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"opus": {
+				{Provider: "opencode-go", ModelID: "kimi-k2.6"},
+			},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	tests := []struct {
+		name        string
+		requested   string
+		wantModelID string
+	}{
+		{"versioned opus", "claude-opus-4-20250514", "glm-5.1"},
+		{"versioned sonnet", "claude-sonnet-4-5-20250929", "kimi-k2.6"},
+		{"versioned haiku", "claude-haiku-4-5-20251001", "qwen3.7-plus"},
+		{"mixed case", "Claude-OPUS-4", "glm-5.1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, ok := router.RouteWithFamilyOverride(tt.requested)
+			if !ok {
+				t.Fatalf("expected family override to match %q", tt.requested)
+			}
+			if result.Primary.ModelID != tt.wantModelID {
+				t.Errorf("expected model_id %q, got %q", tt.wantModelID, result.Primary.ModelID)
+			}
+			if result.Scenario != ScenarioOverride {
+				t.Errorf("expected ScenarioOverride, got %s", result.Scenario)
+			}
+		})
+	}
+}
+
+func TestRouteWithFamilyOverride_FallbacksByFamilyThenDefault(t *testing.T) {
+	cfg := &config.Config{
+		ModelFamilyOverrides: map[string]config.ModelConfig{
+			"opus":   {Provider: "opencode-go", ModelID: "glm-5.1"},
+			"sonnet": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"opus":    {{Provider: "opencode-go", ModelID: "glm-5"}},
+			"default": {{Provider: "opencode-go", ModelID: "qwen3.5-plus"}},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	opus, ok := router.RouteWithFamilyOverride("claude-opus-4")
+	if !ok {
+		t.Fatal("expected opus match")
+	}
+	if len(opus.Fallbacks) != 1 || opus.Fallbacks[0].ModelID != "glm-5" {
+		t.Errorf("expected family fallback [glm-5], got %+v", opus.Fallbacks)
+	}
+
+	sonnet, ok := router.RouteWithFamilyOverride("claude-sonnet-4")
+	if !ok {
+		t.Fatal("expected sonnet match")
+	}
+	if len(sonnet.Fallbacks) != 1 || sonnet.Fallbacks[0].ModelID != "qwen3.5-plus" {
+		t.Errorf("expected default fallback [qwen3.5-plus], got %+v", sonnet.Fallbacks)
+	}
+}
+
+func TestRouteWithFamilyOverride_NoMatch(t *testing.T) {
+	cfg := &config.Config{
+		ModelFamilyOverrides: map[string]config.ModelConfig{
+			"opus": {Provider: "opencode-go", ModelID: "glm-5.1"},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	if _, ok := router.RouteWithFamilyOverride("gpt-4o"); ok {
+		t.Error("expected no family match for gpt-4o")
+	}
+}
+
+func TestRouteWithFamilyOverride_NilMap(t *testing.T) {
+	router := NewModelRouter(newTestAtomicConfig(&config.Config{}))
+	if _, ok := router.RouteWithFamilyOverride("claude-opus-4"); ok {
+		t.Error("expected no match for nil ModelFamilyOverrides map (must not panic)")
+	}
+}
+
+func TestRouteWithFamilyOverride_LongestKeyWins(t *testing.T) {
+	// Overlapping keys: a request containing both should match the longer key
+	// for deterministic behavior.
+	cfg := &config.Config{
+		ModelFamilyOverrides: map[string]config.ModelConfig{
+			"opus":      {Provider: "opencode-go", ModelID: "short-match"},
+			"opus-mini": {Provider: "opencode-go", ModelID: "long-match"},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithFamilyOverride("claude-opus-mini-4")
+	if !ok {
+		t.Fatal("expected a match")
+	}
+	if result.Primary.ModelID != "long-match" {
+		t.Errorf("expected longest key to win (long-match), got %q", result.Primary.ModelID)
+	}
+}
+
 func TestCostBasedRouting_SelectsCheapest(t *testing.T) {
 	catalogPath := filepath.Join("testdata", "selector_catalog.json")
 	cfg := &config.Config{

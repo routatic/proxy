@@ -21,6 +21,7 @@ type Config struct {
 	Models                         map[string]ModelConfig   `json:"models"`
 	Fallbacks                      map[string][]ModelConfig `json:"fallbacks"`
 	ModelOverrides                 map[string]ModelConfig   `json:"model_overrides"`
+	ModelFamilyOverrides           map[string]ModelConfig   `json:"model_family_overrides"`
 	AWSBedrock                     AWSBedrockConfig         `json:"aws_bedrock"`
 	OpenCodeGo                     OpenCodeGoConfig         `json:"opencode_go"`
 	OpenCodeZen                    OpenCodeZenConfig        `json:"opencode_zen"`

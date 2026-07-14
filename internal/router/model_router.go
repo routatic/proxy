@@ -297,7 +297,51 @@ func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, boo
 	if !ok {
 		return RouteResult{}, false
 	}
-	fallbacks := cfg.Fallbacks[requestedModel]
+	return buildOverrideResult(cfg, override, requestedModel), true
+}
+
+// RouteWithFamilyOverride checks whether the requested model string contains a
+// Claude family keyword configured in model_family_overrides (e.g. "opus",
+// "sonnet", "haiku"). Matching is a case-insensitive substring test, so it maps
+// the versioned model IDs Claude Code sends (claude-opus-4-20250514) without
+// requiring cc-switch to rewrite the model to an exact string.
+//
+// Family keys are evaluated longest-first so that overlapping keys resolve
+// deterministically to the most specific match. The fallback chain is
+// fallbacks[<family>], falling back to fallbacks["default"] when the family key
+// has no entry (matching RouteWithOverride behavior).
+//
+// Returns the RouteResult and true if matched, or a zero value and false when
+// no family keyword appears in the requested model.
+func (r *ModelRouter) RouteWithFamilyOverride(requestedModel string) (RouteResult, bool) {
+	cfg := r.atomic.Get()
+	if len(cfg.ModelFamilyOverrides) == 0 || requestedModel == "" {
+		return RouteResult{}, false
+	}
+
+	families := make([]string, 0, len(cfg.ModelFamilyOverrides))
+	for family := range cfg.ModelFamilyOverrides {
+		families = append(families, family)
+	}
+	sort.Slice(families, func(i, j int) bool { return len(families[i]) > len(families[j]) })
+
+	lower := strings.ToLower(requestedModel)
+	for _, family := range families {
+		if family == "" {
+			continue
+		}
+		if strings.Contains(lower, strings.ToLower(family)) {
+			return buildOverrideResult(cfg, cfg.ModelFamilyOverrides[family], family), true
+		}
+	}
+	return RouteResult{}, false
+}
+
+// buildOverrideResult constructs a RouteResult for an override match. The
+// fallback chain is fallbacks[fallbackKey], falling back to fallbacks["default"]
+// when the key has no entry.
+func buildOverrideResult(cfg *config.Config, override config.ModelConfig, fallbackKey string) RouteResult {
+	fallbacks := cfg.Fallbacks[fallbackKey]
 	if len(fallbacks) == 0 {
 		fallbacks = cfg.Fallbacks["default"]
 	}
@@ -305,7 +349,7 @@ func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, boo
 		Primary:   override,
 		Fallbacks: fallbacks,
 		Scenario:  ScenarioOverride,
-	}, true
+	}
 }
 
 // ModelInfo describes a model that clients can request by name. It is the

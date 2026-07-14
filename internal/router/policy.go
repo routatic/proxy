@@ -116,6 +116,11 @@ func (p *ModelOverridePolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelCo
 	}
 
 	result, ok := p.router.RouteWithOverride(requestedModel)
+	reason := fmt.Sprintf("matched model_override for %q", requestedModel)
+	if !ok {
+		result, ok = p.router.RouteWithFamilyOverride(requestedModel)
+		reason = fmt.Sprintf("matched model_family_overrides for %q", requestedModel)
+	}
 	if !ok {
 		return nil, RouteDecision{}, fmt.Errorf("no override for %q", requestedModel)
 	}
@@ -124,7 +129,7 @@ func (p *ModelOverridePolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelCo
 		PolicyName: "model_override",
 		ModelID:    result.Primary.ModelID,
 		Provider:   result.Primary.Provider,
-		Reason:     fmt.Sprintf("matched model_override for %q", requestedModel),
+		Reason:     reason,
 	}, nil
 }
 

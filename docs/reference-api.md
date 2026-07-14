@@ -30,7 +30,8 @@ The primary endpoint. Accepts Anthropic Messages API requests and returns respon
 
 **Routing behavior:**
 
-- If `model` matches an entry in `model_overrides`, that model is used as primary with a scenario-derived safety net
+- If `model` matches an entry in `model_overrides` (exact match), that model is used as primary with a scenario-derived safety net
+- Otherwise, if `model` contains a family keyword configured in `model_family_overrides` (`opus`/`sonnet`/`haiku`, case-insensitive substring), that mapped model is used as primary with a scenario-derived safety net
 - Otherwise, scenario-based routing selects the model based on request content and token count
 - Set `respect_requested_model: false` in config to force scenario routing regardless of the `model` field
 

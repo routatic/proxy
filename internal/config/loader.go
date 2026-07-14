@@ -298,6 +298,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.ModelOverrides == nil {
 		cfg.ModelOverrides = make(map[string]ModelConfig)
 	}
+	if cfg.ModelFamilyOverrides == nil {
+		cfg.ModelFamilyOverrides = make(map[string]ModelConfig)
+	}
 	if cfg.Catalog.MaxAgeHours == 0 {
 		cfg.Catalog.MaxAgeHours = defaultCatalogMaxAge
 	}
@@ -359,6 +362,10 @@ func validate(cfg *Config) error {
 		return err
 	}
 
+	if err := validateModelFamilyOverrides(cfg.ModelFamilyOverrides); err != nil {
+		return err
+	}
+
 	if err := validateAnthropicToolsDisabled(cfg); err != nil {
 		return err
 	}
@@ -404,6 +411,11 @@ func validateAnthropicToolsDisabled(cfg *Config) error {
 			fmt.Fprintf(os.Stderr, "WARNING: config: model_overrides[%q] has anthropic_tools_disabled=true — this is only effective on models routing to the Anthropic endpoint\n", key)
 		}
 	}
+	for key, mc := range cfg.ModelFamilyOverrides {
+		if mc.AnthropicToolsDisabled {
+			fmt.Fprintf(os.Stderr, "WARNING: config: model_family_overrides[%q] has anthropic_tools_disabled=true — this is only effective on models routing to the Anthropic endpoint\n", key)
+		}
+	}
 	return nil
 }
 
@@ -437,12 +449,30 @@ func validateAPIKeys(keys []string) error {
 // (surfacing far from the config error); an unknown provider would silently
 // fall through to defaults at request time.
 func validateModelOverrides(overrides map[string]ModelConfig) error {
+	return validateOverrideMap("model_overrides", overrides)
+}
+
+// validateModelFamilyOverrides ensures each family override entry has a
+// non-empty family key, a non-empty model_id, and a recognized provider.
+func validateModelFamilyOverrides(overrides map[string]ModelConfig) error {
+	for key := range overrides {
+		if key == "" {
+			return fmt.Errorf("model_family_overrides has an empty family key")
+		}
+	}
+	return validateOverrideMap("model_family_overrides", overrides)
+}
+
+// validateOverrideMap validates the shared shape of override maps: each entry
+// must have a non-empty model_id and a recognized provider. label names the
+// config section for error messages.
+func validateOverrideMap(label string, overrides map[string]ModelConfig) error {
 	for key, mc := range overrides {
 		if mc.ModelID == "" {
-			return fmt.Errorf("model_overrides[%q] is missing required field model_id", key)
+			return fmt.Errorf("%s[%q] is missing required field model_id", label, key)
 		}
 		if mc.Provider != "" && mc.Provider != "opencode-go" && mc.Provider != "opencode-zen" {
-			return fmt.Errorf("model_overrides[%q] has invalid provider %q (must be \"opencode-go\" or \"opencode-zen\")", key, mc.Provider)
+			return fmt.Errorf("%s[%q] has invalid provider %q (must be \"opencode-go\" or \"opencode-zen\")", label, key, mc.Provider)
 		}
 	}
 	return nil

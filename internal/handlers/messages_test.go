@@ -205,6 +205,66 @@ func TestBuildModelChain_Override_AppendsScenarioChainDeduped(t *testing.T) {
 	}
 }
 
+func TestBuildModelChain_FamilyOverride_MatchesVersionedID(t *testing.T) {
+	// Claude Code sends versioned IDs; a family keyword substring must route
+	// to the mapped model even with no exact model_overrides entry.
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"}},
+		},
+		ModelFamilyOverrides: map[string]config.ModelConfig{
+			"opus": {Provider: "opencode-go", ModelID: "glm-5.1", Temperature: 0.4},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	chain, result, err := h.buildModelChain("claude-opus-4-20250514", nil, 100, false, 4096, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Primary.ModelID != "glm-5.1" {
+		t.Errorf("primary = %s, want glm-5.1", result.Primary.ModelID)
+	}
+	if result.Primary.Temperature != 0.4 {
+		t.Errorf("primary.Temperature = %f, want 0.4 (family override settings preserved)", result.Primary.Temperature)
+	}
+	if result.Scenario != router.ScenarioOverride {
+		t.Errorf("scenario = %s, want %s", result.Scenario, router.ScenarioOverride)
+	}
+	if got := chainIDs(chain)[0]; got != "glm-5.1" {
+		t.Errorf("chain[0] = %s, want glm-5.1", got)
+	}
+}
+
+func TestBuildModelChain_ExactOverrideWinsOverFamily(t *testing.T) {
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "mimo-v2.5-pro"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-opus-4-20250514": {Provider: "opencode-zen", ModelID: "exact-target"},
+		},
+		ModelFamilyOverrides: map[string]config.ModelConfig{
+			"opus": {Provider: "opencode-go", ModelID: "family-target"},
+		},
+	}
+	h := newTestMessagesHandler(t, cfg)
+
+	_, result, err := h.buildModelChain("claude-opus-4-20250514", nil, 100, false, 4096, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Primary.ModelID != "exact-target" {
+		t.Errorf("primary = %s, want exact-target (exact override must win over family)", result.Primary.ModelID)
+	}
+}
+
 func TestBuildModelChain_Override_AppendsUniqueScenarioModels(t *testing.T) {
 	// Override primary does NOT overlap with the scenario chain. With default
 	// fallbacks, the chain is: [override primary, default fallback, scenario

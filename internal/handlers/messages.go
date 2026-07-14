@@ -440,8 +440,10 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 // respecting the streaming-scenario-routing toggle.
 //
 // Precedence:
-//  1. If requestedModel matches an entry in model_overrides, use that as the
-//     primary and append the scenario chain as a deduplicated safety net.
+//  1. If requestedModel matches an entry in model_overrides (exact) or
+//     model_family_overrides (family keyword substring, e.g. "opus"), use that
+//     as the primary and append the scenario chain as a deduplicated safety net.
+//     Exact overrides win over family matches.
 //  2. Otherwise, fall through to scenario-based routing via routeOnce.
 func (h *MessagesHandler) buildModelChain(
 	requestedModel string,
@@ -456,7 +458,11 @@ func (h *MessagesHandler) buildModelChain(
 	var result router.RouteResult
 
 	if requestedModel != "" {
-		if overrideResult, ok := h.modelRouter.RouteWithOverride(requestedModel); ok {
+		overrideResult, ok := h.modelRouter.RouteWithOverride(requestedModel)
+		if !ok {
+			overrideResult, ok = h.modelRouter.RouteWithFamilyOverride(requestedModel)
+		}
+		if ok {
 			scenarioResult, err := h.routeOnce(routerMessages, tokenCount, "", isStreaming)
 			if err != nil {
 				return overrideResult.GetModelChain(), overrideResult, err

@@ -1141,6 +1141,11 @@ func getDefaultConfig() string {
       "max_tokens": 8192
     }
   },
+  "model_family_overrides": {
+    "opus": { "provider": "opencode-go", "model_id": "glm-5.1", "temperature": 0.7, "max_tokens": 8192, "vision": true },
+    "sonnet": { "provider": "opencode-go", "model_id": "kimi-k2.6", "temperature": 0.7, "max_tokens": 8192, "vision": true },
+    "haiku": { "provider": "opencode-go", "model_id": "qwen3.7-plus", "temperature": 0.7, "max_tokens": 4096, "vision": true }
+  },
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
     "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
