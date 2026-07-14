@@ -64,6 +64,32 @@ Counts tokens for a message array without generating a response.
 }
 ```
 
+### `GET /v1/models`
+
+Returns the set of model identifiers a client may request, in the OpenAI
+`/v1/models` envelope. Provider-switching tools such as
+[CC-Switch](../CONFIGURATION.md#using-with-cc-switch) call this endpoint to
+populate a model picker (its "Fetch Models" button).
+
+The listing merges config `models` aliases, `model_overrides` keys, and — when
+a catalog is available — catalog canonical names (`provider/model`). Any value
+in the list is valid in the `model` field of `POST /v1/messages`.
+
+**Response:**
+
+```json
+{
+  "object": "list",
+  "data": [
+    { "id": "default", "object": "model", "owned_by": "opencode-go" },
+    { "id": "claude-sonnet-4-5-20250929", "object": "model", "owned_by": "opencode-zen" },
+    { "id": "opencode-go/kimi-k2.6", "object": "model", "owned_by": "opencode-go", "name": "Kimi K2.6" }
+  ]
+}
+```
+
+Only `GET` is allowed; other methods return `405`.
+
 ### `GET /health`
 
 Returns server health status.

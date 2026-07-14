@@ -912,3 +912,46 @@ func TestRoute_LegacyConfigFixtures(t *testing.T) {
 		}
 	})
 }
+
+func TestListModels_MergesConfigAndOverrides(t *testing.T) {
+	cfg := &config.Config{
+		Models: map[string]config.ModelConfig{
+			"default":   {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+			"kimi-k2.6": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-sonnet-4-5-20250929": {Provider: "opencode-zen", ModelID: "minimax"},
+		},
+	}
+
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+	models := router.ListModels()
+
+	byID := make(map[string]ModelInfo, len(models))
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+
+	for _, want := range []string{"default", "kimi-k2.6", "claude-sonnet-4-5-20250929"} {
+		if _, ok := byID[want]; !ok {
+			t.Errorf("expected model %q in listing, got %+v", want, models)
+		}
+	}
+	if got := byID["claude-sonnet-4-5-20250929"].Provider; got != "opencode-zen" {
+		t.Errorf("expected override provider opencode-zen, got %q", got)
+	}
+
+	// Sorted ascending by ID.
+	for i := 1; i < len(models); i++ {
+		if models[i-1].ID > models[i].ID {
+			t.Errorf("models not sorted: %q before %q", models[i-1].ID, models[i].ID)
+		}
+	}
+}
+
+func TestListModels_Empty(t *testing.T) {
+	router := NewModelRouter(newTestAtomicConfig(&config.Config{}))
+	if models := router.ListModels(); len(models) != 0 {
+		t.Errorf("expected no models, got %+v", models)
+	}
+}

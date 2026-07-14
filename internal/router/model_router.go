@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -305,6 +306,71 @@ func (r *ModelRouter) RouteWithOverride(requestedModel string) (RouteResult, boo
 		Fallbacks: fallbacks,
 		Scenario:  ScenarioOverride,
 	}, true
+}
+
+// ModelInfo describes a model that clients can request by name. It is the
+// data source for the OpenAI-compatible /v1/models listing consumed by tools
+// such as CC-Switch's "Fetch Models" button.
+type ModelInfo struct {
+	// ID is the string a client puts in the request "model" field.
+	ID string
+	// DisplayName is a human-readable label when available.
+	DisplayName string
+	// Provider is the upstream provider that serves the model, when known.
+	Provider string
+}
+
+// ListModels returns the set of model identifiers a client may request,
+// deduplicated and sorted by ID. The list is assembled from:
+//
+//   - legacy config "models" aliases,
+//   - "model_overrides" keys (the Claude aliases users pin),
+//   - catalog canonical names (provider/model), when a catalog is available.
+//
+// Any of these is a valid value for the request "model" field, so surfacing
+// all of them lets a picker present every route the proxy understands.
+func (r *ModelRouter) ListModels() []ModelInfo {
+	cfg := r.atomic.Get()
+	seen := make(map[string]ModelInfo)
+
+	add := func(id, name, provider string) {
+		if id == "" {
+			return
+		}
+		existing, ok := seen[id]
+		if !ok {
+			seen[id] = ModelInfo{ID: id, DisplayName: name, Provider: provider}
+			return
+		}
+		// Fill in missing fields from later sources without overwriting.
+		if existing.DisplayName == "" {
+			existing.DisplayName = name
+		}
+		if existing.Provider == "" {
+			existing.Provider = provider
+		}
+		seen[id] = existing
+	}
+
+	for alias, mc := range cfg.Models {
+		add(alias, "", mc.Provider)
+	}
+	for alias, mc := range cfg.ModelOverrides {
+		add(alias, "", mc.Provider)
+	}
+
+	if cat, err := r.catalog(); err == nil && cat != nil {
+		for key, model := range cat.Models {
+			add(key, model.DisplayName(), catalog.ProviderFromModelKey(key))
+		}
+	}
+
+	result := make([]ModelInfo, 0, len(seen))
+	for _, info := range seen {
+		result = append(result, info)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result
 }
 
 // GetModelChain returns the full chain of models to try (primary + fallbacks).
