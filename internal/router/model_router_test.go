@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -925,7 +926,7 @@ func TestListModels_MergesConfigAndOverrides(t *testing.T) {
 	}
 
 	router := NewModelRouter(newTestAtomicConfig(cfg))
-	models := router.ListModels()
+	models := router.ListModels(context.Background())
 
 	byID := make(map[string]ModelInfo, len(models))
 	for _, m := range models {
@@ -951,7 +952,7 @@ func TestListModels_MergesConfigAndOverrides(t *testing.T) {
 
 func TestListModels_Empty(t *testing.T) {
 	router := NewModelRouter(newTestAtomicConfig(&config.Config{}))
-	if models := router.ListModels(); len(models) != 0 {
+	if models := router.ListModels(context.Background()); len(models) != 0 {
 		t.Errorf("expected no models, got %+v", models)
 	}
 }

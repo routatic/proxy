@@ -50,7 +50,7 @@ func (h *ModelsHandler) HandleListModels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	infos := h.modelRouter.ListModels()
+	infos := h.modelRouter.ListModels(r.Context())
 	data := make([]openAIModel, 0, len(infos))
 	for _, info := range infos {
 		data = append(data, openAIModel{

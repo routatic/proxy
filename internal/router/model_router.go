@@ -39,7 +39,7 @@ func NewModelRouterWithCatalog(atomic *config.AtomicConfig, catalogPath string) 
 	return &ModelRouter{atomic: atomic, catalogPath: catalogPath}
 }
 
-func (r *ModelRouter) catalog() (*catalog.IndexedCatalog, error) {
+func (r *ModelRouter) catalog(ctx context.Context) (*catalog.IndexedCatalog, error) {
 	if r.db == nil && r.catalogPath == "" {
 		slog.Warn("catalog not available — model resolution falling back to legacy config")
 		return nil, nil
@@ -52,7 +52,7 @@ func (r *ModelRouter) catalog() (*catalog.IndexedCatalog, error) {
 		return r.cat, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	if r.db != nil {
@@ -101,7 +101,7 @@ func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel s
 		sel, parseErr := catalog.ParseModelRef(requestedModel)
 		providerQualified := parseErr == nil && sel.Provider != ""
 
-		cat, _ := r.catalog()
+		cat, _ := r.catalog(context.Background())
 		if cat != nil {
 			if catalogPrimary, catalogOk := r.resolveFromCatalog(cat, requestedModel, sel); catalogOk {
 				primary = catalogPrimary
@@ -235,7 +235,7 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requested
 	// a non-empty catalog is available, prefer the cheapest matching catalog
 	// model while preserving the legacy fallback chain.
 	primary, ok := cfg.Models[scenarioKey]
-	if cat, catErr := r.catalog(); cfg.CostBasedRoutingEnabled() && cat != nil && catErr == nil && len(cat.Models) > 0 {
+	if cat, catErr := r.catalog(context.Background()); cfg.CostBasedRoutingEnabled() && cat != nil && catErr == nil && len(cat.Models) > 0 {
 		constraints := requestConstraints(messages, tokenCount)
 		selector := NewSelector(cat, cfg)
 		if resolved, err := selector.SelectCheapest(scenarioKey, constraints); err == nil {
@@ -329,7 +329,10 @@ type ModelInfo struct {
 //
 // Any of these is a valid value for the request "model" field, so surfacing
 // all of them lets a picker present every route the proxy understands.
-func (r *ModelRouter) ListModels() []ModelInfo {
+//
+// ctx bounds the catalog load; when the caller (e.g. an HTTP handler) cancels
+// it, an in-flight catalog read is abandoned rather than churning to completion.
+func (r *ModelRouter) ListModels(ctx context.Context) []ModelInfo {
 	cfg := r.atomic.Get()
 	seen := make(map[string]ModelInfo)
 
@@ -359,7 +362,7 @@ func (r *ModelRouter) ListModels() []ModelInfo {
 		add(alias, "", mc.Provider)
 	}
 
-	if cat, err := r.catalog(); err == nil && cat != nil {
+	if cat, err := r.catalog(ctx); err == nil && cat != nil {
 		for key, model := range cat.Models {
 			add(key, model.DisplayName(), catalog.ProviderFromModelKey(key))
 		}
@@ -400,7 +403,7 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 	// a non-empty catalog is available, prefer the cheapest matching catalog
 	// model while preserving the legacy fallback chain.
 	primary, ok := cfg.Models[scenarioKey]
-	if cat, catErr := r.catalog(); cfg.CostBasedRoutingEnabled() && cat != nil && catErr == nil && len(cat.Models) > 0 {
+	if cat, catErr := r.catalog(context.Background()); cfg.CostBasedRoutingEnabled() && cat != nil && catErr == nil && len(cat.Models) > 0 {
 		constraints := requestConstraints(messages, tokenCount)
 		selector := NewSelector(cat, cfg)
 		if resolved, err := selector.SelectCheapest(scenarioKey, constraints); err == nil {
