@@ -138,7 +138,7 @@ This project uses a dual release channel system. See [RELEASE_PROCESS.md](RELEAS
 
 ### Beta Channel (Automatic)
 - **Trigger:** Every push to `main` branch
-- **Version format:** `v{UPCOMING}.beta.{YYYYMMDD.HHMMSS}` (e.g., `v1.3.0-beta.20260712.143015`)
+- **Version format:** `v{UPCOMING}-beta.{N}` (e.g., `v0.5.3-beta.1`), where `{N}` is a sequential counter
 - **GitHub release:** Marked as prerelease
 - **Use case:** Get the latest features and bug fixes immediately; ideal for testing
 

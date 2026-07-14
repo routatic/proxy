@@ -139,9 +139,9 @@ This project uses a dual release channel system for separating beta and producti
 
 ### Beta Channel (Automatic)
 - **Trigger:** Every push to `main` branch (see `.github/workflows/beta-release.yml`)
-- **Version format:** `v{UPCOMING}.beta.{YYYYMMDD.HHMMSS}` (e.g., `v1.3.0-beta.20260712.143015`)
+- **Version format:** `v{UPCOMING}-beta.{N}` (e.g., `v0.5.3-beta.1`), where `{N}` is a sequential counter
 - **GitHub release:** Marked as `prerelease: true`
-- **Docker tags:** `v{UPCOMING}.beta.{YYYYMMDD.HHMMSS}` and `beta-{UPCOMING}`
+- **Docker tags:** `v{UPCOMING}-beta.{N}`, `beta-{UPCOMING}`, and `beta` (rolling pointer to newest beta)
 
 Beta releases are fully automated and include:
 - Test suite validation
@@ -163,16 +163,16 @@ Production releases include all beta features plus:
 ### Version Detection Script
 
 `.github/scripts/get-versions.sh` is used by the beta workflow to:
-1. Fetch tags from the `origin/releases` branch to get current production version (e.g., `v1.2.3`)
-2. Increment to the next version (e.g., `v1.3.0`) - **beta is based on upcoming release**
-3. Generate beta version by appending `.beta.{YYYYMMDD.HHMMSS}` - **timestamp ensures uniqueness even with multiple releases per day**
+1. Fetch tags from the `origin/releases` branch to get current production version (e.g., `v0.5.2`)
+2. Increment the **patch** to the next version (e.g., `v0.5.3`) - **beta is based on the upcoming patch release**
+3. Generate beta version by appending `-beta.{N}`, where `{N}` is `max(existing beta counters for this upcoming version) + 1` - **the counter resets to 1 once the upcoming version ships as stable**
 4. Output both versions as JSON for CI consumption
 
 
 **Version Format Explanation:**
-- `v1.3.0` = The upcoming production version (minor incremented from latest production)
-- `beta.20260712.143015` = Timestamp-based prerelease tag
-- Full example: `v1.3.0-beta.20260712.143015`
+- `v0.5.3` = The upcoming production version (patch incremented from latest production)
+- `beta.1` = Sequential prerelease counter for that upcoming version
+- Full example: stable `v0.5.2` → `v0.5.3-beta.1`, then `v0.5.3-beta.2`, ... until `v0.5.3` ships → `v0.5.4-beta.1`
 
 ### Creating a Production Release
 
