@@ -126,7 +126,7 @@ func (p *ModelOverridePolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelCo
 	}
 
 	return result.GetModelChain(), RouteDecision{
-		PolicyName: "model_override",
+		PolicyName: reason,
 		ModelID:    result.Primary.ModelID,
 		Provider:   result.Primary.Provider,
 		Reason:     reason,
