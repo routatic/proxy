@@ -1589,6 +1589,54 @@ func TestResponseWriter_ConcurrentWrites(t *testing.T) {
 	}
 }
 
+type blockingFlushWriter struct {
+	http.ResponseWriter
+	flushStarted chan struct{}
+	releaseFlush chan struct{}
+	startOnce    sync.Once
+}
+
+func (w *blockingFlushWriter) Flush() {
+	w.startOnce.Do(func() { close(w.flushStarted) })
+	<-w.releaseFlush
+}
+
+func TestKeepaliveHeartbeat_StopWaitsForInFlightFlush(t *testing.T) {
+	writer := &blockingFlushWriter{
+		ResponseWriter: httptest.NewRecorder(),
+		flushStarted:   make(chan struct{}),
+		releaseFlush:   make(chan struct{}),
+	}
+	rw := &responseWriter{ResponseWriter: writer}
+	var paused int32
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond)
+
+	select {
+	case <-writer.flushStarted:
+	case <-time.After(time.Second):
+		t.Fatal("keepalive flush did not start")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+		t.Fatal("stop returned while a keepalive flush was still in flight")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(writer.releaseFlush)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("stop did not return after the keepalive flush completed")
+	}
+}
+
 func TestHandleStreaming_AnthropicRaw_NoKeepaliveInjection(t *testing.T) {
 	blockCh := make(chan struct{})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

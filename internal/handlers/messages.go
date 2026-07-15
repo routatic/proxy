@@ -195,6 +195,37 @@ func (w *responseWriter) WriteKeepalive() {
 	}
 }
 
+// startKeepaliveHeartbeat starts the streaming keepalive loop and returns a
+// stop function that waits for the loop to exit. Waiting is important: canceling
+// the context alone can race with a ticker event that is already flushing the
+// response after the handler returns.
+func startKeepaliveHeartbeat(ctx context.Context, rw *responseWriter, paused *int32, interval time.Duration) func() {
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if atomic.LoadInt32(paused) == 0 {
+					rw.WriteKeepalive()
+				}
+			case <-heartbeatCtx.Done():
+				return
+			}
+		}
+	}()
+
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
 // NewMessagesHandler creates a new messages handler.
 func NewMessagesHandler(
 	openCodeClient *client.OpenCodeClient,
@@ -479,27 +510,11 @@ func (h *MessagesHandler) handleStreaming(
 	rw.WriteHeader(http.StatusOK)
 	rw.Flush()
 
-	// Start heartbeat. Use a child context that is canceled when the handler
-	// returns, ensuring the goroutine stops before the HTTP server finalizes
-	// the response writer.
+	// Start heartbeat and wait for it to stop before the handler returns so the
+	// HTTP server cannot finalize the response writer during a keepalive flush.
 	var heartbeatPaused int32
-	heartbeatCtx, heartbeatCancel := context.WithCancel(clientCtx)
-	go func() {
-		ticker := time.NewTicker(3 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if atomic.LoadInt32(&heartbeatPaused) == 0 {
-					rw.WriteKeepalive()
-				}
-			case <-heartbeatCtx.Done():
-				return
-			}
-		}
-	}()
-	defer heartbeatCancel()
+	stopHeartbeat := startKeepaliveHeartbeat(clientCtx, rw, &heartbeatPaused, 3*time.Second)
+	defer stopHeartbeat()
 
 	streamStart := time.Now()
 	blockedProviders := make(map[string]bool)
