@@ -1594,11 +1594,30 @@ type blockingFlushWriter struct {
 	flushStarted chan struct{}
 	releaseFlush chan struct{}
 	startOnce    sync.Once
+	releaseOnce  sync.Once
 }
 
 func (w *blockingFlushWriter) Flush() {
 	w.startOnce.Do(func() { close(w.flushStarted) })
 	<-w.releaseFlush
+}
+
+func (w *blockingFlushWriter) SetWriteDeadline(deadline time.Time) error {
+	if deadline.IsZero() {
+		return nil
+	}
+	delay := time.Until(deadline)
+	if delay < 0 {
+		delay = 0
+	}
+	time.AfterFunc(delay, func() {
+		w.releaseOnce.Do(func() { close(w.releaseFlush) })
+	})
+	return nil
+}
+
+func (w *blockingFlushWriter) release() {
+	w.releaseOnce.Do(func() { close(w.releaseFlush) })
 }
 
 func TestKeepaliveHeartbeat_StopWaitsForInFlightFlush(t *testing.T) {
@@ -1609,7 +1628,7 @@ func TestKeepaliveHeartbeat_StopWaitsForInFlightFlush(t *testing.T) {
 	}
 	rw := &responseWriter{ResponseWriter: writer}
 	var paused int32
-	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond)
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond, time.Second)
 
 	select {
 	case <-writer.flushStarted:
@@ -1629,12 +1648,54 @@ func TestKeepaliveHeartbeat_StopWaitsForInFlightFlush(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	close(writer.releaseFlush)
+	writer.release()
 	select {
 	case <-stopped:
 	case <-time.After(time.Second):
 		t.Fatal("stop did not return after the keepalive flush completed")
 	}
+}
+
+func TestKeepaliveHeartbeat_WriteDeadlineUnblocksStop(t *testing.T) {
+	writer := &blockingFlushWriter{
+		ResponseWriter: httptest.NewRecorder(),
+		flushStarted:   make(chan struct{}),
+		releaseFlush:   make(chan struct{}),
+	}
+	rw := &responseWriter{ResponseWriter: writer}
+	var paused int32
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond, 20*time.Millisecond)
+
+	select {
+	case <-writer.flushStarted:
+	case <-time.After(time.Second):
+		t.Fatal("keepalive flush did not start")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("write deadline did not unblock heartbeat shutdown")
+	}
+}
+
+func TestKeepaliveHeartbeat_NonPositiveDurationsUseDefaults(t *testing.T) {
+	writer := &blockingFlushWriter{
+		ResponseWriter: httptest.NewRecorder(),
+		flushStarted:   make(chan struct{}),
+		releaseFlush:   make(chan struct{}),
+	}
+	rw := &responseWriter{ResponseWriter: writer}
+	var paused int32
+
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, 0, 0)
+	stop()
 }
 
 func TestHandleStreaming_AnthropicRaw_NoKeepaliveInjection(t *testing.T) {
