@@ -279,12 +279,15 @@ func (w *responseWriter) WriteKeepalive(writeTimeout time.Duration) error {
 // stop function that waits for the loop to exit. Waiting is important: canceling
 // the context alone can race with a ticker event that is already flushing the
 // response after the handler returns.
-func startKeepaliveHeartbeat(ctx context.Context, rw *responseWriter, paused *int32, interval, writeTimeout time.Duration) func() {
+func startKeepaliveHeartbeat(ctx context.Context, rw *responseWriter, paused *int32, interval, writeTimeout time.Duration, logger *slog.Logger) func() {
 	if interval <= 0 {
 		interval = defaultKeepaliveInterval
 	}
 	if writeTimeout <= 0 {
 		writeTimeout = keepaliveWriteTimeout
+	}
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	heartbeatCtx, cancel := context.WithCancel(ctx)
@@ -300,7 +303,7 @@ func startKeepaliveHeartbeat(ctx context.Context, rw *responseWriter, paused *in
 			case <-ticker.C:
 				if atomic.LoadInt32(paused) == 0 {
 					if err := rw.WriteKeepalive(writeTimeout); err != nil {
-						slog.Debug("keepalive stopped after write failure", "error", err)
+						logger.Debug("keepalive stopped after write failure", "error", err)
 						return
 					}
 				}
@@ -618,7 +621,7 @@ func (h *MessagesHandler) handleStreaming(
 	// Start heartbeat and wait for it to stop before the handler returns so the
 	// HTTP server cannot finalize the response writer during a keepalive flush.
 	var heartbeatPaused int32
-	stopHeartbeat := startKeepaliveHeartbeat(clientCtx, rw, &heartbeatPaused, defaultKeepaliveInterval, keepaliveWriteTimeout)
+	stopHeartbeat := startKeepaliveHeartbeat(clientCtx, rw, &heartbeatPaused, defaultKeepaliveInterval, keepaliveWriteTimeout, h.logger)
 	defer stopHeartbeat()
 
 	streamStart := time.Now()

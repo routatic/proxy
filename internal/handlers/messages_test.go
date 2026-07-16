@@ -1746,7 +1746,7 @@ func TestKeepaliveHeartbeat_StopWaitsForInFlightFlush(t *testing.T) {
 	}
 	rw := &responseWriter{ResponseWriter: writer}
 	var paused int32
-	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond, time.Second)
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond, time.Second, nil)
 
 	select {
 	case <-writer.flushStarted:
@@ -1782,7 +1782,7 @@ func TestKeepaliveHeartbeat_WriteDeadlineUnblocksStop(t *testing.T) {
 	}
 	rw := &responseWriter{ResponseWriter: writer}
 	var paused int32
-	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond, 20*time.Millisecond)
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, time.Millisecond, 20*time.Millisecond, nil)
 
 	select {
 	case <-writer.flushStarted:
@@ -1812,7 +1812,7 @@ func TestKeepaliveHeartbeat_NonPositiveDurationsUseDefaults(t *testing.T) {
 	rw := &responseWriter{ResponseWriter: writer}
 	var paused int32
 
-	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, 0, 0)
+	stop := startKeepaliveHeartbeat(context.Background(), rw, &paused, 0, 0, nil)
 	stop()
 }
 
