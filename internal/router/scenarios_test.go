@@ -195,15 +195,17 @@ func TestDetectScenario_LatestTextVisualIntentWithoutNewImageStaysNonVision(t *t
 	}
 }
 
-func TestDetectScenario_DebugWithoutVisualIntentStaysTextComplex(t *testing.T) {
+func TestDetectScenario_DebugWithoutVisualIntentStaysTextDefault(t *testing.T) {
+	// "debug" was removed from complexKeywords because tool_result content
+	// constantly contains it, routing every turn to complex by accident.
 	messages := []MessageContent{
 		{Role: "user", Content: "Cosa vedi?", HasImage: true, ImageHashes: []string{"img1"}},
 		{Role: "assistant", Content: "Vedo una schermata."},
 		{Role: "user", Content: "debug questo codice", HasImage: false},
 	}
 	result := DetectScenario(messages, 100, mockConfig())
-	if result.Scenario != ScenarioComplex {
-		t.Errorf("Expected ScenarioComplex, got %s", result.Scenario)
+	if result.Scenario != ScenarioDefault {
+		t.Errorf("Expected ScenarioDefault (debug is no longer a complex trigger), got %s", result.Scenario)
 	}
 }
 
@@ -230,8 +232,10 @@ func TestDetectScenario_VisionLongContextTakesPriorityOverVisionComplex(t *testi
 }
 
 func TestRouteForStreaming_VisionComplexKeepsVisionComplexScenario(t *testing.T) {
+	// "bug" was removed from complexKeywords; use a retained architectural
+	// keyword ("refactor") to exercise the vision_complex path.
 	messages := []MessageContent{
-		{Role: "user", Content: "Find the bug in this screenshot", HasImage: true},
+		{Role: "user", Content: "Refactor the code shown in this screenshot", HasImage: true},
 	}
 	result := RouteForStreaming(messages, 100, mockConfig())
 	if result.Scenario != ScenarioVisionComplex {

@@ -1,0 +1,271 @@
+name: Beta Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Stage 1: Test & Build Validation ──────────────────────────────
+  validate:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -v -race
+
+      - name: Build (sanity check)
+        run: go build -o /dev/null ./cmd/routatic-proxy
+
+  # ── Stage 2: Build & Release (macOS runner for DMG support) ──────
+  release:
+    name: Build & Release
+    needs: validate
+    runs-on: macos-latest
+    outputs:
+      beta_tag: ${{ steps.version.outputs.beta_tag }}
+      prod_version: ${{ steps.version.outputs.prod_version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Get versions
+        id: version
+        run: |
+          # Make script executable and run it
+          chmod +x .github/scripts/get-versions.sh
+
+          # Run script and capture JSON output
+          VERSIONS_JSON=$(.github/scripts/get-versions.sh)
+
+          # Extract values using jq
+          PROD_VERSION=$(echo "$VERSIONS_JSON" | jq -r '.prod_version')
+          BETA_VERSION=$(echo "$VERSIONS_JSON" | jq -r '.beta_version')
+
+          echo "prod_version=${PROD_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "beta_tag=${BETA_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${BETA_VERSION#v}" >> "$GITHUB_OUTPUT"
+
+          echo "Production version: ${PROD_VERSION}"
+          echo "Beta tag: ${BETA_VERSION}"
+
+      - name: Build cross-platform binaries
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+
+          LDFLAGS="-X main.version=${VERSION}"
+
+          # Define target platforms (bash 3 compatible — macOS default)
+          TARGETS="darwin-amd64:darwin/amd64 darwin-arm64:darwin/arm64 linux-amd64:linux/amd64 linux-arm64:linux/arm64 windows-amd64:windows/amd64 windows-arm64:windows/arm64"
+
+          for TARGET in $TARGETS; do
+            NAME="${TARGET%%:*}"
+            PAIR="${TARGET##*:}"
+            GOOS="${PAIR%/*}"
+            GOARCH="${PAIR#*/}"
+            EXT=""
+            [ "$GOOS" = "windows" ] && EXT=".exe"
+
+            echo "Building ${NAME}..."
+            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+              go build -ldflags "$LDFLAGS -s -w" \
+                -o "dist/routatic-proxy_${NAME}${EXT}" \
+                ./cmd/routatic-proxy
+          done
+
+          echo ""
+          echo "Built binaries:"
+          ls -lh dist/
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum routatic-proxy_* > checksums.txt
+          cat checksums.txt
+
+      - name: Build CGO-enabled binary (for DMG)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          CGO_ENABLED=1 go build -tags darwin -ldflags "-X main.version=${VERSION}" -o bin/routatic-proxy ./cmd/routatic-proxy
+
+      - name: Build macOS DMG
+        env:
+          VERSION: ${{ steps.version.outputs.beta_tag }}
+        run: |
+          brew install create-dmg
+          make dmg VERSION=${{ env.VERSION }}
+
+      - name: Generate AI Changelog
+        id: changelog
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          OPENROUTER_TEMPERATURE: ${{ secrets.OPENROUTER_TEMPERATURE }}
+          OPENROUTER_MAX_TOKENS: ${{ secrets.OPENROUTER_MAX_TOKENS }}
+        run: |
+          brew install jq
+
+          # Configuration with defaults
+          MODEL="${OPENROUTER_MODEL:-openai/gpt-4o-mini}"
+          TEMP="${OPENROUTER_TEMPERATURE:-0.3}"
+          TOKENS="${OPENROUTER_MAX_TOKENS:-2000}"
+
+          echo "Using OpenRouter model: $MODEL"
+
+          # Generate changelog for commits since previous beta tag or prod tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "v*-*" 2>/dev/null || git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Generating AI changelog from $PREVIOUS_TAG to ${{ steps.version.outputs.beta_tag }}"
+
+            COMMITS=$(git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"%H%n%s%n%b%n---COMMIT_SEP---")
+            FILE_CHANGES=$(git diff --stat "${PREVIOUS_TAG}..HEAD")
+
+            PROMPT="You are a technical writer generating release notes for a Go proxy server project (routatic-proxy).
+
+            Analyze the provided git commits and file changes, then generate a well-structured
+            changelog in Markdown format. Follow these guidelines:
+
+            1. Start with a brief summary paragraph (2-3 sentences) describing the overall theme of this beta release
+            2. Group changes into sections with these exact headers:
+               - **New Features** - New capabilities, enhancements, additions
+               - **Bug Fixes** - Fixes for reported or discovered issues
+               - **Improvements** - Performance, reliability, or code quality improvements
+               - **Documentation** - README, docs, comments, config updates
+               - **Chores** - Build, CI/CD, dependency updates, refactoring
+            3. Each bullet should be concise but descriptive (one line)
+            4. Mention breaking changes prominently with a warning emoji Breaking Changes section at the top
+            5. Use present tense, imperative mood (e.g., Add feature not Added feature)
+            6. Keep it technical but accessible - target audience is developers using this tool
+            7. This is a beta release - include a note at the end about testing and feedback
+
+            Format output as clean Markdown without any preamble or explanation. Do not wrap the entire response in a code block."
+
+            USER_CONTENT="Git commits since ${PREVIOUS_TAG}:\n\n${COMMITS}\n\nFiles changed:\n\n${FILE_CHANGES}"
+
+            # Truncate if too long (~4 chars per token)
+            MAX_CHARS=12000
+            if [ "${#USER_CONTENT}" -gt "$MAX_CHARS" ]; then
+              USER_CONTENT="${USER_CONTENT:0:MAX_CHARS}\n\n[...truncated for length...]"
+            fi
+
+            RESPONSE=$(curl -s -L -X POST "https://openrouter.ai/api/v1/chat/completions" \
+              -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg prompt "$PROMPT" \
+                --arg user "$USER_CONTENT" \
+                --arg model "$MODEL" \
+                --arg temp "$TEMP" \
+                --arg tokens "$TOKENS" \
+                '{
+                  model: $model,
+                  messages: [
+                    {role: "system", content: $prompt},
+                    {role: "user", content: $user}
+                  ],
+                  temperature: ($temp | tonumber),
+                  max_tokens: ($tokens | tonumber)
+                }' \
+              )" \
+            )
+
+            CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+            if [ -z "$CHANGELOG" ] || [ "$CHANGELOG" = "null" ]; then
+              echo "Warning: AI changelog generation failed, using commit list instead" >&2
+              echo "API response: $RESPONSE" >&2
+              CHANGELOG="## Commits\n\n$(git log \"${PREVIOUS_TAG}..HEAD\" --pretty=format:'- %s')"
+            fi
+          else
+            echo "No previous tag found, using commit list"
+            CHANGELOG="## Commits\n\n$(git log --pretty=format:'- %s' -20)"
+          fi
+
+          echo "$CHANGELOG" > changelog.md
+          cat changelog.md
+
+      # GITHUB_TOKEN works here — same repo
+      # Use gh release create for atomic asset upload (immutable release support)
+      - name: Create GitHub Prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.beta_tag }}" \
+            --title "Beta Release ${{ steps.version.outputs.beta_tag }}" \
+            --notes-file changelog.md \
+            --prerelease \
+            dist/routatic-proxy_* \
+            dist/checksums.txt \
+            bin/RoutaticProxy.dmg
+
+  # ── Stage 3: Publish Docker Image ───────────────────────────────
+  docker:
+    name: Publish Docker Image
+    needs: release
+    permissions:
+      contents: read
+      packages: write
+    if: github.repository == 'routatic/proxy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ needs.release.outputs.beta_tag }}
+            type=raw,value=beta-${{ needs.release.outputs.prod_version }}
+            type=raw,value=beta
+
+      - name: Strip v prefix from version
+        id: version
+        env:
+          TAG: ${{ needs.release.outputs.beta_tag }}
+        run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

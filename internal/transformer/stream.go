@@ -1,4 +1,3 @@
-// Package transformer handles request/response transformation and token counting.
 package transformer
 
 import (
@@ -11,7 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/routatic/proxy/pkg/types"
@@ -24,6 +23,19 @@ var ErrClientDisconnected = fmt.Errorf("client disconnected")
 // upstream stream. The connection is stale (e.g. backend hang or network
 // partition). The handler decides whether to fall back to another model.
 var ErrStreamIdle = fmt.Errorf("upstream stream idle")
+
+var ErrEmptyStream = fmt.Errorf("upstream returned empty stream")
+
+// readBufPool pools read buffers for streaming operations.
+// sync.Pool reduces GC pressure under concurrent stream load by reusing
+// 4KB buffers across goroutines instead of allocating fresh ones per read.
+// Pool stores pointers to slices to avoid allocation on Put (SA6002).
+var readBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 4096)
+		return &b
+	},
+}
 
 // IsIdleTimeout reports whether err is a read-timeout (network deadline
 // exceeded on an otherwise live stream).
@@ -206,7 +218,7 @@ func (h *StreamHandler) ProxyStream(
 	// Read directly from response body without buffering.
 	// Use a tight loop with a line buffer - no bufio.Reader.
 	contentIndex := 0
-	var lineBuf bytes.Buffer
+	var lineBuf []byte
 	contentStarted := false
 	reasoningStarted := false
 	stopSent := false
@@ -214,8 +226,9 @@ func (h *StreamHandler) ProxyStream(
 	startedToolCalls := make(map[int]int) // maps OpenAI tool call index → Anthropic content block index
 	decodeErrors := 0                     // consecutive SSE decode failures
 
-	// Read in larger chunks for efficiency, then parse lines
-	readBuf := make([]byte, 4096)
+	// Get a buffer from the pool; return it when done.
+	readBuf := readBufPool.Get().(*[]byte)
+	defer readBufPool.Put(readBuf)
 
 	// Start the idle watchdog. Each successful read pings the watchdog so
 	// the stream lives as long as data keeps flowing. If no bytes arrive
@@ -232,33 +245,30 @@ func (h *StreamHandler) ProxyStream(
 		}
 
 		// Read chunk from upstream
-		n, err := openaiResp.Read(readBuf)
+		n, err := openaiResp.Read(*readBuf)
 		if n > 0 {
 			// Data is flowing — reset the idle watchdog so the stream
 			// lives as long as data keeps arriving.
 			ping()
 			// Process bytes immediately
 			for i := 0; i < n; i++ {
-				b := readBuf[i]
+				b := (*readBuf)[i]
 				if b == '\n' {
-					line := lineBuf.String()
-					lineBuf.Reset()
-
 					// Process complete line
-					if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
+					if err := h.processSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
 						return err
 					}
+					lineBuf = lineBuf[:0]
 				} else {
-					lineBuf.WriteByte(b)
+					lineBuf = append(lineBuf, b)
 				}
 			}
 		}
 
 		if err == io.EOF {
 			// Process any remaining data in buffer
-			if lineBuf.Len() > 0 {
-				line := lineBuf.String()
-				if err := h.processSSELine(w, flusher, line, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
+			if len(lineBuf) > 0 {
+				if err := h.processSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &stopSent, &toolUseCount, startedToolCalls, originalModel, &decodeErrors); err != nil {
 					return err
 				}
 			}
@@ -350,7 +360,7 @@ func (h *StreamHandler) ProxyStream(
 func (h *StreamHandler) processSSELine(
 	w http.ResponseWriter,
 	flusher http.Flusher,
-	line string,
+	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
 	reasoningStarted *bool,
@@ -360,25 +370,25 @@ func (h *StreamHandler) processSSELine(
 	originalModel string,
 	decodeErrors *int,
 ) error {
-	line = strings.TrimSpace(line)
+	line = bytes.TrimSpace(line)
 
 	// Skip empty lines
-	if line == "" {
+	if len(line) == 0 {
 		return nil
 	}
 
 	// Skip non-data lines (event: lines, id: lines, etc.)
-	if !strings.HasPrefix(line, "data: ") {
+	if !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
-	data := strings.TrimPrefix(line, "data: ")
-	if data == "" {
+	data := line[6:]
+	if len(data) == 0 {
 		return nil
 	}
 
 	// Handle [DONE] marker
-	if data == "[DONE]" {
+	if bytes.Equal(data, []byte("[DONE]")) {
 		return nil
 	}
 
@@ -388,11 +398,11 @@ func (h *StreamHandler) processSSELine(
 	// correctly. Otherwise reasoning_content gets silently dropped, and on the
 	// next turn DeepSeek rejects the request with:
 	//   "The reasoning_content in the thinking mode must be passed back to the API."
-	if !strings.Contains(data, `"reasoning_content"`) &&
-		!strings.Contains(data, `"finish_reason"`) &&
-		!strings.Contains(data, `"tool_calls"`) &&
-		!strings.Contains(data, `"usage"`) {
-		if idx := strings.Index(data, `"delta":{"content":"`); idx != -1 {
+	if !bytes.Contains(data, []byte(`"reasoning_content"`)) &&
+		!bytes.Contains(data, []byte(`"finish_reason"`)) &&
+		!bytes.Contains(data, []byte(`"tool_calls"`)) &&
+		!bytes.Contains(data, []byte(`"usage"`)) {
+		if idx := bytes.Index(data, []byte(`"delta":{"content":"`)); idx != -1 {
 			// Walk past JSON escape sequences to find the real closing
 			// quote. A naive strings.Index would stop at an escaped
 			// \" inside the content.
@@ -411,7 +421,7 @@ func (h *StreamHandler) processSSELine(
 			}
 			if end != -1 {
 				content := data[start : start+end]
-				if content != "" {
+				if len(content) > 0 {
 					if !*contentStarted {
 						// If reasoning was already started, close it first
 						if *reasoningStarted {
@@ -436,7 +446,7 @@ func (h *StreamHandler) processSSELine(
 					// Send content_block_delta
 					delta := types.Delta{
 						Type: "text_delta",
-						Text: content,
+						Text: string(content),
 					}
 					event := types.MessageEvent{
 						Type:  "content_block_delta",
@@ -459,7 +469,7 @@ func (h *StreamHandler) processSSELine(
 
 	// For tool calls and other complex cases, fall back to full JSON parsing
 	var chunk types.ChatCompletionChunk
-	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+	if err := json.Unmarshal(data, &chunk); err != nil {
 		// Track consecutive decode failures. A transient glitch is tolerated,
 		// but persistent corruption terminates the stream rather than silently
 		// dropping content.
@@ -819,10 +829,11 @@ func (h *StreamHandler) ProxyResponsesStream(
 	flusher.Flush()
 
 	contentIndex := 0
-	var lineBuf bytes.Buffer
+	var lineBuf []byte
 	contentStarted := false
 	stopSent := false
-	readBuf := make([]byte, 4096)
+	readBuf := readBufPool.Get().(*[]byte)
+	defer readBufPool.Put(readBuf)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
 
@@ -833,27 +844,25 @@ func (h *StreamHandler) ProxyResponsesStream(
 		default:
 		}
 
-		n, err := responsesResp.Read(readBuf)
+		n, err := responsesResp.Read(*readBuf)
 		if n > 0 {
 			ping()
 			for i := 0; i < n; i++ {
-				b := readBuf[i]
+				b := (*readBuf)[i]
 				if b == '\n' {
-					line := lineBuf.String()
-					lineBuf.Reset()
-					if err := h.processResponsesSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+					if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
 						return err
 					}
+					lineBuf = lineBuf[:0]
 				} else {
-					lineBuf.WriteByte(b)
+					lineBuf = append(lineBuf, b)
 				}
 			}
 		}
 
 		if err == io.EOF {
-			if lineBuf.Len() > 0 {
-				line := lineBuf.String()
-				if err := h.processResponsesSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+			if len(lineBuf) > 0 {
+				if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
 					return err
 				}
 			}
@@ -908,24 +917,24 @@ func (h *StreamHandler) ProxyResponsesStream(
 func (h *StreamHandler) processResponsesSSELine(
 	w http.ResponseWriter,
 	flusher http.Flusher,
-	line string,
+	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
 	stopSent *bool,
 	originalModel string,
 ) error {
-	line = strings.TrimSpace(line)
-	if line == "" || !strings.HasPrefix(line, "data: ") {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
-	data := strings.TrimPrefix(line, "data: ")
-	if data == "" || data == "[DONE]" {
+	data := line[6:]
+	if len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
 		return nil
 	}
 
 	var chunk types.ResponsesChunk
-	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+	if err := json.Unmarshal(data, &chunk); err != nil {
 		return nil
 	}
 
@@ -1011,10 +1020,11 @@ func (h *StreamHandler) ProxyGeminiStream(
 	flusher.Flush()
 
 	contentIndex := 0
-	var lineBuf bytes.Buffer
+	var lineBuf []byte
 	contentStarted := false
 	stopSent := false
-	readBuf := make([]byte, 4096)
+	readBuf := readBufPool.Get().(*[]byte)
+	defer readBufPool.Put(readBuf)
 
 	ping := StartIdleWatchdog(clientCtx, cancel, idleTimeout)
 
@@ -1025,27 +1035,25 @@ func (h *StreamHandler) ProxyGeminiStream(
 		default:
 		}
 
-		n, err := geminiResp.Read(readBuf)
+		n, err := geminiResp.Read(*readBuf)
 		if n > 0 {
 			ping()
 			for i := 0; i < n; i++ {
-				b := readBuf[i]
+				b := (*readBuf)[i]
 				if b == '\n' {
-					line := lineBuf.String()
-					lineBuf.Reset()
-					if err := h.processGeminiSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+					if err := h.processGeminiSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
 						return err
 					}
+					lineBuf = lineBuf[:0]
 				} else {
-					lineBuf.WriteByte(b)
+					lineBuf = append(lineBuf, b)
 				}
 			}
 		}
 
 		if err == io.EOF {
-			if lineBuf.Len() > 0 {
-				line := lineBuf.String()
-				if err := h.processGeminiSSELine(w, flusher, line, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+			if len(lineBuf) > 0 {
+				if err := h.processGeminiSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
 					return err
 				}
 			}
@@ -1100,24 +1108,24 @@ func (h *StreamHandler) ProxyGeminiStream(
 func (h *StreamHandler) processGeminiSSELine(
 	w http.ResponseWriter,
 	flusher http.Flusher,
-	line string,
+	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
 	stopSent *bool,
 	originalModel string,
 ) error {
-	line = strings.TrimSpace(line)
-	if line == "" || !strings.HasPrefix(line, "data: ") {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
 		return nil
 	}
 
-	data := strings.TrimPrefix(line, "data: ")
-	if data == "" {
+	data := line[6:]
+	if len(data) == 0 {
 		return nil
 	}
 
 	var chunk types.GeminiStreamChunk
-	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+	if err := json.Unmarshal(data, &chunk); err != nil {
 		return nil
 	}
 

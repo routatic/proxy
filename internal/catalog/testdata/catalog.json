@@ -1,0 +1,72 @@
+{
+  "providers": {
+    "opencode-go": {
+      "name": "opencode-go",
+      "base_url": "https://go.opencode.ai/v1",
+      "api_key": "go-key",
+      "enabled": true
+    },
+    "openrouter": {
+      "name": "openrouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "or-key",
+      "enabled": true
+    },
+    "disabled-provider": {
+      "name": "disabled-provider",
+      "base_url": "https://disabled.example/v1",
+      "api_key": "disabled-key",
+      "enabled": false
+    }
+  },
+  "models": {
+    "opencode-go/deepseek-v4-flash": {
+      "id": "opencode-go/deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 }
+    },
+    "opencode-go/large-context": {
+      "id": "opencode-go/large-context",
+      "name": "Large Context",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 1000000, "output": 32768 }
+    },
+    "opencode-go/tie-small-context": {
+      "id": "opencode-go/tie-small-context",
+      "name": "Tie Small Context",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 }
+    },
+    "openrouter/vision-model": {
+      "id": "openrouter/vision-model",
+      "name": "Vision Model",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "limit": { "context": 256000, "output": 8192 }
+    },
+    "openrouter/reasoning-model": {
+      "id": "openrouter/reasoning-model",
+      "name": "Reasoning Model",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 200000, "output": 8192 }
+    },
+    "disabled-provider/only-disabled": {
+      "id": "disabled-provider/only-disabled",
+      "name": "Only Disabled",
+      "reasoning": false,
+      "tool_call": false,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 }
+    }
+  }
+}

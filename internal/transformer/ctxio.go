@@ -1,4 +1,3 @@
-// Package transformer includes ctxio: a context-bound reader wrapper.
 package transformer
 
 import (

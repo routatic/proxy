@@ -1,0 +1,89 @@
+# routatic-proxy
+
+> A Go CLI proxy that routes Claude Code requests through multiple upstream providers (OpenCode Go, OpenCode Zen, AWS Bedrock) with automatic model selection and format transformation.
+
+## Project Structure
+
+- `cmd/routatic-proxy/` — CLI entry point (cobra), macOS GUI (darwin-only)
+- `internal/handlers/` — HTTP request handling, message parsing, orchestration
+- `internal/router/` — Scenario detection, model selection, fallback chains, circuit breaker
+- `internal/transformer/` — Anthropic <-> OpenAI/Responses/Gemini format conversion
+- `internal/client/` — Upstream HTTP client, provider detection utilities
+- `internal/provider/` — Provider-based dispatch (OpenCode Go, Zen, Bedrock)
+- `internal/config/` — JSON config loading, hot reload, atomic access
+- `internal/models/` — Model classification (endpoint type detection)
+- `internal/token/` — Token counting via tiktoken (cl100k_base)
+- `internal/daemon/` — Background mode, PID management, autostart
+- `internal/gui/` — Embedded HTTP server for webview dashboard (macOS)
+- `internal/tray/` — macOS system tray icon and menu
+- `internal/history/` — In-memory ring buffer (1000 entries, O(1) insert)
+- `internal/metrics/` — In-process request counters
+- `pkg/types/` — Polymorphic Anthropic field handling (json.RawMessage accessors)
+
+## Key Concepts
+
+- **Config-driven routing** — All models defined in `~/.config/routatic-proxy/config.json`; adding a model requires no code changes
+- **Scenario detection** — Requests analyzed for context (long_context, vision, complex, think, background, default) and routed to optimal model
+- **Fallback chains** — If a model fails, automatically tries the next in chain
+- **Circuit breaker** — Per-model tracking (3 failures = 30s skip); only 5xx and network failures trigger
+- **Wire format transformation** — Anthropic Messages <-> OpenAI Chat Completions / Responses / Gemini
+- **Streaming** — Per-byte idle watchdog instead of server-level timeout; heartbeat comments every 3s
+- **Polymorphic fields** — `system` and `content` accept both strings and arrays via `json.RawMessage` accessors
+
+## Configuration
+
+- Default location: `~/.config/routatic-proxy/config.json`
+- Environment variable interpolation: `${VAR}` supported
+- Provider-specific API keys with precedence: `*_API_KEYS` -> `*_API_KEY` -> global `API_KEYS` -> `API_KEY`
+- Hot reload available via `hot_reload: true`
+
+Key environment variables:
+- `ROUTATIC_PROXY_API_KEY` — Global API key
+- `ROUTATIC_PROXY_OPENCODE_GO_API_KEY` — OpenCode Go specific key
+- `ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY` — OpenCode Zen specific key
+- `ROUTATIC_PROXY_AWS_BEDROCK_API_KEY` — AWS Bedrock specific key
+
+## API
+
+| Endpoint | Format | Description |
+|----------|--------|-------------|
+| `/v1/messages` | Anthropic | Primary endpoint (Claude Code sends here) |
+| `/v1/chat/completions` | OpenAI | Internal routing for most models |
+| `/health` | — | Health check |
+| `/statusline` | — | Status line for GUI |
+
+GUI API (localhost only):
+- `GET /api/metrics` — Request counts, model distribution
+- `GET /api/history` — Last 200 request records
+- `GET/POST /api/proxy/config` — Full proxy configuration
+
+## Building and Running
+
+```bash
+make build   # Build binary to bin/routatic-proxy
+make run     # Run without building
+make test    # Run tests with race detector
+make lint    # go vet + test
+make install # Build and install to $GOPATH/bin
+```
+
+CLI commands:
+```bash
+routatic-proxy serve              # Start proxy server
+routatic-proxy serve -b           # Start in background
+routatic-proxy stop               # Stop running proxy
+routatic-proxy status             # Check if running
+routatic-proxy init               # Create default config
+routatic-proxy validate           # Validate config
+routatic-proxy models             # List available models
+routatic-proxy update             # Update to latest release
+```
+
+## Key Files
+
+- `cmd/routatic-proxy/main.go` — CLI entry point, default config template
+- `internal/router/scenarios.go` — Scenario detection patterns and priority
+- `internal/router/fallback.go` — Circuit breaker implementation
+- `internal/transformer/` — Format conversion (Anthropic <-> OpenAI/Responses/Gemini)
+- `internal/models/classifier.go` — `ClassifyEndpoint()` for wire format detection
+- `configs/config.example.json` — Reference config with all options

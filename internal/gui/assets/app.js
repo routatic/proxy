@@ -8,6 +8,9 @@ const TRANSLATIONS = {
     'status.connected': 'Connected',
     'tab.overview': 'Overview',
     'tab.history': 'History',
+    'tab.performance': 'Performance',
+    'tab.fallback': 'Fallback',
+    'tab.analytics': 'Analytics',
     'tab.settings': 'Settings',
     'metric.total': 'Total Requests',
     'metric.success': 'Success',
@@ -32,6 +35,9 @@ const TRANSLATIONS = {
     'setting.notifyDesc': 'Notify on failures or model switches',
     'setting.language': 'Language',
     'setting.languageDesc': 'Switch interface language',
+    'setting.catalog': 'Catalog',
+    'setting.catalogNotSynced': 'Catalog not synced',
+    'setting.catalogAge': 'Last synced: {age}',
     'section.proxyConfig': 'Proxy Configuration',
     'placeholder.envOrEmpty': 'Use env var or leave empty',
     'placeholder.notSet': 'Not configured',
@@ -39,6 +45,7 @@ const TRANSLATIONS = {
     'label.host': 'Listen Address (Host)',
     'label.port': 'Listen Port (Port)',
     'btn.save': 'Save & Apply Config',
+    'btn.refreshCatalog': 'Refresh catalog',
     'status.saving': 'Saving…',
     'status.saveOk': 'Config saved successfully!',
     'status.saveFail': 'Save failed: ',
@@ -49,6 +56,68 @@ const TRANSLATIONS = {
     'badge.fail': 'Fail',
     'port.info': 'Listening port: —',
     'save.unloaded': 'Config not loaded, cannot save',
+    'fallback.scenario': 'Scenario',
+    'fallback.default': 'Default',
+    'fallback.streaming': 'Streaming',
+    'fallback.longContext': 'Long Context',
+    'fallback.chainOrder': 'Fallback Chain Order',
+    'fallback.addModel': '+ Add Model',
+    'fallback.preview': 'Preview',
+    'fallback.save': 'Save',
+    'fallback.empty': 'No models configured',
+    'fallback.previewTitle': 'Fallback Chain Preview',
+    'fallback.selectModel': 'Select a model',
+    'fallback.saving': 'Saving fallback chain...',
+    'fallback.saved': 'Fallback chain saved successfully!',
+    'fallback.saveFailed': 'Failed to save fallback chain',
+    'fallback.noChanges': 'No changes to save',
+    'perf.lastHour': 'Last Hour',
+    'perf.last24h': 'Last 24 Hours',
+    'perf.last7d': 'Last 7 Days',
+    'perf.allTime': 'All Time',
+    'perf.th.model': 'Model',
+    'perf.th.count': 'Count',
+    'perf.th.successRate': 'Success %',
+    'perf.th.avg': 'Avg (ms)',
+    'perf.th.p50': 'P50',
+    'perf.th.p90': 'P90',
+    'perf.th.p99': 'P99',
+    'perf.empty': 'No performance data',
+    'setting.backup': 'Backup Configuration',
+    'setting.backupDesc': 'Export current config as JSON file',
+    'setting.restore': 'Restore Configuration',
+    'setting.restoreDesc': 'Import config from JSON file',
+    'btn.export': 'Export',
+    'btn.import': 'Import',
+    'label.anonymize': 'Anonymize',
+    'status.exporting': 'Exporting...',
+    'status.exportOk': 'Config exported successfully!',
+    'status.exportFail': 'Export failed: ',
+    'status.importing': 'Importing...',
+    'status.importOk': 'Config imported successfully!',
+    'status.importFail': 'Import failed: ',
+    'status.importInvalid': 'Invalid config file',
+    'modal.importPreview': 'Import Preview',
+    'modal.importConfirm': 'Apply this configuration?',
+    'btn.apply': 'Apply',
+    'btn.cancel': 'Cancel',
+    'setting.testModel': 'Test Model',
+    'setting.testModelDesc': 'Send a quick test request to verify model connectivity',
+    'btn.testModel': 'Test Model',
+    'test.title': 'Quick Model Test',
+    'test.selectModel': 'Select a model...',
+    'test.send': 'Send',
+    'test.promptPlaceholder': 'Enter your prompt...',
+    'test.latency': 'Latency:',
+    'test.tokens': 'Tokens:',
+    'test.copy': 'Copy',
+    'test.copied': 'Copied!',
+    'test.sending': 'Sending...',
+    'test.noModel': 'Please select a model',
+    'test.noPrompt': 'Please enter a prompt',
+    'test.error': 'Error: ',
+    'test.networkError': 'Network error',
+    'tab.performance': 'Performance',
   },
   zh: {
     'lang.toggle': 'English',
@@ -58,6 +127,7 @@ const TRANSLATIONS = {
     'status.connected': '已连接',
     'tab.overview': '概览',
     'tab.history': '历史请求',
+    'tab.fallback': '降级策略',
     'tab.settings': '设置',
     'metric.total': '总请求数',
     'metric.success': '成功',
@@ -82,6 +152,9 @@ const TRANSLATIONS = {
     'setting.notifyDesc': '请求失败或切换模型时发送系统通知',
     'setting.language': '语言',
     'setting.languageDesc': '切换界面语言',
+    'setting.catalog': '模型目录',
+    'setting.catalogNotSynced': '模型目录未同步',
+    'setting.catalogAge': '上次同步：{age}',
     'section.proxyConfig': '服务代理配置',
     'placeholder.envOrEmpty': '使用环境变量或留空',
     'placeholder.notSet': '未配置',
@@ -89,6 +162,7 @@ const TRANSLATIONS = {
     'label.host': '监听地址 (Host)',
     'label.port': '监听端口 (Port)',
     'btn.save': '保存并应用配置',
+    'btn.refreshCatalog': '刷新模型目录',
     'status.saving': '保存中…',
     'status.saveOk': '配置保存并应用成功！',
     'status.saveFail': '保存失败: ',
@@ -99,6 +173,69 @@ const TRANSLATIONS = {
     'badge.fail': '失败',
     'port.info': '监听端口：—',
     'save.unloaded': '未加载当前配置，无法保存',
+    'setting.testModel': '测试模型',
+    'setting.testModelDesc': '发送快速测试请求以验证模型连接',
+    'btn.testModel': '测试模型',
+    'test.title': '快速模型测试',
+    'test.selectModel': '选择模型...',
+    'test.send': '发送',
+    'test.promptPlaceholder': '输入测试提示词...',
+    'test.latency': '延迟：',
+    'test.tokens': 'Token：',
+    'test.copy': '复制',
+    'test.copied': '已复制！',
+    'test.sending': '发送中...',
+    'test.noModel': '请选择模型',
+    'test.noPrompt': '请输入提示词',
+    'test.error': '错误：',
+    'test.networkError': '网络错误',
+    'fallback.scenario': '使用场景',
+    'fallback.default': '默认',
+    'fallback.streaming': '流式请求',
+    'fallback.longContext': '长上下文',
+    'fallback.chainOrder': '降级链顺序',
+    'fallback.addModel': '+ 添加模型',
+    'fallback.preview': '预览',
+    'fallback.save': '保存',
+    'fallback.empty': '未配置模型',
+    'fallback.previewTitle': '降级链预览',
+    'fallback.selectModel': '选择模型',
+    'fallback.saving': '保存中...',
+    'fallback.saved': '降级链保存成功！',
+    'fallback.saveFailed': '保存失败',
+    'fallback.noChanges': '无更改',
+    'perf.lastHour': '最近 1 小时',
+    'perf.last24h': '最近 24 小时',
+    'perf.last7d': '最近 7 天',
+    'perf.allTime': '全部时间',
+    'perf.th.model': '模型',
+    'perf.th.count': '请求数',
+    'perf.th.successRate': '成功率',
+    'perf.th.avg': '平均延迟',
+    'perf.th.p50': 'P50',
+    'perf.th.p90': 'P90',
+    'perf.th.p99': 'P99',
+    'perf.empty': '暂无性能数据',
+    'setting.backup': '备份配置',
+    'setting.backupDesc': '导出当前配置为 JSON 文件',
+    'setting.restore': '恢复配置',
+    'setting.restoreDesc': '从 JSON 文件导入配置',
+    'btn.export': '导出',
+    'btn.import': '导入',
+    'label.anonymize': '脱敏',
+    'status.exporting': '导出中...',
+    'status.exportOk': '配置导出成功！',
+    'status.exportFail': '导出失败：',
+    'status.importing': '导入中...',
+    'status.importOk': '配置导入成功！',
+    'status.importFail': '导入失败：',
+    'status.importInvalid': '无效的配置文件',
+    'modal.importPreview': '导入预览',
+    'modal.importConfirm': '应用此配置？',
+    'btn.apply': '应用',
+    'btn.cancel': '取消',
+    'tab.logs': '日志',
+    'tab.performance': '性能',
   }
 };
 
@@ -134,6 +271,7 @@ function toggleLanguage() {
   // Re-render dynamic content
   renderModelList(lastModelCounts);
   renderHistory();
+  PerfModule.render();
 }
 
 // Apply translations on load
@@ -147,24 +285,133 @@ let allHistory = [];
 let currentFilter = '';
 let lastModelCounts = {};
 
+/* ── Performance Module ───────────────────────────────────────────── */
+const PerfModule = {
+  data: [],
+  sortField: 'count',
+  sortDir: 'desc',
+  timeRange: 'all',
+
+  init() {
+    const timeRangeSelect = document.getElementById('perf-time-range');
+    if (timeRangeSelect) {
+      timeRangeSelect.addEventListener('change', (e) => {
+        this.timeRange = e.target.value;
+        this.refresh();
+      });
+    }
+
+    document.querySelectorAll('.perf-table .sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (this.sortField === field) {
+          this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortField = field;
+          this.sortDir = 'desc';
+        }
+        document.querySelectorAll('.perf-table .sortable').forEach(s => {
+          s.classList.remove('asc', 'desc');
+          s.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(this.sortDir);
+        th.setAttribute('aria-sort', this.sortDir === 'asc' ? 'ascending' : 'descending');
+        this.render();
+      });
+    });
+  },
+
+  async refresh() {
+    try {
+      const r = await fetch('/api/perf/models?range=' + encodeURIComponent(this.timeRange));
+      if (!r.ok) return;
+      this.data = await r.json() || [];
+      this.render();
+    } catch (e) {
+      console.error('PerfModule refresh failed:', e);
+    }
+  },
+
+  render() {
+    const tbody = document.getElementById('perf-tbody');
+    if (!tbody) return;
+
+    if (this.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">' + t('empty.noData') + '</td></tr>';
+      return;
+    }
+
+    const sorted = [...this.data].sort((a, b) => {
+      let aVal = a[this.sortField];
+      let bVal = b[this.sortField];
+      if (aVal == null) aVal = 0;
+      if (bVal == null) bVal = 0;
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      if (aVal < bVal) return this.sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return this.sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    tbody.innerHTML = sorted.map(row => {
+      const successRate = row.count > 0 ? (row.success / row.count * 100).toFixed(1) : 0;
+      const successClass = successRate >= 99 ? 'success-rate' : (successRate >= 95 ? '' : 'error-rate');
+      return `
+        <tr>
+          <td class="perf-model">${escapeHtml(row.model)}</td>
+          <td>${fmt(row.count)}</td>
+          <td class="${successClass}">${successRate}%</td>
+          <td class="${this.getLatencyClass(row.avg_ms)}">${fmt(row.avg_ms)}</td>
+          <td class="${this.getLatencyClass(row.p50_ms)}">${fmt(row.p50_ms)}</td>
+          <td class="${this.getLatencyClass(row.p90_ms)}">${fmt(row.p90_ms)}</td>
+          <td class="${this.getLatencyClass(row.p99_ms)}">${fmt(row.p99_ms)}</td>
+        </tr>
+      `;
+    }).join('');
+  },
+
+  getLatencyClass(ms) {
+    if (ms == null) return '';
+    if (ms < 1000) return 'latency-cell latency-fast';
+    if (ms < 2000) return 'latency-cell latency-medium';
+    return 'latency-cell latency-slow';
+  }
+};
+
 /* ── Tab switching ─────────────────────────────────────────────── */
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    const contentId = 'tab-' + tab.dataset.tab;
+    document.getElementById(contentId).classList.add('active');
+    if (tab.dataset.tab === 'analytics') {
+      AnalyticsModule.load(true);
+    }
   });
 });
 
 /* ── Polling ───────────────────────────────────────────────────── */
+let perfPollTimer = null;
+let perfPollCounter = 0;
+
 function startPolling() {
   refreshAll();
+  PerfModule.init();
+  PerfModule.refresh();
   setInterval(refreshAll, 3000);
+  perfPollTimer = setInterval(() => {
+    perfPollCounter++;
+    if (perfPollCounter >= 2) {
+      PerfModule.refresh();
+      perfPollCounter = 0;
+    }
+  }, 3000);
 }
 
 async function refreshAll() {
-  await Promise.all([refreshMetrics(), refreshHistory(), refreshConfig()]);
+  await Promise.all([refreshMetrics(), refreshHistory(), refreshConfig(), refreshCatalogAge()]);
 }
 
 // Debounced refresh for manual triggers (keyboard shortcuts)
@@ -335,6 +582,46 @@ async function refreshConfig() {
   } catch(e) {}
 }
 
+/* ── /api/catalog/lock & /api/catalog/sync ─────────────────────── */
+async function refreshCatalogAge() {
+  try {
+    const r = await fetch('/api/catalog/lock');
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('catalog-age');
+    if (!el) return;
+    if (!d.synced) {
+      el.textContent = t('setting.catalogNotSynced');
+      return;
+    }
+    el.textContent = t('setting.catalogAge').replace('{age}', fmtAge(d.age_seconds));
+  } catch(e) {}
+}
+
+async function refreshCatalog() {
+  const btn = document.getElementById('btn-refresh-catalog');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = currentLang === 'zh' ? '同步中…' : 'Syncing…';
+  }
+  try {
+    const r = await fetch('/api/catalog/sync', { method: 'POST' });
+    if (r.ok) {
+      await refreshCatalogAge();
+    } else {
+      const txt = await r.text();
+      console.error('Catalog refresh failed:', txt);
+    }
+  } catch(e) {
+    console.error('Catalog refresh network error:', e);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t('btn.refreshCatalog');
+    }
+  }
+}
+
 /* ── Toggle actions ────────────────────────────────────────────── */
 async function toggleProxy(el) {
   el._changing = true;
@@ -395,6 +682,17 @@ function fmtDuration(ms) {
   if (!ms && ms !== 0) return '—';
   if (ms < 1000) return ms + ' ms';
   return (ms / 1000).toFixed(1) + ' s';
+}
+
+function fmtAge(seconds) {
+  if (seconds == null || seconds < 0) return '—';
+  if (seconds < 60) return seconds + (currentLang === 'zh' ? ' 秒前' : ' seconds ago');
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + (currentLang === 'zh' ? ' 分钟前' : ' minutes ago');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + (currentLang === 'zh' ? ' 小时前' : ' hours ago');
+  const days = Math.floor(hours / 24);
+  return days + (currentLang === 'zh' ? ' 天前' : ' days ago');
 }
 
 /* ── Proxy Config Form ─────────────────────────────────────────── */
@@ -650,7 +948,7 @@ function showHistoryDetail(record) {
     </div>
     <div class="detail-row">
       <span class="detail-label">Status</span>
-      <span class="detail-value" style="color: var(--${record.success ? 'success' : 'error'})">${record.success ? 'Success' : 'Failed'}</span>
+      <span class="detail-value" style="color: ${record.success ? '#30d158' : '#ff453a'}">${record.success ? 'Success' : 'Failed'}</span>
     </div>
   `;
   modal.classList.add('visible');
@@ -739,6 +1037,9 @@ function executeCommand(action) {
     case 'goto-history':
       document.querySelector('[data-tab="history"]').click();
       break;
+    case 'goto-performance':
+      document.querySelector('[data-tab="performance"]').click();
+      break;
     case 'goto-settings':
       document.querySelector('[data-tab="settings"]').click();
       break;
@@ -747,6 +1048,7 @@ function executeCommand(action) {
       break;
   }
 }
+
 
 commandPalette?.addEventListener('click', function(e) {
   if (e.target === commandPalette) closeCommandPalette();
@@ -776,16 +1078,18 @@ document.addEventListener('keydown', function(e) {
       document.getElementById('history-search')?.focus();
     }
   }
-  // Tab shortcuts: Cmd/Ctrl + 1/2/3
-  if ((e.metaKey || e.ctrlKey) && ['1', '2', '3'].includes(e.key)) {
+  // Tab shortcuts: Cmd/Ctrl + 1/2/3/4/5/6
+  if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4', '5', '6'].includes(e.key)) {
     e.preventDefault();
-    const tabs = ['overview', 'history', 'settings'];
+    const tabs = ['overview', 'history', 'performance', 'fallback', 'analytics', 'settings'];
     document.querySelector(`[data-tab="${tabs[parseInt(e.key) - 1]}"]`)?.click();
   }
   // Escape to close modals (use if-else to ensure only one action)
   if (e.key === 'Escape') {
     if (commandPaletteOpen) {
       closeCommandPalette();
+    } else if (TestModule.testModal?.classList.contains('visible')) {
+      TestModule.close();
     } else if (modal.classList.contains('visible')) {
       closeHistoryModal();
     }
@@ -815,7 +1119,799 @@ function initAccordions() {
 // Initialize on load
 document.addEventListener('DOMContentLoaded', initAccordions);
 
+/* ── Config Backup/Restore ─────────────────────────────────────── */
+async function exportConfig() {
+  const anonymize = document.getElementById('export-anonymize').checked;
+  const btn = document.getElementById('btn-export-config');
+  btn.disabled = true;
+  btn.textContent = t('status.exporting');
+
+  try {
+    const url = '/api/config/export?anonymize=' + anonymize;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = 'routatic-proxy-config.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+
+    showSaveStatus(t('status.exportOk'), 'success');
+  } catch (e) {
+    showSaveStatus(t('status.exportFail') + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('btn.export');
+    applyTranslations();
+  }
+}
+
+function importConfig() {
+  document.getElementById('import-file').click();
+}
+
+async function handleConfigImport(file) {
+  if (!file || file.type !== 'application/json') {
+    showSaveStatus(t('status.importInvalid'), 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-import-config');
+  btn.disabled = true;
+  btn.textContent = t('status.importing');
+
+  try {
+    const content = await file.text();
+    const config = JSON.parse(content);
+
+    const previewHtml = `
+      <div class="detail-row">
+        <span class="detail-label">${t('modal.importConfirm')}</span>
+      </div>
+      <pre style="max-height: 300px; overflow: auto; background: #3a3a3c; padding: 12px; border-radius: 4px; font-size: 11px; white-space: pre-wrap; word-break: break-all;">${escapeHtml(JSON.stringify(config, null, 2))}</pre>
+    `;
+
+    modalBody.innerHTML = previewHtml;
+    document.getElementById('modal-title').textContent = t('modal.importPreview');
+
+    const footerHtml = `
+      <div style="padding: 12px 16px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid #48484a;">
+        <button class="btn btn-small" id="btn-import-cancel">${t('btn.cancel')}</button>
+        <button class="btn btn-small btn-primary" id="btn-import-apply">${t('btn.apply')}</button>
+      </div>
+    `;
+
+    const existingFooter = modal.querySelector('.modal-footer');
+    if (existingFooter) existingFooter.remove();
+
+    modal.querySelector('.modal-content').insertAdjacentHTML('beforeend', footerHtml);
+
+    modal.classList.add('visible');
+
+    document.getElementById('btn-import-cancel').onclick = () => {
+      modal.classList.remove('visible');
+      const footer = modal.querySelector('.modal-footer');
+      if (footer) footer.remove();
+    };
+
+    document.getElementById('btn-import-apply').onclick = async () => {
+      try {
+        const response = await fetch('/api/config/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ config: config, apply: true })
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        modal.classList.remove('visible');
+        const footer = modal.querySelector('.modal-footer');
+        if (footer) footer.remove();
+
+        showSaveStatus(t('status.importOk'), 'success');
+        await loadProxyConfig();
+      } catch (e) {
+        showSaveStatus(t('status.importFail') + e.message, 'error');
+      }
+    };
+  } catch (e) {
+    showSaveStatus(t('status.importFail') + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('btn.import');
+    applyTranslations();
+    document.getElementById('import-file').value = '';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btn-export-config')?.addEventListener('click', exportConfig);
+  document.getElementById('btn-import-config')?.addEventListener('click', importConfig);
+  document.getElementById('import-file')?.addEventListener('change', function(e) {
+    if (e.target.files && e.target.files[0]) {
+      handleConfigImport(e.target.files[0]);
+    }
+  });
+});
+
+/* ── Fallback Chain Editor ─────────────────────────────────────── */
+const FallbackModule = {
+  chains: {},
+  currentScenario: 'default',
+  originalChains: null,
+  availableModels: [],
+
+  init() {
+    this.loadConfig();
+  },
+
+  async loadConfig() {
+    try {
+      const r = await fetch('/api/proxy/config');
+      if (!r.ok) return;
+      const config = await r.json();
+
+      // Build model list from scenario models + fallback entries
+      const modelMap = new Map();
+      if (config.models) {
+        for (const [, m] of Object.entries(config.models)) {
+          if (m.model_id && !modelMap.has(m.model_id)) {
+            modelMap.set(m.model_id, { id: m.model_id, display_name: m.model_id, provider: m.provider || 'unknown' });
+          }
+        }
+      }
+      if (config.fallbacks) {
+        for (const models of Object.values(config.fallbacks)) {
+          for (const m of models) {
+            if (m.model_id && !modelMap.has(m.model_id)) {
+              modelMap.set(m.model_id, { id: m.model_id, display_name: m.model_id, provider: m.provider || 'unknown' });
+            }
+          }
+        }
+      }
+      this.availableModels = [...modelMap.values()];
+
+      // Discover all scenario keys from config.models
+      const scenarioKeys = Object.keys(config.models || {});
+      this.chains = {};
+      for (const key of scenarioKeys) {
+        this.chains[key] = this.parseFallbackChain(config, key);
+      }
+
+      // Populate scenario dropdown
+      const sel = document.getElementById('fallback-scenario');
+      if (sel) {
+        sel.innerHTML = scenarioKeys.map(k =>
+          `<option value="${k}">${k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>`
+        ).join('');
+        this.currentScenario = scenarioKeys[0] || 'default';
+        sel.value = this.currentScenario;
+      }
+
+      this.populateAddSelect();
+      this.originalChains = JSON.parse(JSON.stringify(this.chains));
+      this.renderChain();
+    } catch (e) {
+      console.error('Failed to load fallback config:', e);
+    }
+  },
+
+  parseFallbackChain(config, scenario) {
+    if (config.fallbacks && config.fallbacks[scenario]) {
+      return config.fallbacks[scenario].map(m => ({...m}));
+    }
+    return [];
+  },
+
+  populateAddSelect() {
+    const addSel = document.getElementById('fallback-add-model');
+    if (!addSel) return;
+    const chain = this.chains[this.currentScenario] || [];
+    const available = this.availableModels
+      .filter(m => !chain.some(e => (e.model_id || e) === m.id));
+    addSel.innerHTML = '<option value="">' + t('fallback.selectModel') + '</option>' +
+      available.map(m =>
+        `<option value="${escapeHtml(m.id)}">${escapeHtml(m.display_name || m.id)} (${escapeHtml(m.provider)})</option>`
+      ).join('');
+    addSel.disabled = available.length === 0;
+  },
+
+  onAddSelectChange() {
+    const addSel = document.getElementById('fallback-add-model');
+    const modelId = addSel.value;
+    if (!modelId) return;
+    const model = this.availableModels.find(m => m.id === modelId);
+    if (model) {
+      (this.chains[this.currentScenario] || []).push({ model_id: modelId, provider: model.provider, temperature: 0, max_tokens: 0 });
+      this.renderChain();
+    }
+    addSel.value = '';
+    this.populateAddSelect();
+  },
+
+  renderChain() {
+    const list = document.getElementById('fallback-chain');
+    const chain = this.chains[this.currentScenario];
+
+    if (!chain || chain.length === 0) {
+      list.innerHTML = '<li class="empty-state">' + t('fallback.empty') + '</li>';
+      list.classList.remove('has-items');
+      this.populateAddSelect();
+      return;
+    }
+
+    list.classList.add('has-items');
+    list.innerHTML = chain.map((entry, index) => {
+      const modelId = entry.model_id || entry;
+      const model = this.availableModels.find(m => m.id === modelId);
+      const displayName = model ? (model.display_name || model.id) : modelId;
+      const provider = entry.provider || (model ? model.provider : '');
+      return `
+        <li class="fallback-item" draggable="true" data-index="${index}" role="option">
+          <span class="handle">⋮⋮</span>
+          <span class="model-name">${escapeHtml(displayName)}</span>
+          ${provider ? '<span class="model-meta">' + escapeHtml(provider) + '</span>' : ''}
+          <button class="remove-btn" onclick="FallbackModule.removeModel(${index})" title="Remove model" aria-label="Remove ${escapeHtml(displayName)}">×</button>
+        </li>
+      `;
+    }).join('');
+
+    this.populateAddSelect();
+    this.setupDragDrop();
+  },
+
+  setupDragDrop() {
+    const items = document.querySelectorAll('.fallback-item');
+
+    items.forEach(item => {
+      item.addEventListener('dragstart', (e) => this.onDragStart(e));
+      item.addEventListener('dragover', (e) => this.onDragOver(e));
+      item.addEventListener('dragleave', (e) => this.onDragLeave(e));
+      item.addEventListener('drop', (e) => this.onDrop(e));
+      item.addEventListener('dragend', (e) => this.onDragEnd(e));
+    });
+  },
+
+  onDragStart(e) {
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', e.target.dataset.index);
+  },
+
+  onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const dragging = document.querySelector('.fallback-item.dragging');
+    if (dragging !== e.currentTarget) {
+      e.currentTarget.classList.add('drag-over');
+    }
+  },
+
+  onDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+  },
+
+  onDrop(e) {
+    e.preventDefault();
+    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const toIndex = parseInt(e.currentTarget.dataset.index, 10);
+
+    e.currentTarget.classList.remove('drag-over');
+
+    if (fromIndex !== toIndex) {
+      const chain = this.chains[this.currentScenario];
+      const [removed] = chain.splice(fromIndex, 1);
+      chain.splice(toIndex, 0, removed);
+      this.renderChain();
+    }
+  },
+
+  onDragEnd(e) {
+    e.target.classList.remove('dragging');
+    document.querySelectorAll('.fallback-item').forEach(item => {
+      item.classList.remove('drag-over');
+    });
+  },
+
+  onScenarioChange() {
+    const select = document.getElementById('fallback-scenario');
+    this.currentScenario = select.value;
+    this.renderChain();
+    this.populateAddSelect();
+    document.getElementById('fallback-preview').style.display = 'none';
+  },
+
+  removeModel(index) {
+    const chain = this.chains[this.currentScenario];
+    if (chain) {
+      chain.splice(index, 1);
+      this.renderChain();
+    }
+  },
+
+  preview() {
+    const previewEl = document.getElementById('fallback-preview');
+    const contentEl = document.getElementById('fallback-preview-content');
+    const chain = this.chains[this.currentScenario];
+
+    if (!chain || chain.length === 0) {
+      contentEl.innerHTML = '<div class="empty-state">' + t('fallback.empty') + '</div>';
+    } else {
+      contentEl.innerHTML = '<div class="fallback-preview-chain">' +
+        chain.map((entry, i) => {
+          const modelId = entry.model_id || entry;
+          const model = this.availableModels.find(m => m.id === modelId);
+          const displayName = model ? (model.display_name || model.id) : modelId;
+          return `
+            <span class="fallback-preview-model ${i === 0 ? 'primary' : ''}">${escapeHtml(displayName)}</span>
+            ${i < chain.length - 1 ? '<span class="fallback-preview-arrow">→</span>' : ''}
+          `;
+        }).join('') +
+        '</div>';
+    }
+
+    previewEl.style.display = 'block';
+  },
+
+  async save() {
+    const hasChanges = this.originalChains && (
+      JSON.stringify(this.chains) !== JSON.stringify(this.originalChains)
+    );
+
+    if (!hasChanges) {
+      showSaveStatus(t('fallback.noChanges'), 'success');
+      return;
+    }
+
+    const saveBtn = document.querySelector('.fallback-actions .btn-primary');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = t('fallback.saving');
+    }
+
+    try {
+      const patch = { fallbacks: { ...this.chains } };
+      const r = await fetch('/api/proxy/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch)
+      });
+
+      if (r.ok) {
+        showSaveStatus(t('fallback.saved'), 'success');
+        this.originalChains = JSON.parse(JSON.stringify(this.chains));
+        await loadProxyConfig();
+      } else {
+        const txt = await r.text();
+        showSaveStatus(t('fallback.saveFailed') + ': ' + txt, 'error');
+      }
+    } catch (e) {
+      showSaveStatus(t('fallback.saveFailed'), 'error');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = t('fallback.save');
+      }
+    }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  FallbackModule.init();
+});
+
 /* ── Boot ──────────────────────────────────────────────────────── */
 loadProxyConfig();
 startPolling();
+
+const TestModule = {
+  testModal: null,
+  testPrompt: null,
+  testResponse: null,
+  testModelSelect: null,
+  testLatency: null,
+  testTokens: null,
+  testSendBtn: null,
+  testCopyBtn: null,
+  testModalClose: null,
+  testHistoryHint: null,
+
+  STORAGE_KEY: 'routatic-test-prompt-history',
+  MAX_HISTORY: 5,
+
+  init() {
+    this.testModal = document.getElementById('test-modal');
+    this.testPrompt = document.getElementById('test-prompt');
+    this.testResponse = document.getElementById('test-response');
+    this.testModelSelect = document.getElementById('test-model');
+    this.testLatency = document.getElementById('test-latency');
+    this.testTokens = document.getElementById('test-tokens');
+    this.testSendBtn = document.getElementById('btn-test-send');
+    this.testCopyBtn = document.getElementById('btn-test-copy');
+    this.testModalClose = document.getElementById('test-modal-close');
+    this.testHistoryHint = document.getElementById('test-history-hint');
+
+    document.getElementById('btn-test-model')?.addEventListener('click', () => this.open());
+    this.testModalClose?.addEventListener('click', () => this.close());
+    this.testModal?.addEventListener('click', (e) => {
+      if (e.target === this.testModal) this.close();
+    });
+    this.testSendBtn?.addEventListener('click', () => this.sendTest());
+    this.testCopyBtn?.addEventListener('click', () => this.copyResponse());
+    this.testPrompt?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        this.sendTest();
+      }
+    });
+    this.loadHistory();
+  },
+
+  open() {
+    this.populateModels();
+    this.testModal?.classList.add('visible');
+    if (this.testPrompt) {
+      this.testPrompt.value = '';
+      this.testPrompt.focus();
+    }
+    this.resetResponse();
+  },
+
+  close() {
+    this.testModal?.classList.remove('visible');
+  },
+
+  async populateModels() {
+    if (!this.testModelSelect) return;
+    this.testModelSelect.innerHTML = '<option value="">Select a model...</option>';
+
+    try {
+      const r = await fetch('/api/metrics');
+      if (!r.ok) return;
+      const data = await r.json();
+      const models = Object.keys(data.model_counts || {});
+      models.sort().forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        this.testModelSelect.appendChild(opt);
+      });
+    } catch (e) {}
+  },
+
+  resetResponse() {
+    if (this.testResponse) this.testResponse.innerHTML = '';
+    if (this.testLatency) this.testLatency.textContent = '—';
+    if (this.testTokens) this.testTokens.textContent = '—';
+  },
+
+  async sendTest() {
+    if (!this.testPrompt || !this.testModelSelect || !this.testResponse) return;
+
+    const model = this.testModelSelect.value;
+    const prompt = this.testPrompt.value.trim();
+    if (!model) {
+      this.resetResponse();
+      if (this.testResponse) this.testResponse.innerHTML = `<div class="error">${t('test.noModel')}</div>`;
+      return;
+    }
+    if (!prompt) {
+      this.resetResponse();
+      if (this.testResponse) this.testResponse.innerHTML = `<div class="error">${t('test.noPrompt')}</div>`;
+      return;
+    }
+
+    this.saveToHistory(prompt);
+    this.testSendBtn.disabled = true;
+    this.testSendBtn.textContent = t('test.sending');
+    this.resetResponse();
+
+    const start = performance.now();
+    try {
+      const r = await fetch('/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      const latency = Math.round(performance.now() - start);
+      if (this.testLatency) this.testLatency.textContent = latency + ' ms';
+
+      if (!r.ok) {
+        this.testResponse.innerHTML = '';
+        const pre = document.createElement('pre');
+        pre.textContent = t('test.error') + r.status + ': ' + (await r.text());
+        this.testResponse.appendChild(pre);
+        return;
+      }
+      const text = await r.text();
+      let content = text;
+      try {
+        const j = JSON.parse(text);
+        if (j.content && Array.isArray(j.content)) {
+          content = j.content.map(c => c.text || '').join('\n');
+        } else if (j.error) {
+          content = 'Error: ' + (j.error.message || JSON.stringify(j.error));
+        }
+      } catch (_) {}
+
+      const pre = document.createElement('pre');
+      pre.textContent = content;
+      this.testResponse.innerHTML = '';
+      this.testResponse.appendChild(pre);
+
+      const usage = this.extractUsage(text);
+      if (usage && this.testTokens) {
+        this.testTokens.textContent = `${usage.input || 0} in / ${usage.output || 0} out`;
+      }
+    } catch (e) {
+      const pre = document.createElement('pre');
+      pre.textContent = t('test.error') + e.message;
+      this.testResponse.innerHTML = '';
+      this.testResponse.appendChild(pre);
+    } finally {
+      this.testSendBtn.disabled = false;
+      this.testSendBtn.textContent = t('test.send');
+    }
+  },
+
+  extractUsage(text) {
+    try {
+      const j = JSON.parse(text);
+      if (j.usage) return { input: j.usage.input_tokens, output: j.usage.output_tokens };
+    } catch (_) {}
+    const m = text.match(/"input_tokens":\s*(\d+).*?"output_tokens":\s*(\d+)/s);
+    if (m) return { input: parseInt(m[1]), output: parseInt(m[2]) };
+    return null;
+  },
+
+  loadHistory() {
+    try {
+      const history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+      if (history.length > 0 && this.testHistoryHint) {
+        this.testHistoryHint.innerHTML = history.slice(0, this.MAX_HISTORY)
+          .map(p => `<span title="${escapeHtml(p)}">${escapeHtml(p.substring(0, 20))}${p.length > 20 ? '...' : ''}</span>`)
+          .join('');
+        this.testHistoryHint.querySelectorAll('span').forEach((el, i) => {
+          el.addEventListener('click', () => {
+            const history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+            if (history[i]) {
+              this.testPrompt.value = history[i];
+              this.testPrompt.focus();
+            }
+          });
+        });
+      }
+    } catch (e) {}
+  },
+
+  saveToHistory(prompt) {
+    try {
+      let history = JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]');
+      history = [prompt, ...history.filter(p => p !== prompt)].slice(0, this.MAX_HISTORY);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(history));
+      this.loadHistory();
+    } catch (e) {}
+  },
+
+  async copyResponse() {
+    const pre = this.testResponse.querySelector('pre');
+    if (!pre || !pre.textContent) return;
+
+    try {
+      await navigator.clipboard.writeText(pre.textContent);
+      const originalText = this.testCopyBtn.innerHTML;
+      this.testCopyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>${t('test.copied')}`;
+      this.testCopyBtn.classList.add('copied');
+      setTimeout(() => {
+        this.testCopyBtn.innerHTML = originalText;
+        this.testCopyBtn.classList.remove('copied');
+        this.testCopyBtn.classList.remove('copied');
+      }, 2000);
+    } catch (e) {}
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => TestModule.init());
+
+/* ── Analytics Tab (minimal, vanilla JS + SVG/CSS) ─────────────── */
+const AnalyticsModule = {
+  palette: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'],
+
+  init() {
+    const daysSel = document.getElementById('analytics-days');
+    const refreshBtn = document.getElementById('btn-refresh-analytics');
+    if (daysSel) daysSel.addEventListener('change', () => this.load(true));
+    if (refreshBtn) refreshBtn.addEventListener('click', () => this.load(true));
+  },
+
+  loadingHtml() {
+    return '<div class="flex items-center justify-center py-12"><svg class="animate-spin h-6 w-6 text-[#98989d]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="ml-2 text-xs text-[#98989d]">Loading analytics…</span></div>';
+  },
+
+  async load(force) {
+    const daysEl = document.getElementById('analytics-days');
+    const days = daysEl ? daysEl.value : 30;
+    const genEl = document.getElementById('analytics-generated');
+    if (genEl) genEl.textContent = '';
+    ['kpi-requests','kpi-tokens','kpi-tokens-in','kpi-tokens-out','kpi-cost','kpi-p95'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '…';
+    });
+
+    this.showLoading();
+
+    try {
+      const [summaryRes, trendRes, latencyRes] = await Promise.all([
+        fetch(`/api/analytics/summary?days=${days}`),
+        fetch(`/api/analytics/tokens/trend?days=${days}`),
+        fetch(`/api/analytics/latency?days=${days}`)
+      ]);
+      if (!summaryRes.ok) throw new Error('summary fetch failed');
+      const summary = await summaryRes.json();
+      const trend = trendRes.ok ? await trendRes.json() : { trend: [] };
+      const latencyData = latencyRes.ok ? await latencyRes.json() : { stats: [] };
+
+      summary.latency = latencyData;
+
+      this.renderKPIs(summary);
+      this.renderDonuts(summary);
+      this.renderTrend(trend.trend || []);
+      if (genEl) {
+        const ts = summary.generated_at ? new Date(summary.generated_at) : new Date();
+        genEl.textContent = '· ' + ts.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+      }
+    } catch (e) {
+      console.error('Analytics error:', e);
+      this.renderEmpty('Failed to load analytics');
+      if (genEl) genEl.textContent = 'Error';
+    }
+  },
+
+  showLoading() {
+    ['model-donut','provider-donut','token-trend'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = this.loadingHtml();
+    });
+  },
+
+  renderKPIs(data) {
+    const s = data.summary || {};
+    const fmt = (n) => n != null ? Number(n).toLocaleString() : '—';
+    document.getElementById('kpi-requests').textContent = fmt(s.total_requests);
+    const totTok = (s.input_tokens||0) + (s.output_tokens||0);
+    document.getElementById('kpi-tokens').textContent = fmt(totTok);
+    document.getElementById('kpi-tokens-in').textContent = fmt(s.input_tokens);
+    document.getElementById('kpi-tokens-out').textContent = fmt(s.output_tokens);
+    const cost = s.est_cost_usd != null ? '$' + Number(s.est_cost_usd).toFixed(2) : '—';
+    document.getElementById('kpi-cost').textContent = cost;
+
+    const stats = (data.latency && data.latency.stats) || [];
+    let p95Val = '—';
+    if (stats.length) {
+      const avg = stats.reduce((a, st) => a + (st.p95_ms || 0), 0) / stats.length;
+      p95Val = Math.round(avg) + ' ms';
+    }
+    document.getElementById('kpi-p95').textContent = p95Val;
+  },
+
+  renderDonuts(summary) {
+    this.renderDonutChart('model-donut', summary.models || [], 'requests');
+    this.renderDonutChart('provider-donut', summary.providers || [], 'requests');
+  },
+
+  renderDonutChart(containerId, items, valKey) {
+    const wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    if (!items.length) {
+      wrap.innerHTML = '<div class="empty-state">No usage data yet</div>';
+      return;
+    }
+
+    const sorted = [...items].sort((a,b) => (b[valKey]||0) - (a[valKey]||0));
+    let top = sorted.slice(0,5);
+    const rest = sorted.slice(5);
+    const otherVal = rest.reduce((sum,i) => sum + (i[valKey]||0), 0);
+    if (otherVal > 0) top.push({name: 'Other', [valKey]: otherVal});
+
+    const total = top.reduce((sum,i) => sum + (i[valKey]||0), 0) || 1;
+    let segs = '';
+    let off = 0;
+    const legend = [];
+    top.forEach((it, idx) => {
+      const v = it[valKey] || 0;
+      const pct = v / total * 100;
+      const col = this.palette[idx % this.palette.length];
+      segs += `${col} ${off.toFixed(1)}% ${(off + pct).toFixed(1)}%, `;
+      off += pct;
+      const label = it.model || it.provider || it.name || 'Unknown';
+      legend.push(`<div class="legend-item"><span class="legend-swatch" style="background:${col}"></span><span class="legend-label">${this.escapeHtml(label)}</span><span class="legend-value">${v}</span></div>`);
+    });
+
+    const html = `<div class="donut-wrapper"><div class="donut" style="--donut-segments: ${segs.slice(0,-2)}"></div><div class="donut-legend">${legend.join('')}</div></div>`;
+    wrap.innerHTML = html;
+  },
+
+  renderTrend(points) {
+    const wrap = document.getElementById('token-trend');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    if (!points.length) {
+      wrap.innerHTML = '<div class="empty-state">No trend data yet. Run some requests to see analytics.</div>';
+      return;
+    }
+
+    const w = 620, h = 188, pad = 30;
+    const maxV = Math.max(1, ...points.map(p => Math.max(p.input_tokens||0, p.output_tokens||0)));
+    const stepX = (w - pad*2) / Math.max(1, points.length - 1);
+
+    const ptsIn = points.map((p,i) => {
+      const x = pad + i*stepX;
+      const y = h - pad - (p.input_tokens||0)/maxV * (h - pad*2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const ptsOut = points.map((p,i) => {
+      const x = pad + i*stepX;
+      const y = h - pad - (p.output_tokens||0)/maxV * (h - pad*2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    const pathIn = 'M' + ptsIn.join(' L');
+    const pathOut = 'M' + ptsOut.join(' L');
+    const areaIn = pathIn + ` L${(pad + (points.length-1)*stepX).toFixed(1)},${h-pad} L${pad},${h-pad} Z`;
+    const areaOut = pathOut + ` L${(pad + (points.length-1)*stepX).toFixed(1)},${h-pad} L${pad},${h-pad} Z`;
+
+    const dots = points.map((p,i) => {
+      const x = (pad + i*stepX).toFixed(1);
+      const yIn = (h - pad - (p.input_tokens||0)/maxV*(h-pad*2)).toFixed(1);
+      const yOut = (h - pad - (p.output_tokens||0)/maxV*(h-pad*2)).toFixed(1);
+      return `<circle cx="${x}" cy="${yIn}" r="2.2" fill="#3b82f6"/><circle cx="${x}" cy="${yOut}" r="2.2" fill="#10b981"/>`;
+    }).join('');
+
+    const svg = `
+      <svg class="trend-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
+        <path d="${areaIn}" fill="#3b82f6" fill-opacity="0.12"/>
+        <path d="${areaOut}" fill="#10b981" fill-opacity="0.12"/>
+        <path d="${pathIn}" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="${pathOut}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/>
+        ${dots}
+      </svg>
+      <div class="trend-legend">
+        <span><span class="swatch" style="background:#3b82f6;height:3px;width:14px;display:inline-block;border-radius:2px;margin-right:4px;"></span>Input tokens</span>
+        <span><span class="swatch" style="background:#10b981;height:3px;width:14px;display:inline-block;border-radius:2px;margin-right:4px;"></span>Output tokens</span>
+      </div>`;
+    wrap.innerHTML = svg;
+  },
+
+  renderEmpty(msg = 'No usage data yet. Run some requests or configure a model to see analytics.') {
+    ['model-donut','provider-donut','token-trend'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<div class="empty-state">${msg}</div>`;
+    });
+  },
+
+  escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+};
+
+// Boot analytics module (listeners only; data loads when tab is clicked)
+setTimeout(() => {
+  AnalyticsModule.init();
+}, 250);
 

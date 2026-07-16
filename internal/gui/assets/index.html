@@ -1,101 +1,147 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>routatic-proxy Console</title>
+<link rel="stylesheet" href="compiled-tailwind.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
-<!-- SVG Symbols for reusable icons -->
+<body class="bg-[#1c1c1e] text-[#f5f5f7] text-[13px] font-[-apple-system,BlinkMacSystemFont,'PingFang_SC','Hiragino_Sans_GB','Segoe_UI',sans-serif] antialiased select-none overflow-hidden">
 <svg style="display: none;">
   <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
     <circle cx="12" cy="12" r="3"></circle>
   </symbol>
 </svg>
-<div class="app">
-  <header class="header">
-    <div class="header-left">
-      <div class="logo">
-        <svg class="logo-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<div class="flex flex-col h-screen">
+  <header class="flex justify-between items-center px-6 py-4 bg-gradient-to-r from-[#2c2c2e] to-[#3a3a3c] border-b border-[#48484a]" style="-webkit-app-region: drag">
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 font-semibold text-sm">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
         </svg>
-        <span class="logo-text">routatic-proxy</span>
+        <span>routatic-proxy</span>
       </div>
     </div>
-    <div class="header-right">
-      <div class="status-badge" id="status-badge" role="status" aria-live="polite">
+    <div class="flex items-center gap-1.5 text-xs text-[#98989d]" style="-webkit-app-region: no-drag">
+      <div class="status-badge flex items-center gap-1.5" id="status-badge" role="status" aria-live="polite">
         <span class="status-dot" id="status-dot" aria-hidden="true"></span>
         <span id="status-text" data-i18n="status.checking">Checking...</span>
       </div>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="overview" data-i18n="tab.overview">Overview</button>
-    <button class="tab" data-tab="history" data-i18n="tab.history">History</button>
-    <button class="tab" data-tab="settings" data-i18n="tab.settings">Settings</button>
+  <nav class="flex gap-0.5 px-4 pt-2 bg-[#2c2c2e] border-b border-[#48484a]">
+    <button class="tab px-4 py-1.5 border-none bg-transparent text-[#98989d] hover:text-[#f5f5f7] hover:bg-[#3a3a3c] cursor-pointer text-[13px] rounded-t transition-colors active" data-tab="overview" data-i18n="tab.overview">Overview</button>
+    <button class="tab px-4 py-1.5 border-none bg-transparent text-[#98989d] hover:text-[#f5f5f7] hover:bg-[#3a3a3c] cursor-pointer text-[13px] rounded-t transition-colors" data-tab="history" data-i18n="tab.history">History</button>
+    <button class="tab px-4 py-1.5 border-none bg-transparent text-[#98989d] hover:text-[#f5f5f7] hover:bg-[#3a3a3c] cursor-pointer text-[13px] rounded-t transition-colors" data-tab="performance" data-i18n="tab.performance">Performance</button>
+    <button class="tab px-4 py-1.5 border-none bg-transparent text-[#98989d] hover:text-[#f5f5f7] hover:bg-[#3a3a3c] cursor-pointer text-[13px] rounded-t transition-colors" data-tab="fallback" data-i18n="tab.fallback">Fallback</button>
+    <button class="tab px-4 py-1.5 border-none bg-transparent text-[#98989d] hover:text-[#f5f5f7] hover:bg-[#3a3a3c] cursor-pointer text-[13px] rounded-t transition-colors" data-tab="analytics" data-i18n="tab.analytics">Analytics</button>
+    <button class="tab px-4 py-1.5 border-none bg-transparent text-[#98989d] hover:text-[#f5f5f7] hover:bg-[#3a3a3c] cursor-pointer text-[13px] rounded-t transition-colors" data-tab="settings" data-i18n="tab.settings">Settings</button>
   </nav>
 
   <!-- Overview Tab -->
-  <div class="tab-content active" id="tab-overview">
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-label" data-i18n="metric.total">Total Requests</div>
-        <div class="metric-value" id="m-total">--</div>
+  <div class="tab-content flex-1 overflow-y-auto p-4 active" id="tab-overview">
+    <div class="grid grid-cols-4 gap-2.5 mb-5">
+      <div class="bg-gradient-to-br from-[#2c2c2e] to-[#3a3a3c] border border-[#48484a] rounded-xl p-5 transition-transform hover:scale-[1.02]">
+        <div class="text-[11px] text-[#98989d] mb-1.5" data-i18n="metric.total">Total Requests</div>
+        <div class="text-[26px] font-bold tabular-nums" id="m-total">--</div>
       </div>
-      <div class="metric-card success">
-        <div class="metric-label" data-i18n="metric.success">Success</div>
-        <div class="metric-value" id="m-success">--</div>
+      <div class="bg-gradient-to-br from-[#2c2c2e] to-[#3a3a3c] border border-[#48484a] rounded-xl p-5 transition-transform hover:scale-[1.02]">
+        <div class="text-[11px] text-[#98989d] mb-1.5" data-i18n="metric.success">Success</div>
+        <div class="text-[26px] font-bold tabular-nums text-[#30d158]" id="m-success">--</div>
       </div>
-      <div class="metric-card error">
-        <div class="metric-label" data-i18n="metric.failed">Failed</div>
-        <div class="metric-value" id="m-failed">--</div>
+      <div class="bg-gradient-to-br from-[#2c2c2e] to-[#3a3a3c] border border-[#48484a] rounded-xl p-5 transition-transform hover:scale-[1.02]">
+        <div class="text-[11px] text-[#98989d] mb-1.5" data-i18n="metric.failed">Failed</div>
+        <div class="text-[26px] font-bold tabular-nums text-[#ff453a]" id="m-failed">--</div>
       </div>
-      <div class="metric-card">
-        <div class="metric-label" data-i18n="metric.streamed">Streamed</div>
-        <div class="metric-value" id="m-streamed">--</div>
+      <div class="bg-gradient-to-br from-[#2c2c2e] to-[#3a3a3c] border border-[#48484a] rounded-xl p-5 transition-transform hover:scale-[1.02]">
+        <div class="text-[11px] text-[#98989d] mb-1.5" data-i18n="metric.streamed">Streamed</div>
+        <div class="text-[26px] font-bold tabular-nums" id="m-streamed">--</div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-title" data-i18n="section.modelDist">Model Distribution</div>
-      <div class="model-list" id="model-list">
-        <div class="empty-state" data-i18n="empty.noData">No data yet</div>
+    <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg p-3.5 shadow-lg shadow-black/20">
+      <div class="text-xs font-semibold text-[#98989d] uppercase tracking-wider mb-3" data-i18n="section.modelDist">Model Distribution</div>
+      <div class="flex flex-col gap-2" id="model-list">
+        <div class="empty-state text-center text-[#98989d] py-6 text-[13px]" data-i18n="empty.noData">No data yet</div>
       </div>
     </div>
   </div>
 
   <!-- History Tab -->
-  <div class="tab-content" id="tab-history">
-    <div class="history-toolbar">
-      <div class="history-search">
-        <input type="text" id="history-search" placeholder="Search requests..." aria-label="Search history">
-        <span class="search-shortcut">⌘F</span>
+  <div class="tab-content flex-1 overflow-y-auto p-4" id="tab-history">
+    <div class="flex items-center justify-between mb-2.5">
+      <div class="flex items-center gap-2 flex-1">
+        <input type="text" id="history-search" placeholder="Search requests..." aria-label="Search history" class="flex-1 px-3 py-2 border border-[#48484a] rounded-md bg-[#2c2c2e] text-[#f5f5f7] text-xs focus:border-[#6366f1] focus:outline-none focus:shadow-[0_0_0_3px_rgba(99,102,241,0.25)]">
+        <span class="inline-flex items-center px-1.5 py-0.5 bg-[#3a3a3c] rounded text-[10px] text-[#98989d] font-mono">⌘F</span>
       </div>
       <select class="filter-select" id="model-filter" aria-label="Filter by model">
         <option value="" data-i18n="filter.allModels">All Models</option>
       </select>
-      <span class="history-count" id="history-count" aria-live="polite"></span>
+      <span class="text-xs text-[#98989d] ml-2" id="history-count" aria-live="polite"></span>
     </div>
-    <div class="table-wrap">
-      <table class="history-table" role="grid">
+    <div class="overflow-x-auto">
+      <table class="history-table w-full text-xs border-collapse" role="grid">
         <thead>
           <tr>
-            <th class="sortable" data-sort="time" data-i18n="th.time" aria-sort="none">Time <span class="sort-icon">↕</span></th>
-            <th class="sortable" data-sort="model" data-i18n="th.model" aria-sort="none">Model <span class="sort-icon">↕</span></th>
-            <th data-i18n="th.scenario">Scenario</th>
-            <th class="sortable" data-sort="input_tokens" data-i18n="th.inputTokens" aria-sort="none">Input Tokens <span class="sort-icon">↕</span></th>
-            <th class="sortable" data-sort="output_tokens" data-i18n="th.outputTokens" aria-sort="none">Output Tokens <span class="sort-icon">↕</span></th>
-            <th class="sortable" data-sort="duration_ms" data-i18n="th.duration" aria-sort="none">Duration <span class="sort-icon">↕</span></th>
-            <th data-i18n="th.status">Status</th>
+            <th class="sortable sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="time" data-i18n="th.time" aria-sort="none">Time <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="model" data-i18n="th.model" aria-sort="none">Model <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-i18n="th.scenario">Scenario</th>
+            <th class="sortable sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="input_tokens" data-i18n="th.inputTokens" aria-sort="none">Input Tokens <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="output_tokens" data-i18n="th.outputTokens" aria-sort="none">Output Tokens <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="duration_ms" data-i18n="th.duration" aria-sort="none">Duration <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sticky top-0 z-10 text-left px-2.5 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-i18n="th.status">Status</th>
           </tr>
         </thead>
         <tbody id="history-tbody">
-          <tr><td colspan="7" class="empty-state" data-i18n="empty.noHistory">No history yet</td></tr>
+          <tr><td colspan="7" class="empty-state text-center text-[#98989d] py-6 text-[13px]" data-i18n="empty.noHistory">No history yet</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Quick Model Test Modal -->
+  <div class="modal-overlay" id="test-modal" role="dialog" aria-labelledby="test-modal-title" aria-modal="true">
+    <div class="modal-content max-w-[800px]">
+      <div class="modal-header">
+        <h3 class="modal-title" id="test-modal-title" data-i18n="test.title">Quick Model Test</h3>
+        <button class="modal-close" id="test-modal-close" aria-label="Close modal">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="flex gap-2 mb-3">
+          <select id="test-model" class="filter-select flex-1" aria-label="Select model">
+            <option value="" data-i18n="test.selectModel">Select a model...</option>
+          </select>
+          <button class="btn btn-primary" id="btn-test-send" data-i18n="test.send">Send</button>
+        </div>
+        <div class="relative mb-3">
+          <textarea id="test-prompt" placeholder="Enter your prompt..." rows="4" data-i18n-placeholder="test.promptPlaceholder" aria-label="Test prompt" class="w-full px-3 py-3 border border-[#48484a] rounded-md bg-[#1c1c1e] text-[#f5f5f7] text-xs font-inherit resize-y min-h-[80px] outline-none focus:border-[#6366f1] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.25)] select-text"></textarea>
+          <div class="test-history-hint absolute bottom-2 right-2 flex gap-1 opacity-60" id="test-history-hint"></div>
+        </div>
+        <div class="test-response" id="test-response">
+          <pre></pre>
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="flex gap-4 text-xs text-[#98989d]">
+            <span data-i18n="test.latency">Latency:</span> <strong class="text-[#f5f5f7] tabular-nums" id="test-latency">--</strong>
+            <span data-i18n="test.tokens">Tokens:</span> <strong class="text-[#f5f5f7] tabular-nums" id="test-tokens">--</strong>
+          </div>
+          <button class="btn btn-small flex items-center gap-1" id="btn-test-copy" data-i18n="test.copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -112,7 +158,6 @@
         </button>
       </div>
       <div class="modal-body" id="modal-body">
-        <!-- Populated by JS -->
       </div>
     </div>
   </div>
@@ -138,9 +183,17 @@
           <span class="command-item-label">Go to History</span>
           <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+2">⌘2</kbd></span>
         </div>
+        <div class="command-item" data-action="goto-performance" role="option" id="cmd-goto-performance">
+          <span class="command-item-label">Go to Performance</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+4">⌘4</kbd></span>
+        </div>
+        <div class="command-item" data-action="goto-fallback" role="option" id="cmd-goto-fallback">
+          <span class="command-item-label">Go to Fallback</span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+5">⌘5</kbd></span>
+        </div>
         <div class="command-item" data-action="goto-settings" role="option" id="cmd-goto-settings">
           <span class="command-item-label">Go to Settings</span>
-          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+3">⌘3</kbd></span>
+          <span class="command-item-shortcut"><kbd aria-keyshortcuts="Meta+6">⌘6</kbd></span>
         </div>
         <div class="command-item" data-action="refresh" role="option" id="cmd-refresh">
           <span class="command-item-label">Refresh Data</span>
@@ -150,14 +203,138 @@
     </div>
   </div>
 
+  <!-- Performance Tab -->
+  <div class="tab-content flex-1 overflow-y-auto p-4" id="tab-performance">
+    <div class="flex items-center justify-end mb-3">
+      <select class="filter-select" id="perf-time-range" aria-label="Time range filter">
+        <option value="1h" data-i18n="perf.lastHour">Last Hour</option>
+        <option value="24h" data-i18n="perf.last24h">Last 24 Hours</option>
+        <option value="7d" data-i18n="perf.last7d">Last 7 Days</option>
+        <option value="all" selected data-i18n="perf.allTime">All Time</option>
+      </select>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="perf-table w-full text-xs border-collapse" role="grid">
+        <thead>
+          <tr>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="model" data-i18n="perf.th.model" aria-sort="none">Model <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="count" data-i18n="perf.th.count" aria-sort="none">Count <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="success_rate" data-i18n="perf.th.successRate" aria-sort="none">Success % <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="avg_ms" data-i18n="perf.th.avg" aria-sort="none">Avg (ms) <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="p50_ms" data-i18n="perf.th.p50" aria-sort="none">P50 <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="p90_ms" data-i18n="perf.th.p90" aria-sort="none">P90 <span class="sort-icon opacity-40 ml-1">↕</span></th>
+            <th class="sortable sticky top-0 z-10 text-left px-3 py-2 bg-[#2c2c2e] border-b border-[#48484a] text-[#98989d] font-medium whitespace-nowrap" data-sort="p99_ms" data-i18n="perf.th.p99" aria-sort="none">P99 <span class="sort-icon opacity-40 ml-1">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="perf-tbody">
+          <tr><td colspan="7" class="empty-state text-center text-[#98989d] py-6 text-[13px]" data-i18n="empty.noData">No data yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Fallback Tab -->
+  <div class="tab-content flex-1 overflow-y-auto p-4" id="tab-fallback">
+    <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 shadow-lg shadow-black/20">
+      <div class="flex items-end justify-between gap-3 mb-4">
+        <div class="mb-0">
+          <label for="fallback-scenario" class="block text-xs font-medium mb-1 text-[#f5f5f7]" data-i18n="fallback.scenario">Scenario</label>
+          <select id="fallback-scenario" onchange="FallbackModule.onScenarioChange()" class="px-3 py-2 border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] text-xs min-w-[180px] cursor-pointer"></select>
+        </div>
+        <div class="fallback-actions flex gap-2">
+          <button class="btn btn-small" onclick="FallbackModule.preview()" data-i18n="fallback.preview">Preview</button>
+          <button class="btn btn-primary btn-small" onclick="FallbackModule.save()" data-i18n="fallback.save">Save</button>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <div class="flex items-center justify-between mb-2 text-sm font-semibold text-[#98989d]">
+          <span data-i18n="fallback.chainOrder">Fallback Chain Order</span>
+          <select id="fallback-add-model" onchange="FallbackModule.onAddSelectChange()" class="px-3 py-2 border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] text-xs min-w-[180px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"><option value=""><span data-i18n="fallback.addModel">+ Add Model</span></option></select>
+        </div>
+        <ul class="fallback-chain" id="fallback-chain" role="listbox" aria-label="Fallback chain models">
+          <li class="empty-state text-center text-[#98989d] py-6 text-[13px]" data-i18n="fallback.empty">No models configured</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="fallback-preview mt-4 bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 shadow-lg shadow-black/20" id="fallback-preview" style="display: none;">
+      <div class="fallback-preview-header text-sm font-semibold mb-3 pb-2 border-b border-[#48484a]" data-i18n="fallback.previewTitle">Fallback Chain Preview</div>
+      <div id="fallback-preview-content"></div>
+    </div>
+  </div>
+
+  <!-- Analytics Tab -->
+  <div class="tab-content flex-1 overflow-y-auto p-4" id="tab-analytics">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div>
+        <span class="text-xs font-semibold text-[#98989d] uppercase tracking-wider mb-3">Usage Analytics</span>
+        <span class="text-xs text-[#98989d] ml-3" id="analytics-generated"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <select id="analytics-days" class="filter-select" aria-label="Time range">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+        </select>
+        <button class="btn btn-small" id="btn-refresh-analytics">Refresh</button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-4 gap-3 mb-6">
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+        <div class="text-xs text-[#98989d] mb-1 font-medium">Total Requests</div>
+        <div class="text-2xl font-bold tabular-nums text-[#f5f5f7] leading-tight my-0.5" id="kpi-requests">--</div>
+        <div class="text-xs text-[#98989d]">requests</div>
+      </div>
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+        <div class="text-xs text-[#98989d] mb-1 font-medium">Total Tokens</div>
+        <div class="text-2xl font-bold tabular-nums text-[#f5f5f7] leading-tight my-0.5" id="kpi-tokens">--</div>
+        <div class="text-xs text-[#98989d]"><span id="kpi-tokens-in">0</span> in / <span id="kpi-tokens-out">0</span> out</div>
+      </div>
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+        <div class="text-xs text-[#98989d] mb-1 font-medium">Est. Cost</div>
+        <div class="text-2xl font-bold tabular-nums text-[#f5f5f7] leading-tight my-0.5" id="kpi-cost">--</div>
+        <div class="text-xs text-[#98989d]">USD (est.)</div>
+      </div>
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg px-4 py-3.5 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+        <div class="text-xs text-[#98989d] mb-1 font-medium">p95 Latency</div>
+        <div class="text-2xl font-bold tabular-nums text-[#f5f5f7] leading-tight my-0.5" id="kpi-p95">--</div>
+        <div class="text-xs text-[#98989d]">ms across models</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-2">
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 shadow-lg shadow-black/20">
+        <div class="text-xs font-semibold text-[#98989d] uppercase tracking-wider mb-3">Requests by Model</div>
+        <div class="min-h-[240px] bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 flex items-center justify-center relative" id="model-donut">
+          <div class="empty-state text-center text-[#98989d] py-6 text-[13px]">No data</div>
+        </div>
+      </div>
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 shadow-lg shadow-black/20">
+        <div class="text-xs font-semibold text-[#98989d] uppercase tracking-wider mb-3">Requests by Provider</div>
+        <div class="min-h-[240px] bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 flex items-center justify-center relative" id="provider-donut">
+          <div class="empty-state text-center text-[#98989d] py-6 text-[13px]">No data</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 shadow-lg shadow-black/20">
+      <div class="text-xs font-semibold text-[#98989d] uppercase tracking-wider mb-3">Daily Token Trend</div>
+      <div class="min-h-[220px] bg-[#2c2c2e] border border-[#48484a] rounded-lg px-4 py-3 flex items-center justify-center relative" id="token-trend">
+        <div class="empty-state text-center text-[#98989d] py-6 text-[13px]">No trend data</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Tab -->
-  <div class="tab-content" id="tab-settings">
-    <div class="settings-header">
-      <div class="settings-list">
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-label" data-i18n="setting.proxy">Proxy Service</div>
-            <div class="setting-desc" data-i18n="setting.proxyDesc">Start or stop the proxy HTTP service</div>
+  <div class="tab-content flex-1 overflow-y-auto p-4" id="tab-settings">
+    <div>
+      <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg overflow-hidden shadow-lg shadow-black/20">
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.proxy">Proxy Service</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.proxyDesc">Start or stop the proxy HTTP service</div>
           </div>
           <label class="toggle">
             <input type="checkbox" id="toggle-proxy" onchange="toggleProxy(this)">
@@ -165,10 +342,10 @@
           </label>
         </div>
 
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-label" data-i18n="setting.autostart">Start on Boot</div>
-            <div class="setting-desc" data-i18n="setting.autostartDesc">Auto-start routatic-proxy at login (launchd)</div>
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.autostart">Start on Boot</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.autostartDesc">Auto-start routatic-proxy at login (launchd)</div>
           </div>
           <label class="toggle">
             <input type="checkbox" id="toggle-autostart" onchange="toggleAutostart(this)">
@@ -176,10 +353,10 @@
           </label>
         </div>
 
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-label" data-i18n="setting.notify">Desktop Notifications</div>
-            <div class="setting-desc" data-i18n="setting.notifyDesc">Notify on failures or model switches</div>
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.notify">Desktop Notifications</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.notifyDesc">Notify on failures or model switches</div>
           </div>
           <label class="toggle">
             <input type="checkbox" id="toggle-notify" onchange="toggleNotify(this)">
@@ -187,73 +364,112 @@
           </label>
         </div>
 
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-label" data-i18n="setting.language">Language</div>
-            <div class="setting-desc" data-i18n="setting.languageDesc">Switch interface language</div>
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.language">Language</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.languageDesc">Switch interface language</div>
           </div>
           <button class="btn btn-small" id="btn-lang-toggle" onclick="toggleLanguage()">
-            <span data-i18n="lang.toggle">Chinese</span>
+            <span data-i18n="lang.toggle">中文</span>
           </button>
+        </div>
+
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.catalog">Catalog</div>
+            <div class="text-xs text-[#98989d]" id="catalog-age" data-i18n="setting.catalogNotSynced">Catalog not synced</div>
+          </div>
+          <button class="btn btn-small" id="btn-refresh-catalog" onclick="refreshCatalog()" data-i18n="btn.refreshCatalog">Refresh catalog</button>
+        </div>
+
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.testModel">Test Model</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.testModelDesc">Send a quick test request to verify model connectivity</div>
+          </div>
+          <button class="btn btn-small" id="btn-test-model" data-i18n="btn.testModel">Test Model</button>
+        </div>
+
+        <div class="flex items-center justify-between px-4 py-3.5 border-b border-[#48484a]">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.backup">Backup Configuration</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.backupDesc">Export current config as JSON file</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-small" id="btn-export-config" data-i18n="btn.export">Export</button>
+            <label class="checkbox-inline flex items-center gap-1 text-xs text-[#98989d] cursor-pointer">
+              <input type="checkbox" id="export-anonymize" class="cursor-pointer">
+              <span data-i18n="label.anonymize">Anonymize</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between px-4 py-3.5">
+          <div>
+            <div class="text-sm font-medium mb-0.5" data-i18n="setting.restore">Restore Configuration</div>
+            <div class="text-xs text-[#98989d]" data-i18n="setting.restoreDesc">Import config from JSON file</div>
+          </div>
+          <input type="file" id="import-file" accept=".json" style="display: none;">
+          <button class="btn btn-small" id="btn-import-config" data-i18n="btn.import">Import</button>
         </div>
       </div>
     </div>
 
-    <div class="settings-title" style="margin: 20px 0 8px; font-size: 13px; font-weight: 600;">Proxy Configuration</div>
-    <div class="settings-form">
-      <fieldset class="form-section">
-        <legend>OpenCode Go</legend>
-        <div class="form-group">
-          <label for="cfg-go-base-url">Base URL</label>
-          <input type="text" id="cfg-go-base-url" placeholder="https://opencode.ai/zen/go/v1/chat/completions">
+    <div class="mt-5 mb-2 text-[13px] font-semibold text-[#f5f5f7]">Proxy Configuration</div>
+    <div class="bg-[#2c2c2e] border border-[#48484a] rounded-lg p-4 mt-3 shadow-lg shadow-black/20">
+      <fieldset class="border border-[#48484a] rounded p-3 mb-3 bg-[#2c2c2e]">
+        <legend class="text-sm font-semibold px-1.5 text-[#f5f5f7]">OpenCode Go</legend>
+        <div class="mb-2">
+          <label for="cfg-go-base-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Base URL</label>
+          <input type="text" id="cfg-go-base-url" placeholder="https://opencode.ai/zen/go/v1/chat/completions" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-go-anthropic-url">Anthropic Base URL</label>
-          <input type="text" id="cfg-go-anthropic-url" placeholder="https://opencode.ai/zen/go/v1/messages">
+        <div class="mb-2">
+          <label for="cfg-go-anthropic-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Anthropic Base URL</label>
+          <input type="text" id="cfg-go-anthropic-url" placeholder="https://opencode.ai/zen/go/v1/messages" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-go-api-key">API Key</label>
-          <div class="input-with-btn">
-            <input type="password" id="cfg-go-api-key" placeholder="Use env var or leave empty">
+        <div class="mb-2">
+          <label for="cfg-go-api-key" class="block text-[11px] font-medium text-[#98989d] mb-0.5">API Key</label>
+          <div class="input-with-btn flex gap-1 w-full">
+            <input type="password" id="cfg-go-api-key" placeholder="Use env var or leave empty" class="flex-1 px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
             <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-go-api-key')" aria-label="Toggle password visibility">
               <svg width="14" height="14"><use href="#icon-eye"/></svg>
             </button>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group half">
-            <label for="cfg-go-timeout">Timeout (ms)</label>
-            <input type="number" id="cfg-go-timeout" placeholder="300000">
+        <div class="flex gap-2.5">
+          <div class="flex-1 mb-2">
+            <label for="cfg-go-timeout" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Timeout (ms)</label>
+            <input type="number" id="cfg-go-timeout" placeholder="300000" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
-          <div class="form-group half">
-            <label for="cfg-go-stream-timeout">Stream Timeout (ms)</label>
-            <input type="number" id="cfg-go-stream-timeout" placeholder="">
+          <div class="flex-1 mb-2">
+            <label for="cfg-go-stream-timeout" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Stream Timeout (ms)</label>
+            <input type="number" id="cfg-go-stream-timeout" placeholder="" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
         </div>
       </fieldset>
 
-      <fieldset class="form-section">
-        <legend>OpenCode Zen</legend>
-        <div class="form-group">
-          <label for="cfg-zen-base-url">Base URL</label>
-          <input type="text" id="cfg-zen-base-url" placeholder="https://opencode.ai/zen/v1/chat/completions">
+      <fieldset class="border border-[#48484a] rounded p-3 mb-3 bg-[#2c2c2e]">
+        <legend class="text-sm font-semibold px-1.5 text-[#f5f5f7]">OpenCode Zen</legend>
+        <div class="mb-2">
+          <label for="cfg-zen-base-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Base URL</label>
+          <input type="text" id="cfg-zen-base-url" placeholder="https://opencode.ai/zen/v1/chat/completions" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-zen-anthropic-url">Anthropic Base URL</label>
-          <input type="text" id="cfg-zen-anthropic-url" placeholder="https://opencode.ai/zen/v1/messages">
+        <div class="mb-2">
+          <label for="cfg-zen-anthropic-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Anthropic Base URL</label>
+          <input type="text" id="cfg-zen-anthropic-url" placeholder="https://opencode.ai/zen/v1/messages" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-zen-responses-url">Responses Base URL</label>
-          <input type="text" id="cfg-zen-responses-url" placeholder="https://opencode.ai/zen/v1/responses">
+        <div class="mb-2">
+          <label for="cfg-zen-responses-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Responses Base URL</label>
+          <input type="text" id="cfg-zen-responses-url" placeholder="https://opencode.ai/zen/v1/responses" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-zen-gemini-url">Gemini Base URL</label>
-          <input type="text" id="cfg-zen-gemini-url" placeholder="https://opencode.ai/zen/v1/models">
+        <div class="mb-2">
+          <label for="cfg-zen-gemini-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Gemini Base URL</label>
+          <input type="text" id="cfg-zen-gemini-url" placeholder="https://opencode.ai/zen/v1/models" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-zen-api-key">API Key</label>
-          <div class="input-with-btn">
-            <input type="password" id="cfg-zen-api-key" placeholder="Use env var or leave empty">
+        <div class="mb-2">
+          <label for="cfg-zen-api-key" class="block text-[11px] font-medium text-[#98989d] mb-0.5">API Key</label>
+          <div class="input-with-btn flex gap-1 w-full">
+            <input type="password" id="cfg-zen-api-key" placeholder="Use env var or leave empty" class="flex-1 px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
             <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-zen-api-key')" aria-label="Toggle password visibility">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -262,32 +478,32 @@
             </button>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group half">
-            <label for="cfg-zen-timeout">Timeout (ms)</label>
-            <input type="number" id="cfg-zen-timeout" placeholder="300000">
+        <div class="flex gap-2.5">
+          <div class="flex-1 mb-2">
+            <label for="cfg-zen-timeout" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Timeout (ms)</label>
+            <input type="number" id="cfg-zen-timeout" placeholder="300000" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
-          <div class="form-group half">
-            <label for="cfg-zen-stream-timeout">Stream Timeout (ms)</label>
-            <input type="number" id="cfg-zen-stream-timeout" placeholder="">
+          <div class="flex-1 mb-2">
+            <label for="cfg-zen-stream-timeout" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Stream Timeout (ms)</label>
+            <input type="number" id="cfg-zen-stream-timeout" placeholder="" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
         </div>
       </fieldset>
 
-      <fieldset class="form-section">
-        <legend>AWS Bedrock</legend>
-        <div class="form-group">
-          <label for="cfg-bedrock-base-url">Base URL</label>
-          <input type="text" id="cfg-bedrock-base-url" placeholder="">
+      <fieldset class="border border-[#48484a] rounded p-3 mb-3 bg-[#2c2c2e]">
+        <legend class="text-sm font-semibold px-1.5 text-[#f5f5f7]">AWS Bedrock</legend>
+        <div class="mb-2">
+          <label for="cfg-bedrock-base-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Base URL</label>
+          <input type="text" id="cfg-bedrock-base-url" placeholder="" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-bedrock-anthropic-url">Anthropic Base URL</label>
-          <input type="text" id="cfg-bedrock-anthropic-url" placeholder="">
+        <div class="mb-2">
+          <label for="cfg-bedrock-anthropic-url" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Anthropic Base URL</label>
+          <input type="text" id="cfg-bedrock-anthropic-url" placeholder="" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-group">
-          <label for="cfg-bedrock-api-key">API Key</label>
-          <div class="input-with-btn">
-            <input type="password" id="cfg-bedrock-api-key" placeholder="Use env var or leave empty">
+        <div class="mb-2">
+          <label for="cfg-bedrock-api-key" class="block text-[11px] font-medium text-[#98989d] mb-0.5">API Key</label>
+          <div class="input-with-btn flex gap-1 w-full">
+            <input type="password" id="cfg-bedrock-api-key" placeholder="Use env var or leave empty" class="flex-1 px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
             <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-bedrock-api-key')" aria-label="Toggle password visibility">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -296,38 +512,38 @@
             </button>
           </div>
         </div>
-        <div class="form-group">
-          <label for="cfg-bedrock-project-id">Project ID</label>
-          <input type="text" id="cfg-bedrock-project-id" placeholder="">
+        <div class="mb-2">
+          <label for="cfg-bedrock-project-id" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Project ID</label>
+          <input type="text" id="cfg-bedrock-project-id" placeholder="" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
         </div>
-        <div class="form-row">
-          <div class="form-group half">
-            <label for="cfg-bedrock-timeout">Timeout (ms)</label>
-            <input type="number" id="cfg-bedrock-timeout" placeholder="300000">
+        <div class="flex gap-2.5">
+          <div class="flex-1 mb-2">
+            <label for="cfg-bedrock-timeout" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Timeout (ms)</label>
+            <input type="number" id="cfg-bedrock-timeout" placeholder="300000" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
-          <div class="form-group half">
-            <label for="cfg-bedrock-stream-timeout">Stream Timeout (ms)</label>
-            <input type="number" id="cfg-bedrock-stream-timeout" placeholder="">
+          <div class="flex-1 mb-2">
+            <label for="cfg-bedrock-stream-timeout" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Stream Timeout (ms)</label>
+            <input type="number" id="cfg-bedrock-stream-timeout" placeholder="" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
         </div>
       </fieldset>
 
-      <fieldset class="form-section">
-        <legend>Server</legend>
-        <div class="form-row">
-          <div class="form-group half">
-            <label for="cfg-host">Listen Host</label>
-            <input type="text" id="cfg-host" placeholder="127.0.0.1">
+      <fieldset class="border border-[#48484a] rounded p-3 mb-3 bg-[#2c2c2e]">
+        <legend class="text-sm font-semibold px-1.5 text-[#f5f5f7]">Server</legend>
+        <div class="flex gap-2.5">
+          <div class="flex-1 mb-2">
+            <label for="cfg-host" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Listen Host</label>
+            <input type="text" id="cfg-host" placeholder="127.0.0.1" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
-          <div class="form-group half">
-            <label for="cfg-port">Listen Port</label>
-            <input type="number" id="cfg-port" placeholder="3456">
+          <div class="flex-1 mb-2">
+            <label for="cfg-port" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Listen Port</label>
+            <input type="number" id="cfg-port" placeholder="3456" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
           </div>
         </div>
-        <div class="form-group">
-          <label for="cfg-global-key">Global API Key</label>
-          <div class="input-with-btn">
-            <input type="password" id="cfg-global-key" placeholder="Not configured">
+        <div class="mb-2">
+          <label for="cfg-global-key" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Global API Key</label>
+          <div class="input-with-btn flex gap-1 w-full">
+            <input type="password" id="cfg-global-key" placeholder="Not configured" class="flex-1 px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
             <button type="button" class="btn-show-hide" onclick="togglePasswordVisibility('cfg-global-key')" aria-label="Toggle password visibility">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -336,18 +552,18 @@
             </button>
           </div>
         </div>
-        <div class="form-group checkbox-group">
-          <label>
+        <div class="checkbox-group mb-0">
+          <label class="flex items-center gap-1.5 text-xs text-[#f5f5f7] font-normal cursor-pointer">
             <input type="checkbox" id="cfg-hot-reload"> Hot Reload
           </label>
         </div>
       </fieldset>
 
-      <fieldset class="form-section">
-        <legend>Logging</legend>
-        <div class="form-group">
-          <label for="cfg-log-level">Log Level</label>
-          <select id="cfg-log-level">
+      <fieldset class="border border-[#48484a] rounded p-3 mb-3 bg-[#2c2c2e]">
+        <legend class="text-sm font-semibold px-1.5 text-[#f5f5f7]">Logging</legend>
+        <div class="mb-0">
+          <label for="cfg-log-level" class="block text-[11px] font-medium text-[#98989d] mb-0.5">Log Level</label>
+          <select id="cfg-log-level" class="w-full px-2 py-1.5 text-xs border border-[#48484a] rounded bg-[#3a3a3c] text-[#f5f5f7] outline-none focus:border-[#6366f1]">
             <option value="debug">debug</option>
             <option value="info" selected>info</option>
             <option value="warn">warn</option>
@@ -356,12 +572,12 @@
         </div>
       </fieldset>
 
-      <button class="btn btn-primary" id="btn-save-cfg" onclick="saveProxyConfig()" style="margin-top: 16px; width: 100%;">Save &amp; Apply Config</button>
-      <div id="save-status" class="save-status"></div>
+      <button class="btn btn-primary w-full mt-4" id="btn-save-cfg" onclick="saveProxyConfig()" style="margin-top: 16px;" data-i18n="btn.save">Save &amp; Apply Config</button>
+      <div id="save-status" class="save-status mt-2.5 text-xs text-center"></div>
     </div>
 
-    <div class="settings-footer">
-      <div class="port-info" id="port-info">Listening port: --</div>
+    <div class="mt-4 text-xs text-[#98989d]">
+      <div class="px-3.5 py-2.5 bg-[#2c2c2e] border border-[#48484a] rounded text-xs" id="port-info">Listening port: --</div>
     </div>
   </div>
 </div>

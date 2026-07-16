@@ -12,3 +12,13 @@ dist/
 brag-output-**
 .DS_Store
 .kimchi
+.worktrees/
+.planning
+# Spartan AI config (contains API keys)
+.spartan/ai.env
+.claude
+
+router.test
+.playwright-mcp
+.gstack/
+node_modules/

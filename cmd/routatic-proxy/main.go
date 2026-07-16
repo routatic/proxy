@@ -6,14 +6,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
+	"time"
 
+	"github.com/routatic/proxy/internal/catalog"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/daemon"
 	"github.com/routatic/proxy/internal/debug"
+	"github.com/routatic/proxy/internal/gui"
 	"github.com/routatic/proxy/internal/server"
+	"github.com/routatic/proxy/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +34,6 @@ const (
 var version = "dev"
 
 func main() {
-	setupDefaultCommand()
 	rootCmd := &cobra.Command{
 		Use:     appName,
 		Aliases: []string{"oc-go-cc"},
@@ -48,9 +55,11 @@ Legacy ~/.config/oc-go-cc/config.json and OC_GO_CC_* environment variables are s
 	rootCmd.AddCommand(validateCmd())
 	rootCmd.AddCommand(checkCmd())
 	rootCmd.AddCommand(modelsCmd())
+	rootCmd.AddCommand(catalogCmd())
 	rootCmd.AddCommand(autostartCmd())
-	rootCmd.AddCommand(updateCmd())
-	addPlatformCommands(rootCmd)
+	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(startCmd())
+	rootCmd.AddCommand(updateChannelCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -85,6 +94,15 @@ func serveCmd() *cobra.Command {
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if err := ensureCatalogSynced(cfg, configPath, time.Now().UTC()); err != nil {
+				return fmt.Errorf("failed to sync catalog: %w", err)
+			}
+
+			// Ensure SQLite database exists.
+			if err := ensureDatabase(); err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
 			}
 
 			var captureLogger *debug.CaptureLogger
@@ -202,6 +220,213 @@ func serveCmd() *cobra.Command {
 	return cmd
 }
 
+// startCmd returns the command to start both the proxy server and GUI dashboard.
+func startCmd() *cobra.Command {
+	var configPath string
+	var port int
+	var background bool
+	var headless bool
+	var daemonize bool // hidden internal flag
+
+	cmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start the proxy server (with optional dashboard)",
+		Long: `Start the proxy server and optionally the GUI dashboard.
+
+The proxy runs on the configured port (default 3456). Use --headless to
+skip the dashboard (equivalent to the legacy "serve" command). The dashboard
+is available at http://127.0.0.1:3445 when not headless. All usage data
+is persisted to SQLite.
+
+Press Ctrl+C to stop the server.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Handle background mode: fork and exit parent
+			if background && !daemonize {
+				opts := daemon.BackgroundOpts{
+					ConfigPath: configPath,
+					Port:       port,
+					Command:    "start",
+				}
+				return daemon.ForkIntoBackground(opts)
+			}
+
+			// Override config path if provided.
+			if configPath != "" {
+				_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if err := ensureCatalogSynced(cfg, configPath, time.Now().UTC()); err != nil {
+				return fmt.Errorf("failed to sync catalog: %w", err)
+			}
+
+			// Ensure SQLite database exists.
+			if err := ensureDatabase(); err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
+			}
+
+			// Override port if provided via flag.
+			if port != 0 {
+				cfg.Port = port
+			}
+
+			pidPath := getPIDPath()
+
+			// Check if already running before writing this process' PID.
+			if !daemonize {
+				if pid, err := daemon.GetPID(pidPath); err == nil {
+					// Check if process is still running.
+					if daemon.IsProcessRunning(pid) {
+						return fmt.Errorf("server is already running (PID %d)", pid)
+					}
+					// Stale PID file, clean up.
+					_ = os.Remove(pidPath)
+				}
+			}
+
+			// Daemonize setup (child process after re-exec).
+			if daemonize {
+				paths, err := daemon.DefaultPaths()
+				if err != nil {
+					return err
+				}
+				if err := paths.EnsureConfigDir(); err != nil {
+					return err
+				}
+				if err := daemon.DaemonizeSetup(paths); err != nil {
+					return err
+				}
+			} else {
+				// Ensure config directory exists before writing PID file.
+				paths, err := daemon.DefaultPaths()
+				if err != nil {
+					return err
+				}
+				if err := paths.EnsureConfigDir(); err != nil {
+					return err
+				}
+				// Write PID file for foreground mode.
+				if err := daemon.WritePID(pidPath, os.Getpid()); err != nil {
+					return fmt.Errorf("failed to write PID file: %w", err)
+				}
+			}
+			defer func() { _ = os.Remove(pidPath) }()
+
+			// Create atomic config for hot reload support.
+			atomicCfg := config.NewAtomicConfig(cfg, config.ResolveConfigPath())
+
+			// Re-apply CLI port override on every reload.
+			if port != 0 {
+				atomicCfg.OnReload(func(newCfg *config.Config) {
+					newCfg.Port = port
+				})
+			}
+
+			// Create and start proxy server.
+			srv, err := server.NewServer(atomicCfg, nil)
+			if err != nil {
+				return fmt.Errorf("failed to create server: %w", err)
+			}
+
+			// Start config watcher for hot reload.
+			if cfg.HotReload {
+				watchCtx, watchCancel := context.WithCancel(context.Background())
+				defer watchCancel()
+				go func() {
+					if err := config.WatchConfig(watchCtx, atomicCfg); err != nil && err != context.Canceled {
+						slog.Error("config watcher failed", "error", err)
+					}
+				}()
+			}
+
+			// Context for graceful shutdown.
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			var guiSrv *gui.Server
+
+			// Start proxy in background.
+			go func() {
+				if err := srv.Start(); err != nil && err != http.ErrServerClosed {
+					slog.Error("proxy server error", "error", err)
+					cancel()
+				}
+			}()
+
+			// Print startup info.
+			fmt.Printf("Starting %s v%s\n", appName, version)
+			fmt.Printf("Proxy listening on %s:%d\n", cfg.Host, cfg.Port)
+			fmt.Println()
+			fmt.Println("Configure Claude Code with:")
+			fmt.Printf("  export ANTHROPIC_BASE_URL=http://%s:%d\n", cfg.Host, cfg.Port)
+			if cfg.AnthropicFirst.Enabled {
+				fmt.Println("  unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY")
+			} else {
+				fmt.Println("  export ANTHROPIC_AUTH_TOKEN=unused")
+			}
+
+			if !headless {
+				// Start GUI server on port 3445.
+				guiSrv = gui.New(gui.Options{
+					History:      srv.History,
+					Metrics:      srv.Metrics(),
+					AtomicConfig: atomicCfg,
+					ProxyPort:    cfg.Port,
+					Storage:      srv.Storage(),
+				})
+				guiSrv.SetProxyRunning(true)
+
+				guiURL, err := guiSrv.Start(ctx)
+				if err != nil {
+					cancel()
+					return fmt.Errorf("start gui server: %w", err)
+				}
+
+				// Open GUI (macOS: native webview, Linux/Windows: print URL)
+				if err := openGUI(guiURL); err != nil {
+					slog.Warn("GUI error", "error", err)
+					fmt.Printf("\nDashboard: %s\n", guiURL)
+					fmt.Println("\nPress Ctrl+C to stop.")
+				}
+			} else {
+				fmt.Println("\nRunning in headless mode (no dashboard). Press Ctrl+C to stop.")
+			}
+
+			// Wait for signal.
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+			select {
+			case <-sigCh:
+				fmt.Println("\nShutting down...")
+			case <-ctx.Done():
+			}
+
+			// Graceful shutdown.
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			_ = srv.Shutdown(shutdownCtx)
+			if guiSrv != nil {
+				_ = guiSrv.Shutdown(shutdownCtx)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file")
+	cmd.Flags().IntVarP(&port, "port", "p", 0, "Override proxy listen port")
+	cmd.Flags().BoolVarP(&background, "background", "b", false, "Run as background daemon")
+	cmd.Flags().BoolVarP(&headless, "headless", "H", false, "Skip dashboard (run proxy only)")
+	cmd.Flags().BoolVar(&daemonize, "_daemonize", false, "Internal use only")
+	_ = cmd.Flags().MarkHidden("_daemonize")
+
+	return cmd
+}
+
 // stopCmd returns the command to stop the proxy server.
 func stopCmd() *cobra.Command {
 	return &cobra.Command{
@@ -252,12 +477,23 @@ func statusCmd() *cobra.Command {
 
 // initCmd returns the command to create a default configuration file.
 func initCmd() *cobra.Command {
-	return &cobra.Command{
+	var provider string
+
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create default configuration file",
+		Long: `Create a default configuration file optimized for a specific provider.
+
+The --provider flag pre-configures the config with provider-specific defaults:
+  - opencode-go: OpenCode Go subscription ($5/month, powerful coding models)
+  - opencode-zen: OpenCode Zen (pay-as-you-go, Claude/GPT/Gemini)
+  - aws-bedrock: AWS Bedrock Mantle (run models on your AWS infrastructure)
+  - openrouter: OpenRouter (unified API for 100+ models)
+
+Without --provider, a default config optimized for OpenCode Go is created.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			configDir := getConfigDir()
-			configPath := filepath.Join(configDir, "config.json")
+			// Resolve config path, respecting ROUTATIC_PROXY_CONFIG env var.
+			configPath := config.ResolveConfigPath()
 
 			// Check if config already exists
 			if _, err := os.Stat(configPath); err == nil {
@@ -266,19 +502,54 @@ func initCmd() *cobra.Command {
 				return nil
 			}
 
-			if err := os.MkdirAll(configDir, 0700); err != nil {
+			if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 				return fmt.Errorf("failed to create config directory: %w", err)
 			}
 
-			if err := os.WriteFile(configPath, []byte(getDefaultConfig()), 0600); err != nil {
+			// Get the appropriate config template
+			var configContent string
+			var err error
+			if provider != "" {
+				configContent, err = getProviderConfig(provider)
+				if err != nil {
+					return err
+				}
+			} else {
+				configContent = getDefaultConfig()
+			}
+
+			if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 				return fmt.Errorf("failed to write config file: %w", err)
 			}
 
-			fmt.Printf("Created default config at %s\n", configPath)
-			fmt.Println("Edit the file and add your OpenCode Go API key.")
+			// Initialize database.
+			db, err := storage.Open(storage.DefaultConfig)
+			if err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
+			}
+			defer func() { _ = db.Close() }()
+
+			// Print helpful message based on provider
+			fmt.Printf("Created config at %s\n", configPath)
+			fmt.Printf("Initialized database at %s\n", storage.DefaultConfig.DatabasePath)
+			if provider != "" {
+				preset, ok := providerPresets[provider]
+				if ok {
+					fmt.Printf("\nProvider: %s\n", preset.Name)
+					fmt.Printf("Set your API key: export %s=your-api-key-here\n", preset.EnvVarName)
+				}
+			} else {
+				fmt.Println("\nEdit the file and add your OpenCode Go API key.")
+				fmt.Println("Or use --provider to generate a provider-specific config.")
+			}
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&provider, "provider", "",
+		"Provider preset: opencode-go, opencode-zen, aws-bedrock, openrouter")
+
+	return cmd
 }
 
 // validateCmd returns the command to validate the configuration file.
@@ -296,6 +567,11 @@ func validateCmd() *cobra.Command {
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("invalid config: %w", err)
+			}
+
+			// Ensure SQLite database exists.
+			if err := ensureDatabase(); err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
 			}
 
 			fmt.Println("Configuration is valid!")
@@ -417,90 +693,146 @@ func checkClaudeEnv(source string, env map[string]string, expectedURL string, an
 
 // modelsCmd returns the command to list available models.
 func modelsCmd() *cobra.Command {
-	return &cobra.Command{
+	var configPath string
+	var provider string
+
+	cmd := &cobra.Command{
 		Use:   "models",
-		Short: "List available OpenCode Go models",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Available OpenCode Go models:")
-			fmt.Println()
-			fmt.Println("  Model ID                   Endpoint Type")
-			fmt.Println("  ──────────────────────────────────────────────")
-			fmt.Println("  glm-5.2                    OpenAI-compatible")
-			fmt.Println("  glm-5.1                    OpenAI-compatible")
-			fmt.Println("  glm-5                      OpenAI-compatible (deprecated)")
-			fmt.Println("  kimi-k2.7-code             OpenAI-compatible")
-			fmt.Println("  kimi-k2.6                  OpenAI-compatible")
-			fmt.Println("  kimi-k2.5                  OpenAI-compatible")
-			fmt.Println("  mimo-v2.5-pro              OpenAI-compatible")
-			fmt.Println("  mimo-v2.5                  OpenAI-compatible")
-			fmt.Println("  minimax-m3                 Anthropic-compatible")
-			fmt.Println("  minimax-m2.7               Anthropic-compatible")
-			fmt.Println("  minimax-m2.5               Anthropic-compatible")
-			fmt.Println("  deepseek-v4-pro            OpenAI-compatible")
-			fmt.Println("  deepseek-v4-flash          OpenAI-compatible")
-			fmt.Println("  qwen3.7-max                Anthropic-compatible")
-			fmt.Println("  qwen3.7-plus               Anthropic-compatible")
-			fmt.Println("  qwen3.6-plus               Anthropic-compatible")
-			fmt.Println("  qwen3.5-plus               Anthropic-compatible")
-			fmt.Println()
-			fmt.Println("Available OpenCode Zen models (free tier):")
-			fmt.Println()
-			fmt.Println("  deepseek-v4-flash-free     OpenAI-compatible")
-			fmt.Println("  grok-build-0.1             OpenAI-compatible")
-			fmt.Println("  big-pickle                 OpenAI-compatible")
-			fmt.Println("  mimo-v2.5-free             OpenAI-compatible")
-			fmt.Println("  north-mini-code-free       OpenAI-compatible")
-			fmt.Println("  nemotron-3-ultra-free      OpenAI-compatible")
-			fmt.Println()
-			fmt.Println("Available OpenCode Zen models (Anthropic endpoint):")
-			fmt.Println()
-			fmt.Println("  claude-fable-5             Anthropic-compatible")
-			fmt.Println("  claude-opus-4-8            Anthropic-compatible")
-			fmt.Println("  claude-opus-4-7            Anthropic-compatible")
-			fmt.Println("  claude-opus-4-6            Anthropic-compatible")
-			fmt.Println("  claude-opus-4-5            Anthropic-compatible")
-			fmt.Println("  claude-opus-4-1            Anthropic-compatible")
-			fmt.Println("  claude-sonnet-4-6          Anthropic-compatible")
-			fmt.Println("  claude-sonnet-4-5          Anthropic-compatible")
-			fmt.Println("  claude-sonnet-4            Anthropic-compatible")
-			fmt.Println("  claude-haiku-4-5           Anthropic-compatible")
-			fmt.Println("  claude-3-5-haiku           Anthropic-compatible")
-			fmt.Println()
-			fmt.Println("Available OpenCode Zen models (Responses endpoint):")
-			fmt.Println()
-			fmt.Println("  gpt-5.5                    Responses-compatible")
-			fmt.Println("  gpt-5.5-pro                Responses-compatible")
-			fmt.Println("  gpt-5.4                    Responses-compatible")
-			fmt.Println("  gpt-5.4-pro                Responses-compatible")
-			fmt.Println("  gpt-5.4-mini               Responses-compatible")
-			fmt.Println("  gpt-5.4-nano               Responses-compatible")
-			fmt.Println("  gpt-5.3-codex              Responses-compatible")
-			fmt.Println("  gpt-5.3-codex-spark        Responses-compatible")
-			fmt.Println("  gpt-5.2                    Responses-compatible")
-			fmt.Println("  gpt-5.2-codex              Responses-compatible")
-			fmt.Println("  gpt-5.1                    Responses-compatible")
-			fmt.Println("  gpt-5.1-codex              Responses-compatible")
-			fmt.Println("  gpt-5.1-codex-max          Responses-compatible")
-			fmt.Println("  gpt-5.1-codex-mini         Responses-compatible")
-			fmt.Println("  gpt-5                      Responses-compatible")
-			fmt.Println("  gpt-5-codex                Responses-compatible")
-			fmt.Println("  gpt-5-nano                 Responses-compatible")
-			fmt.Println()
-			fmt.Println("Available OpenCode Zen models (Gemini endpoint):")
-			fmt.Println()
-			fmt.Println("  gemini-3.5-flash           Gemini-compatible")
-			fmt.Println("  gemini-3.1-pro             Gemini-compatible")
-			fmt.Println("  gemini-3-flash             Gemini-compatible")
-			fmt.Println()
-			fmt.Println("Use these model IDs in your config.json file (model_overrides).")
+		Short: "List available models from the catalog",
+		Long: `List available models from the catalog.
+
+Without a subcommand, all enabled providers are shown. Use "models list" to
+filter by provider with the --provider flag.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runModelsList(cmd, configPath, provider)
+		},
+	}
+
+	cmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to config file (used to locate the catalog directory)")
+	cmd.PersistentFlags().StringVar(&provider, "provider", "", "Filter models by provider")
+
+	cmd.AddCommand(modelsListCmd())
+
+	return cmd
+}
+
+// modelsListCmd returns the "models list" subcommand.
+func modelsListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List available models from the catalog",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, _ := cmd.Flags().GetString("config")
+			provider, _ := cmd.Flags().GetString("provider")
+			return runModelsList(cmd, configPath, provider)
 		},
 	}
 }
 
-// getConfigDir returns the default configuration directory path.
-func getConfigDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "routatic-proxy")
+// runModelsList prints models from the catalog, optionally filtered by provider.
+func runModelsList(cmd *cobra.Command, configPath, provider string) error {
+	if configPath != "" {
+		_ = os.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
+	}
+
+	cfgPath := config.ResolveConfigPath()
+	cfg, err := config.LoadFromPath(cfgPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	storageCfg := storage.DefaultConfig
+	if cfg.Storage != nil {
+		storageCfg = storage.Config{
+			DatabasePath:    cfg.Storage.DatabasePath,
+			RetentionDays:   cfg.Storage.RetentionDays,
+			VacuumOnStartup: cfg.Storage.VacuumOnStartup,
+			WALEnabled:      cfg.Storage.WALEnabled,
+		}
+	}
+
+	db, err := storage.Open(storageCfg)
+	if err != nil {
+		return fmt.Errorf("failed to open storage: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cat, err := catalog.LoadFromSQLite(ctx, db)
+	if err != nil {
+		return fmt.Errorf("catalog not found; run 'routatic-proxy catalog sync' first")
+	}
+
+	providers := selectProviders(provider, cfg)
+	if len(providers) == 0 {
+		if provider != "" {
+			cmd.Printf("No models found for provider %q.\n", provider)
+		} else {
+			cmd.Println("No enabled providers found.")
+		}
+		return nil
+	}
+
+	var lines []string
+	for _, p := range providers {
+		models := cat.ListProviderModels(p)
+		if len(models) == 0 {
+			continue
+		}
+		ids := make([]string, len(models))
+		for i, m := range models {
+			ids[i] = m.ModelID
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			lines = append(lines, fmt.Sprintf("%s/%s", p, id))
+		}
+	}
+
+	if len(lines) == 0 {
+		if provider != "" {
+			cmd.Printf("No models found for provider %q.\n", provider)
+		} else {
+			cmd.Println("No models found for enabled providers.")
+		}
+		return nil
+	}
+
+	for _, line := range lines {
+		cmd.Println(line)
+	}
+
+	cmd.Println()
+	cmd.Println("Use these model IDs in your config.json file (model_overrides).")
+	return nil
+}
+
+// selectProviders returns the providers to display. If provider is non-empty,
+// only that provider is returned when it exists in the catalog; otherwise all
+// configured (enabled) providers are returned.
+func selectProviders(provider string, cfg *config.Config) []string {
+	if provider != "" {
+		return []string{provider}
+	}
+
+	globalKeys := cfg.EffectiveAPIKeys()
+	providerKeys := map[string][]string{
+		"opencode-go":  cfg.OpenCodeGo.EffectiveAPIKeys(),
+		"opencode-zen": cfg.OpenCodeZen.EffectiveAPIKeys(),
+		"aws-bedrock":  cfg.AWSBedrock.EffectiveAPIKeys(),
+		"openrouter":   cfg.OpenRouter.EffectiveAPIKeys(),
+	}
+
+	var enabled []string
+	for p, keys := range providerKeys {
+		if len(keys) > 0 || len(globalKeys) > 0 {
+			enabled = append(enabled, p)
+		}
+	}
+	sort.Strings(enabled)
+	return enabled
 }
 
 // autostartCmd returns the command to manage autostart on login.
@@ -808,6 +1140,11 @@ func getDefaultConfig() string {
       "temperature": 0.7,
       "max_tokens": 8192
     }
+  },
+  "model_family_overrides": {
+    "opus": { "provider": "opencode-go", "model_id": "glm-5.1", "temperature": 0.7, "max_tokens": 8192, "vision": true },
+    "sonnet": { "provider": "opencode-go", "model_id": "kimi-k2.6", "temperature": 0.7, "max_tokens": 8192, "vision": true },
+    "haiku": { "provider": "opencode-go", "model_id": "qwen3.7-plus", "temperature": 0.7, "max_tokens": 4096, "vision": true }
   },
   "opencode_go": {
     "base_url": "https://opencode.ai/zen/go/v1/chat/completions",

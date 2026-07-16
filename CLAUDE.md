@@ -5,16 +5,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-make build   # Build binary to bin/routatic-proxy
+make build   # Build binary to bin/routatic-proxy (CGO disabled by default)
 make run     # Run without building
 make test    # Run tests with race detector
 make lint    # go vet + test
 make clean   # Remove build artifacts
 make install # Build and install to $GOPATH/bin
 make dist    # Cross-compile for all platforms
+
+# Start proxy with dashboard (recommended)
+./bin/routatic-proxy start
+
+# Start proxy only (headless)
+./bin/routatic-proxy serve
 ```
 
-Run a single test: `go test ./internal/router/ -v`
+### Architecture
+
+**routatic-proxy start** runs both the proxy server and GUI dashboard:
+- Proxy listens on `127.0.0.1:3456` (configurable)
+- Dashboard at `http://127.0.0.1:3445`
+- Usage data persists to SQLite (`~/.local/share/routatic-proxy/data.db`) regardless of dashboard state
+- Press Ctrl+C to stop both servers
+
+**routatic-proxy serve** runs headless (no dashboard).
 
 ## Architecture
 
@@ -55,6 +69,23 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 4. Background (simple read-only ops, no tools) → Qwen3.7 Max
 5. Default → Kimi K2.6
 
+**Model overrides:** two config blocks bypass scenario routing based on the requested model. `model_overrides` matches the `model` string **exactly** (best with CC-Switch, which sends a custom model string). `model_family_overrides` maps a Claude family keyword (`opus`, `sonnet`, `haiku`) via **case-insensitive substring** match, so the versioned IDs Claude Code sends natively (`claude-opus-4-20250514`) route without CC-Switch. Precedence: exact `model_overrides` → `model_family_overrides` (longest key first) → `respect_requested_model` → scenario routing. Both are wired through `ModelRouter.RouteWithOverride` / `RouteWithFamilyOverride` (`internal/router/model_router.go`) and merged with a deduplicated scenario safety-net chain in `buildModelChain` (`internal/handlers/messages.go`).
+
+**Cost-based routing:** when `cost_routing.enabled` is set, `Selector` in `internal/router/selector.go` replaces the static primary model with automatic cheapest-model selection from the catalog. It applies `max_context_window` (hard cap on context window), `prefer_providers` (global provider filter, intersected with per-scenario preferences), and `penalty_per_provider` (per-provider cost penalty added during sort). Enabled via `cost_routing.enabled` or the legacy `enable_cost_based_routing` flag.
+
+**Catalog schema:** Models are keyed as `provider/model-name` (e.g., `opencode-go/glm-5.2`). The catalog (`~/.config/routatic-proxy/catalog/catalog.json`) contains:
+- `providers` — Provider definitions with `name`, `base_url`, `enabled`
+- `models` — Model definitions keyed by full key with fields:
+  - `id` — Full key (matches the map key)
+  - `name` — Display name
+  - `limit.context` — Context window size
+  - `rates.input`/`rates.output` — Cost per million tokens
+  - `tool_call` — Whether tools are supported
+  - `modalities.input`/`output` — Input/output types (`["text"]` or `["text", "image"]` for vision)
+  - `reasoning` — Whether reasoning mode is supported
+
+Resolution functions in `internal/catalog/resolve.go` extract the provider from the key prefix. `ResolvedModel.ModelID` is the model name only (without provider prefix); `ResolvedModel.CanonicalName` is the full key.
+
 For streaming, the router downgrades to fast models (Qwen3.7 Plus) for better TTFT.
 
 **Deprecated models:**
@@ -81,16 +112,16 @@ Precedence: `*_API_KEYS` → `*_API_KEY` → global `API_KEYS` → global `API_K
 ## Key Files
 
 - `cmd/routatic-proxy/main.go` — CLI entry point (cobra). Default config template is generated here.
-- `cmd/routatic-proxy/ui_darwin.go` — macOS GUI entry point (`routatic-proxy ui`), webview + tray integration (darwin-only build tag).
 - `internal/config/` — Config types and JSON loader with `${VAR}` env interpolation.
 - `internal/transformer/` — Request/response format conversion (Anthropic ↔ OpenAI).
 - `internal/router/fallback.go` — Circuit breaker per model (3 failures = 30s skip).
+- `internal/handlers/models.go` — `GET /v1/models` (OpenAI-style listing). Used by provider-switching tools like CC-Switch's "Fetch Models" button; sources IDs from `ModelRouter.ListModels` (config aliases + `model_overrides` keys + catalog canonical names).
 - `configs/config.example.json` — Reference config with all options documented.
-- `internal/gui/` — Embedded HTTP server for the webview dashboard (serves static assets + API endpoints).
-- `internal/gui/assets/` — HTML/CSS/JS for the dashboard (Overview, History, Settings tabs).
-- `internal/tray/` — macOS system tray icon and menu (darwin-only build tag).
+- `internal/gui/` — Embedded HTTP server for the dashboard (serves static assets + API endpoints).
+- `internal/gui/assets/` — HTML/CSS/JS for the dashboard (Overview, History, Analytics, Settings tabs).
 - `internal/history/` — In-memory ring buffer (1000 entries, O(1) insert, thread-safe).
 - `internal/metrics/` — In-process request counters (received, streamed, success, failed, model distribution).
+- `internal/storage/` — SQLite persistence layer for request history, latency samples, and analytics.
 
 ### GUI Config Editing
 
@@ -104,6 +135,68 @@ The Settings tab exposes all config fields as editable form inputs. On save, onl
 5. Backend writes merged config to disk and calls `atomicCfg.Reload()`
 
 **Nil safety:** The `/api/metrics` and `/api/history` handlers handle nil dependencies gracefully — they return zero values instead of panicking if the history or metrics instance is unavailable.
+
+## Dual Release Channel System
+
+This project uses a dual release channel system for separating beta and production releases:
+
+### Beta Channel (Automatic)
+- **Trigger:** Every push to `main` branch (see `.github/workflows/beta-release.yml`)
+- **Version format:** `v{UPCOMING}-beta.{N}` (e.g., `v0.5.3-beta.1`), where `{N}` is a sequential counter
+- **GitHub release:** Marked as `prerelease: true`
+- **Docker tags:** `v{UPCOMING}-beta.{N}`, `beta-{UPCOMING}`, and `beta` (rolling pointer to newest beta)
+
+Beta releases are fully automated and include:
+- Test suite validation
+- Cross-platform binary builds (darwin-amd64/arm64, linux-amd64/arm64, windows-amd64/arm64)
+- macOS DMG with CGO-enabled binary
+- AI-generated changelog from commits
+- Docker images for linux/amd64 and linux/arm64
+
+### Production Channel (Manual)
+- **Trigger:** Manual `workflow_dispatch` on `releases` branch (see `.github/workflows/release.yml`)
+- **Version format:** `vX.Y.Z` (semantic versioning)
+- **GitHub release:** Marked as `prerelease: false` (stable)
+- **Docker tags:** `vX.Y.Z`, `vX.Y`, `vX`, `latest`
+
+Production releases include all beta features plus:
+- Homebrew tap update (requires `HOMEBREW_PAT` secret)
+- Scoop bucket update (requires `SCOOP_PAT` secret)
+
+### Version Detection Script
+
+`.github/scripts/get-versions.sh` is used by the beta workflow to:
+1. Fetch tags from the `origin/releases` branch to get current production version (e.g., `v0.5.2`)
+2. Increment the **patch** to the next version (e.g., `v0.5.3`) - **beta is based on the upcoming patch release**
+3. Generate beta version by appending `-beta.{N}`, where `{N}` is `max(existing beta counters for this upcoming version) + 1` - **the counter resets to 1 once the upcoming version ships as stable**
+4. Output both versions as JSON for CI consumption
+
+
+**Version Format Explanation:**
+- `v0.5.3` = The upcoming production version (patch incremented from latest production)
+- `beta.1` = Sequential prerelease counter for that upcoming version
+- Full example: stable `v0.5.2` → `v0.5.3-beta.1`, then `v0.5.3-beta.2`, ... until `v0.5.3` ships → `v0.5.4-beta.1`
+
+### Creating a Production Release
+
+1. Merge all changes to `main` and verify via beta
+2. Ensure `releases` branch exists and is up-to-date
+3. Go to GitHub Actions → Release workflow
+4. Click "Run workflow"
+5. Enter version (must follow `vX.Y.Z` format)
+6. Workflow validates, builds, and releases
+
+### Release Workflow Stages
+
+Both workflows share the same stages:
+
+1. **validate** — Run `go vet`, `go test -race`, and build sanity check on ubuntu-latest
+2. **release** — Build cross-platform binaries and macOS DMG on macos-latest
+3. **docker** — Publish multi-arch Docker images on ubuntu-latest
+
+Production adds:
+4. **homebrew** — Update the homebrew-tap formula
+5. **scoop** — Update the scoop-bucket manifest
 
 ## Skill routing
 

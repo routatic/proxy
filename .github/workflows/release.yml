@@ -2,9 +2,13 @@ name: Release
 
 on:
   push:
-    branches: [main]
-    tags:
-      - "v*"
+    branches: [releases]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.2.3)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,9 +19,9 @@ jobs:
     name: Test & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
 
@@ -41,11 +45,11 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25"
           cache: true
@@ -53,26 +57,21 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          # Check if there's a tag on this commit
-          EXACT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
-          if [ -n "$EXACT_TAG" ]; then
-            TAG="$EXACT_TAG"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Use user-provided version from workflow_dispatch
+            TAG="${{ github.event.inputs.version }}"
           else
-            # Auto-increment with rollover (0-9 per segment)
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-            BASE=${LATEST_TAG#v}
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
-            PATCH=$((PATCH + 1))
-            if [ "$PATCH" -gt 9 ]; then
-              PATCH=0
-              MINOR=$((MINOR + 1))
-              if [ "$MINOR" -gt 9 ]; then
-                MINOR=0
-                MAJOR=$((MAJOR + 1))
-              fi
-            fi
-            TAG="v${MAJOR}.${MINOR}.${PATCH}"
+            # Push to releases branch - require version to be specified via workflow_dispatch
+            echo "Error: Pushes to releases branch must be done via workflow_dispatch with a version specified"
+            exit 1
           fi
+
+          # Validate version format (must start with 'v' followed by semver)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Error: Version must follow semantic versioning with 'v' prefix (e.g., v1.2.3)"
+            exit 1
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "Releasing as $TAG"
@@ -216,17 +215,16 @@ jobs:
           cat changelog.md
 
       # GITHUB_TOKEN works here — same repo
+      # Use gh release create for atomic asset upload (immutable release support)
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.tag }}
-          body_path: changelog.md
-          draft: false
-          prerelease: false
-          files: |
-            dist/routatic-proxy_*
-            dist/checksums.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Release ${{ steps.version.outputs.tag }}" \
+            --notes-file changelog.md \
+            dist/routatic-proxy_* \
+            dist/checksums.txt \
             bin/RoutaticProxy.dmg
 
   # ── Stage 3: Publish Docker Image ───────────────────────────────
@@ -239,19 +237,21 @@ jobs:
     if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
 
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
@@ -267,7 +267,7 @@ jobs:
           TAG: ${{ needs.release.outputs.tag }}
         run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -285,7 +285,7 @@ jobs:
     if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Download release assets
         env:
@@ -417,7 +417,7 @@ jobs:
     if: github.repository == 'routatic/proxy'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Download release assets
         env:

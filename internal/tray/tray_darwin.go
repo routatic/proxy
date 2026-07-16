@@ -1,17 +1,11 @@
-//go:build darwin
+//go:build darwin && cgo
 
-// Package tray manages the macOS system tray icon and menu.
-//
-// NOTE: Run must be called exactly once per process. The package-level
-// menu item variables (mStatus, mStart, etc.) are populated during Run's
-// onReady callback and are not safe for concurrent use across multiple calls.
 package tray
 
 import (
 	"github.com/getlantern/systray"
 )
 
-// Callbacks holds the functions the tray calls when menu items are clicked.
 type Callbacks struct {
 	InitiallyRunning   bool
 	InitiallyAutostart bool
@@ -22,8 +16,6 @@ type Callbacks struct {
 	OnQuit             func()
 }
 
-// Run initialises the system tray and blocks until quit.
-// Call this on the main thread (required by macOS).
 func Run(cb Callbacks) {
 	systray.Run(func() { onReady(cb) }, func() {})
 }
@@ -40,7 +32,7 @@ var (
 func onReady(cb Callbacks) {
 	systray.SetTitle("")
 	systray.SetTooltip("routatic-proxy")
-	setIcon(false) // start with stopped icon
+	setIcon(false)
 
 	mStatus = systray.AddMenuItem("● Stopped", "")
 	mStatus.Disable()
@@ -59,7 +51,6 @@ func onReady(cb Callbacks) {
 
 	mQuit = systray.AddMenuItem("Quit", "")
 
-	// Set initial state safely now that menu items are created
 	SetRunning(cb.InitiallyRunning)
 	SetAutostart(cb.InitiallyAutostart)
 
@@ -98,7 +89,6 @@ func onReady(cb Callbacks) {
 	}()
 }
 
-// SetRunning updates the tray menu to reflect proxy running state.
 func SetRunning(running bool) {
 	if mStatus == nil || mStart == nil || mStop == nil {
 		return
@@ -116,7 +106,6 @@ func SetRunning(running bool) {
 	}
 }
 
-// SetAutostart updates the autostart checkbox state.
 func SetAutostart(enabled bool) {
 	if mAutostart == nil {
 		return
@@ -128,8 +117,6 @@ func SetAutostart(enabled bool) {
 	}
 }
 
-// setIcon sets a minimal text icon (systray title) depending on state.
-// A real app would embed an .icns; here we use a unicode bullet.
 func setIcon(running bool) {
 	if running {
 		systray.SetTitle("▶")
@@ -138,7 +125,6 @@ func setIcon(running bool) {
 	}
 }
 
-// Quit terminates the systray loop and removes the icon.
 func Quit() {
 	systray.Quit()
 }

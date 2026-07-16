@@ -47,6 +47,290 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 - Set `wire_format: "anthropic"` for Claude and other Anthropic-native models
 - Best for: Models deployed on your own AWS infrastructure
 
+## OpenRouter Models
+
+OpenRouter provides **unified access to 100+ models** from multiple providers through a single API endpoint. Instead of managing separate API keys and endpoints for each provider, you can access models from OpenAI, Anthropic, Google, Meta, Mistral, and many others through one integration.
+
+### Key Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Unified API** | Single OpenAI-compatible Chat Completions endpoint for all models |
+| **100+ Models** | Access to models from 20+ providers without separate integrations |
+| **Dynamic Catalog** | New models automatically available when the catalog is updated |
+| **Pay-as-you-go** | Per-token pricing with no subscription required |
+| **Smart Routing** | Automatic fallback to alternative providers if a model is unavailable |
+| **Cost Optimization** | Route to the cheapest or fastest available provider |
+
+### Model Naming Convention
+
+OpenRouter uses a `provider/model-name` format that identifies both the original provider and the specific model:
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| `openai/gpt-4o` | `openai/gpt-4o` | GPT-4o via OpenAI |
+| `openai/gpt-4o-mini` | `openai/gpt-4o-mini` | GPT-4o Mini via OpenAI |
+| `anthropic/claude-3.5-sonnet` | `anthropic/claude-3.5-sonnet` | Claude 3.5 Sonnet via Anthropic |
+| `anthropic/claude-3-opus` | `anthropic/claude-3-opus` | Claude 3 Opus via Anthropic |
+| `google/gemini-2.5-pro` | `google/gemini-2.5-pro` | Gemini 2.5 Pro via Google |
+| `google/gemini-2.0-flash` | `google/gemini-2.0-flash` | Gemini 2.0 Flash via Google |
+| `meta-llama/llama-3.3-70b` | `meta-llama/llama-3.3-70b` | Llama 3.3 70B via Meta |
+| `mistral/mistral-large` | `mistral/mistral-large` | Mistral Large via Mistral AI |
+| `x-ai/grok-2` | `x-ai/grok-2` | Grok 2 via xAI |
+| `deepseek/deepseek-chat` | `deepseek/deepseek-chat` | DeepSeek V3 via DeepSeek |
+
+### Popular OpenRouter Models
+
+| Model | Provider | Context Window | Input Cost ($/M) | Output Cost ($/M) | Best For |
+|-------|----------|----------------|------------------|-------------------|----------|
+| **Claude 3.5 Sonnet** | Anthropic | 200K | $3.00 | $15.00 | Complex reasoning, coding, analysis |
+| **Claude 3 Opus** | Anthropic | 200K | $15.00 | $75.00 | Maximum quality, difficult tasks |
+| **GPT-4o** | OpenAI | 128K | $2.50 | $10.00 | General purpose, vision tasks |
+| **GPT-4o Mini** | OpenAI | 128K | $0.15 | $0.60 | Cost-effective, high volume |
+| **Gemini 2.5 Pro** | Google | 1M | $1.25 | $10.00 | Long context, coding, reasoning |
+| **Gemini 2.0 Flash** | Google | 1M | $0.10 | $0.40 | Fast responses, cost efficiency |
+| **Llama 3.3 70B** | Meta | 128K | $0.12 | $0.30 | Open source, customizable |
+| **Llama 3.1 405B** | Meta | 128K | $0.80 | $1.60 | Open source, high quality |
+| **Mistral Large** | Mistral | 128K | $2.00 | $6.00 | European provider, GDPR compliant |
+| **Grok 2** | xAI | 128K | $2.00 | $10.00 | Real-time knowledge, humor |
+| **DeepSeek V3** | DeepSeek | 64K | $0.07 | $1.10 | Cost efficiency, coding |
+| **DeepSeek R1** | DeepSeek | 64K | $0.55 | $2.19 | Reasoning, chain-of-thought |
+
+### Discovering Available Models
+
+Browse the complete model catalog at: **https://openrouter.ai/models**
+
+The catalog includes detailed information for each model:
+- **Pricing**: Input and output costs per million tokens
+- **Context window**: Maximum tokens the model can process
+- **Tool calling**: Whether the model supports function calling
+- **Vision**: Whether the model supports image input
+- **Provider routing**: Available providers for each model
+
+You can also fetch available models programmatically via the OpenRouter API:
+
+```bash
+curl https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+```
+
+### Configuring OpenRouter Models
+
+Add OpenRouter models to your routatic-proxy configuration:
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "background": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o-mini",
+      "temperature": 0.5,
+      "max_tokens": 2048
+    },
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3-opus",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "long_context": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-2.5-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  }
+}
+```
+
+### Cost-Based Routing Integration
+
+When `cost_routing.enabled` is set, the selector automatically sorts models by cost and applies your routing preferences:
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["opencode-go", "openrouter"],
+    "penalty_per_provider": {
+      "openrouter": 0.05
+    },
+    "max_context_window": 200000
+  }
+}
+```
+
+**How cost routing works with OpenRouter:**
+- Models are sorted by combined input + output rates
+- Provider penalties adjust effective costs (e.g., `openrouter: 0.05` adds 5%)
+- `max_context_window` filters out models that can't handle your request size
+- `prefer_providers` intersects with scenario preferences for final selection
+
+### Model Categories Available
+
+| Category | Providers | Example Models |
+|----------|-----------|----------------|
+| **OpenAI** | OpenAI, Azure | GPT-4o, GPT-4o Mini, GPT-4 Turbo |
+| **Anthropic** | Anthropic, AWS | Claude 3 Opus, Claude 3.5 Sonnet, Claude 3 Haiku |
+| **Google** | Google | Gemini 2.5 Pro, Gemini 2.0 Flash, Gemini 1.5 Pro |
+| **Meta** | Meta, Together, Fireworks | Llama 3.3 70B, Llama 3.1 405B, Llama 3.1 70B |
+| **Mistral** | Mistral AI | Mistral Large, Mistral Medium, Mistral Small |
+| **xAI** | xAI | Grok 2, Grok Beta |
+| **DeepSeek** | DeepSeek | DeepSeek V3, DeepSeek R1 |
+| **Specialized** | Various | Qwen, Command R+, Perplexity, and many more |
+
+### Example Configurations
+
+#### Budget-Conscious Setup
+Use cheaper models for most tasks, expensive ones only when needed:
+
+```json
+{
+  "models": {
+    "background": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o-mini"
+    },
+    "default": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-chat"
+    },
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet"
+    }
+  }
+}
+```
+
+#### Quality-First Setup
+Prioritize quality for critical tasks:
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet"
+    },
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3-opus"
+    },
+    "long_context": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-2.5-pro"
+    }
+  }
+}
+```
+
+#### Multi-Provider Fallback
+Spread requests across providers for reliability:
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o"
+    },
+    "fallback": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet"
+    }
+  },
+  "fallbacks": {
+    "default": [
+      { "model_id": "openai/gpt-4o" },
+      { "model_id": "anthropic/claude-3.5-sonnet" },
+      { "model_id": "google/gemini-2.5-pro" }
+    ]
+  }
+}
+```
+
+### OpenRouter-Specific Features
+
+#### Provider Routing Preferences
+Request specific providers or enable automatic fallback:
+
+```json
+{
+  "model_overrides": {
+    "claude-sonnet": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "extra_body": {
+        "provider": {
+          "order": ["Anthropic", "AWS"],
+          "allow_fallbacks": true
+        }
+      }
+    }
+  }
+}
+```
+
+**Routing options:**
+- `order`: Priority list of providers to try
+- `allow_fallbacks`: Whether to try other providers if primary is down
+- `ignore`: Providers to exclude from routing
+
+#### How OpenRouter Model Catalog Works
+
+OpenRouter models are resolved dynamically from the catalog system:
+
+1. **Catalog Location:** `~/.config/routatic-proxy/catalog/catalog.json`
+2. **Resolution:** Models are keyed as `provider/model-name` (e.g., `openai/gpt-4o`, `anthropic/claude-3.5-sonnet`)
+3. **Dynamic Loading:** New models are automatically available when the catalog is updated — no code changes required
+
+#### Model Resolution from Catalog
+
+The catalog system extracts the provider from the key prefix:
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "enabled": true
+    }
+  },
+  "models": {
+    "openrouter/anthropic/claude-3.5-sonnet": {
+      "id": "openrouter/anthropic/claude-3.5-sonnet",
+      "name": "Claude 3.5 Sonnet",
+      "limit": { "context": 200000 },
+      "rates": { "input": 3.0, "output": 15.0 },
+      "tool_call": true,
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "reasoning": false
+    }
+  }
+}
+```
+
+- `ResolvedModel.ModelID`: The model name without provider prefix (`anthropic/claude-3.5-sonnet`)
+- `ResolvedModel.CanonicalName`: The full key (`openrouter/anthropic/claude-3.5-sonnet`)
+
+### Benefits Summary
+
+1. **Access to 100+ Models:** Single API key for OpenAI, Anthropic, Google, Meta, Mistral, and more
+2. **Unified API:** OpenAI-compatible Chat Completions format for all models
+3. **Automatic Fallbacks:** Built-in fallback to alternative providers if a model is unavailable
+4. **Cost Optimization:** Per-token pricing with routing preferences for cost efficiency
+5. **No Vendor Lock-in:** Switch between providers by changing the model ID
+
 ## Important: API Endpoints
 
 ⚠️ **Critical:** Not all models use the same API endpoint! routatic-proxy handles this automatically, but you should know:

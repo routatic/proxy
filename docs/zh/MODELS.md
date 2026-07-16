@@ -97,6 +97,63 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 - **Gemini 模型（Gemini 端点）：** gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash
 - **免费层（chat completions）：** deepseek-v4-pro, deepseek-v4-flash-free, grok-build-0.1, big-pickle, mimo-v2.5-free, north-mini-code-free, nemotron-3-ultra-free
 
+#### 已弃用的 Zen 模型
+
+以下模型已弃用，将被移除：
+
+| 模型 | 弃用日期 | 替代模型 |
+|------|----------|----------|
+| GPT 5.2 Codex | 2026年7月23日 | GPT 5.3 Codex |
+| GPT 5.1 Codex | 2026年7月23日 | GPT 5.3 Codex |
+| GPT 5.1 Codex Max | 2026年7月23日 | GPT 5.3 Codex |
+| GPT 5.1 Codex Mini | 2026年7月23日 | GPT 5.3 Codex Spark |
+| GPT 5 Codex | 2026年7月23日 | GPT 5.3 Codex |
+| Claude Sonnet 4 | 2026年6月15日 | Claude Sonnet 4.5/4.6 |
+| GLM 5 | 2026年5月14日 | GLM 5.1/5.2 |
+| MiniMax M2.1 | 2026年3月15日 | MiniMax M2.5/M2.7/M3 |
+| GLM 4.7 | 2026年3月15日 | GLM 5/5.1/5.2 |
+| GLM 4.6 | 2026年3月15日 | GLM 5/5.1/5.2 |
+| Gemini 3 Pro | 2026年3月9日 | Gemini 3.1 Pro |
+| Kimi K2 Thinking | 2026年3月6日 | Kimi K2.5/K2.6/K2.7 Code |
+| Kimi K2 | 2026年3月6日 | Kimi K2.5/K2.6/K2.7 Code |
+| Claude Haiku 3.5 | 2026年2月16日 | Claude Haiku 4.5 |
+| Qwen3 Coder 480B | 2026年2月6日 | Qwen3.7 Plus/Max |
+
+DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。DeepSeek V4 Flash Free 是免费的 Zen 变体。routatic-proxy 将 Claude Code 的 Anthropic 请求转换为 OpenAI Chat Completions 格式，包括工具、工具结果、思考历史、`reasoning_effort` 和 `thinking`。
+
+对于 Claude Code 和 OpenCode 风格的代理工作流，DeepSeek V4 支持最大思考模式：
+
+```json
+{
+  "model_id": "deepseek-v4-pro",
+  "reasoning_effort": "max",
+  "thinking": {
+    "type": "enabled"
+  }
+}
+```
+
+使用 `deepseek-v4-pro` 用于默认、复杂、思考和长上下文路由。使用 `deepseek-v4-flash` 用于快速、后台或子代理风格的工作负载。
+
+要通过 Zen（免费层）而不是 Go（付费）路由 DeepSeek V4 Pro，添加一个 `model_overrides` 条目：
+
+```json
+{
+  "model_overrides": {
+    "deepseek-v4-pro": {
+      "provider": "opencode-zen",
+      "model_id": "deepseek-v4-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    }
+  }
+}
+```
+
 ## 注重成本的路由策略
 
 ### 默认便宜，必要时升级
@@ -197,6 +254,18 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
   - 多文件上下文
 - **何时使用：** 当你需要 1M 上下文但想最小化成本时
 
+#### MiniMax M3 —— 最新 MiniMax，1M 上下文
+
+- **模型 ID：** `minimax-m3`
+- **端点：** **Anthropic 兼容**（Go 上 `/v1/messages`），**OpenAI 兼容**（Zen 上 `/chat/completions`）
+- **上下文：** **~1M tokens**
+- **质量：** ★★★☆☆
+- **最适合：**
+  - 需要比 M2.5 更好质量的长上下文任务
+  - 大型代码库分析
+  - 文档处理
+- **何时使用：** 当你需要 1M 上下文且想要比 M2.5 更好的质量时
+
 ### 平衡模型（质量 + 成本）
 
 #### DeepSeek V4 Pro —— 代理编码 + 最大思考
@@ -212,6 +281,116 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
   - 架构和重构
   - 长上下文编码任务
   - 最大思考模式
+- **推荐配置（Go）：**
+
+  ```json
+  {
+    "provider": "opencode-go",
+    "model_id": "deepseek-v4-pro",
+    "temperature": 0.1,
+    "max_tokens": 8192,
+    "reasoning_effort": "max",
+    "thinking": {
+      "type": "enabled"
+    }
+  }
+  ```
+
+- **推荐配置（Zen 免费层）：**
+
+  ```json
+  {
+    "provider": "opencode-zen",
+    "model_id": "deepseek-v4-pro",
+    "temperature": 0.1,
+    "max_tokens": 8192,
+    "reasoning_effort": "max",
+    "thinking": {
+      "type": "enabled"
+    }
+  }
+  ```
+
+#### DeepSeek V4 Flash —— 快速代理工作负载
+
+- **模型 ID：** `deepseek-v4-flash`
+- **端点：** **OpenAI 兼容**（`/chat/completions`）
+- **上下文：** **~1M tokens**
+- **质量：** ★★★★☆
+- **最适合：**
+  - 快速路由
+  - 后台任务
+  - 子代理风格工作
+  - DeepSeek V4 Pro 的降级备选
+- **推荐配置：**
+
+  ```json
+  {
+    "provider": "opencode-go",
+    "model_id": "deepseek-v4-flash",
+    "temperature": 0.1,
+    "max_tokens": 4096,
+    "reasoning_effort": "max",
+    "thinking": {
+      "type": "enabled"
+    }
+  }
+  ```
+
+#### Qwen3.6 Plus —— 经济高效的通用编码 ⭐ 推荐默认
+
+- **模型 ID：** `qwen3.6-plus`
+- **端点：** **Anthropic 兼容**（`/v1/messages` —— Go），**Anthropic 兼容**（`/v1/messages` —— Zen）
+- **成本：** **每 $12 3,300 次请求**（比 GLM-5.1 多 3.8 倍！）
+- **上下文：** ~128K tokens
+- **质量：** ★★★☆☆（对大多数任务足够好）
+- **速度：** 快
+- **最适合：**
+  - 通用编码（默认选择）
+  - 功能实现
+  - Bug 修复
+  - 重构
+- **何时使用：** 注重成本用户的默认选择
+
+#### Qwen3.7 Plus —— 升级版通用编码
+
+- **模型 ID：** `qwen3.7-plus`
+- **端点：** **Anthropic 兼容**（`/v1/messages`）
+- **成本：** **每 $12 4,300 次请求**
+- **上下文：** ~128K tokens
+- **质量：** ★★★★☆
+- **速度：** 快
+- **最适合：**
+  - 比 Qwen3.6 质量更好的通用编码
+  - 功能实现
+  - Bug 修复
+- **何时使用：** 当你想要比 Qwen3.6 更好的质量且速度相近时
+
+#### Qwen3.7 Max —— 最大质量 Qwen
+
+- **模型 ID：** `qwen3.7-max`
+- **端点：** **Anthropic 兼容**（`/v1/messages`）
+- **成本：** **每 $12 950 次请求**
+- **上下文：** ~128K tokens
+- **质量：** ★★★★☆
+- **最适合：**
+  - 复杂编码任务
+  - 当 Qwen3.7 Plus 不够时
+- **何时使用：** 当你需要 Qwen 的最佳质量时
+
+#### Kimi K2.5 —— 质量 + 合理成本（前代）
+
+- **模型 ID：** `kimi-k2.5`
+- **成本：** **每 $12 1,850 次请求**
+- **上下文：** ~256K tokens（是大多数模型的两倍）
+- **质量：** ★★★★☆（优秀）
+- **速度：** 快
+- **最适合：**
+  - 复杂编码任务
+  - 代码审查
+  - 架构讨论
+  - 当你需要比预算模型更好的质量时
+- **何时使用：** 当质量比最大成本节省更重要时
 
 #### Kimi K2.6 —— 平衡成本下的最佳质量
 
@@ -229,6 +408,19 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 
 ### 高级模型（谨慎使用！）
 
+#### GLM-5 —— 推理专家
+
+- **模型 ID：** `glm-5`
+- **成本：** **每 $12 1,150 次请求**（比 Qwen3.5 Plus 贵 9 倍！）
+- **上下文：** ~200K tokens
+- **质量：** ★★★★☆（优秀）
+- **最适合：**
+  - 多步推理
+  - 复杂规划
+  - 算法设计
+  - 困难调试
+- **何时使用：** 当需要推理/规划且预算模型失败时
+
 #### GLM-5.1 —— 最高质量
 
 - **模型 ID：** `glm-5.1`
@@ -242,6 +434,20 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
   - 生产代码审查
   - 当你需要绝对最佳质量时
 - **何时使用：** 只有当便宜模型无法处理任务时
+
+#### GLM-5.2 —— 最新高级模型
+
+- **模型 ID：** `glm-5.2`
+- **成本：** **每 $12 880 次请求**（与 GLM-5.1 相同）
+- **上下文：** ~200K tokens
+- **质量：** ★★★★★（最佳）
+- **速度：** 中等
+- **最适合：**
+  - 相比 5.1 有改进的最新 GLM 模型
+  - 关键架构决策
+  - 复杂多文件重构
+  - 生产代码审查
+- **何时使用：** 使用此模型替代 GLM-5.1 以获得最新改进
 
 #### Kimi K2.7 Code —— 代码专家
 
@@ -278,6 +484,47 @@ OpenCode Go 限制：
 | GLM-5 | ~$52 | ❌ 超过限制 |
 | GLM-5.1 | ~$68 | ❌ 超过限制 |
 
+### 优化你的使用
+
+**策略 1：分层方法**
+
+```
+1. 从 Qwen3.6 Plus 开始（便宜，质量好）
+2. 如果失败，尝试 Kimi K2.5（质量更好）
+3. 如果仍然失败，使用 GLM-5（推理）
+4. 仅用于关键任务：GLM-5.1（高级）
+```
+
+**策略 2：基于任务的选择**
+
+```
+后台操作（grep、ls、cat）→ Qwen3.5 Plus
+通用编码 → Qwen3.6 Plus 或 Kimi K2.5
+复杂功能 → Kimi K2.5
+架构/规划 → GLM-5
+关键审查 → GLM-5.1（很少）
+```
+
+## 成本效率降级链
+
+```json
+{
+  "fallbacks": {
+    "background": [
+      { "model_id": "qwen3.6-plus" },
+      { "model_id": "minimax-m2.5" }
+    ],
+    "long_context": [{ "model_id": "minimax-m2.7" }],
+    "default": [{ "model_id": "mimo-v2.5-pro" }, { "model_id": "qwen3.6-plus" }],
+    "think": [{ "model_id": "kimi-k2.6" }],
+    "complex": [{ "model_id": "glm-5" }],
+    "fast": [{ "model_id": "qwen3.5-plus" }, { "model_id": "minimax-m2.5" }]
+  }
+}
+```
+
+**经验法则：** 如果任务用便宜模型就能成功，就不需要昂贵的模型。仅在必要时降级到昂贵模型。
+
 ## 快速参考
 
 | 任务类型 | 推荐 | 成本（请求/$12） | 降级 |
@@ -299,3 +546,9 @@ OpenCode Go 限制：
 4. **长上下文使用 MiniMax M2.5** — 6,300 请求/$12 加 1M 上下文性价比惊人
 5. **非关键任务使用 Zen 免费层模型** — deepseek-v4-pro、grok-build-0.1、big-pickle 等 $0
 6. **在 [OpenCode 控制台](https://opencode.ai/auth) 监控使用量**
+
+## 另请参阅
+
+- [OpenCode Go 文档](https://opencode.ai/docs/go/)
+- [routatic-proxy 配置](../configs/config.example.json)
+- [README.md](../README.md) 获取设置说明

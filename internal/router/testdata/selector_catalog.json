@@ -1,0 +1,156 @@
+{
+  "providers": {
+    "opencode-go": {
+      "name": "opencode-go",
+      "base_url": "https://go.opencode.ai/v1",
+      "api_key": "go-key",
+      "enabled": true
+    },
+    "openrouter": {
+      "name": "openrouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "or-key",
+      "enabled": true
+    },
+    "disabled-provider": {
+      "name": "disabled-provider",
+      "base_url": "https://disabled.example/v1",
+      "api_key": "disabled-key",
+      "enabled": false
+    }
+  },
+  "models": {
+    "opencode-go/cheap-no-tools": {
+      "id": "opencode-go/cheap-no-tools",
+      "name": "Cheap No Tools",
+      "reasoning": false,
+      "tool_call": false,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.5, "output": 1.5 }
+    },
+    "opencode-go/cheap-tools": {
+      "id": "opencode-go/cheap-tools",
+      "name": "Cheap Tools",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.5, "output": 1.5 }
+    },
+    "openrouter/vision-model": {
+      "id": "openrouter/vision-model",
+      "name": "Vision Model",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "limit": { "context": 256000, "output": 8192 },
+      "rates": { "input": 3.0, "output": 5.0 }
+    },
+    "openrouter/reasoning-model": {
+      "id": "openrouter/reasoning-model",
+      "name": "Reasoning Model",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 200000, "output": 8192 },
+      "rates": { "input": 2.0, "output": 6.0 }
+    },
+    "opencode-go/large-context": {
+      "id": "opencode-go/large-context",
+      "name": "Large Context",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 1000000, "output": 32768 },
+      "rates": { "input": 1.0, "output": 2.0 }
+    },
+    "openrouter/large-context": {
+      "id": "openrouter/large-context",
+      "name": "Large Context",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 1000000, "output": 32768 },
+      "rates": { "input": 1.0, "output": 2.0 }
+    },
+    "opencode-go/tie-small-context": {
+      "id": "opencode-go/tie-small-context",
+      "name": "Tie Small Context",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.5, "output": 1.5 }
+    },
+    "disabled-provider/only-disabled": {
+      "id": "disabled-provider/only-disabled",
+      "name": "Only Disabled",
+      "reasoning": false,
+      "tool_call": false,
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "limit": { "context": 128000, "output": 4096 },
+      "rates": { "input": 0.1, "output": 0.1 }
+    }
+  },
+  "scenarios": {
+    "default": {
+      "name": "default",
+      "description": "Default scenario with no special requirements",
+      "min_context_window": 0
+    },
+    "tools_required": {
+      "name": "tools_required",
+      "description": "Scenario that requires tool support",
+      "requires_tools": true,
+      "min_context_window": 0
+    },
+    "vision_required": {
+      "name": "vision_required",
+      "description": "Scenario that requires vision support",
+      "requires_vision": true,
+      "min_context_window": 0
+    },
+    "reasoning_required": {
+      "name": "reasoning_required",
+      "description": "Scenario that requires reasoning support",
+      "requires_reasoning": true,
+      "min_context_window": 0
+    },
+    "long_context": {
+      "name": "long_context",
+      "description": "Scenario that requires a large context window",
+      "min_context_window": 500000
+    },
+    "preferred_only": {
+      "name": "preferred_only",
+      "description": "Scenario that prefers a specific provider",
+      "preferred_providers": ["openrouter"],
+      "min_context_window": 0
+    },
+    "complex": {
+      "name": "complex",
+      "description": "Complex workload requiring tools and a large context window",
+      "requires_tools": true,
+      "min_context_window": 500000
+    },
+    "vision": {
+      "name": "vision",
+      "description": "Simple vision workload",
+      "requires_vision": true,
+      "min_context_window": 0
+    },
+    "vision_complex": {
+      "name": "vision_complex",
+      "description": "Complex vision workload requiring tools",
+      "requires_vision": true,
+      "requires_tools": true,
+      "min_context_window": 0
+    },
+    "fast": {
+      "name": "fast",
+      "description": "Streaming-optimized workload prioritizing low latency",
+      "min_context_window": 0
+    }
+  }
+}

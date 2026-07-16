@@ -47,6 +47,7 @@ type MessagesHandler struct {
 	metrics             *metrics.Metrics
 	captureLogger       *debug.CaptureLogger
 	history             *history.History // optional: nil means no GUI history
+	storage             StorageWriter    // optional: SQLite persistence for requests/latency
 }
 
 // responseWriter wraps http.ResponseWriter to track if headers were written.
@@ -58,8 +59,8 @@ type responseWriter struct {
 	mu                sync.Mutex
 	wroteHeader       bool
 	ssePayloadWritten bool
-	// usage tracks token usage from message_delta events for logging
-	usage struct {
+	contentWritten    bool
+	usage             struct {
 		inputTokens              int
 		outputTokens             int
 		cacheReadInputTokens     int
@@ -85,8 +86,8 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	}
 	if len(b) > 0 {
 		w.ssePayloadWritten = true
-		// Extract usage from message_delta events
 		w.extractUsageFromSSE(b)
+		w.detectContentInSSE(b)
 	}
 	return w.ResponseWriter.Write(b)
 }
@@ -126,6 +127,47 @@ func (w *responseWriter) extractUsageFromSSE(b []byte) {
 			w.usage.cacheCreationInputTokens = val
 		}
 	}
+
+	// OpenAI-compatible usage keys (used by Bedrock Mantle and direct OpenAI streams)
+	if idx := strings.Index(data, `"prompt_tokens":`); idx != -1 {
+		if val, err := parseIntAfter(data, idx+len(`"prompt_tokens":`)); err == nil {
+			// Only set if not already set by Anthropic keys to avoid overwriting
+			if w.usage.inputTokens == 0 {
+				w.usage.inputTokens = val
+			}
+		}
+	}
+	if idx := strings.Index(data, `"completion_tokens":`); idx != -1 {
+		if val, err := parseIntAfter(data, idx+len(`"completion_tokens":`)); err == nil {
+			if w.usage.outputTokens == 0 {
+				w.usage.outputTokens = val
+			}
+		}
+	}
+}
+
+func (w *responseWriter) detectContentInSSE(b []byte) {
+	data := string(b)
+	if strings.Contains(data, `"content_block_start"`) ||
+		strings.Contains(data, `"content_block_delta"`) ||
+		strings.Contains(data, `"text_delta"`) ||
+		strings.Contains(data, `"content":"`) ||
+		strings.Contains(data, `"tool_use"`) ||
+		strings.Contains(data, `"thinking_delta"`) {
+		w.contentWritten = true
+	}
+}
+
+func (w *responseWriter) hasContent() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.contentWritten
+}
+
+func (w *responseWriter) getOutputTokens() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.usage.outputTokens
 }
 
 // parseIntAfter parses an integer value starting at the given position in the string.
@@ -161,6 +203,24 @@ func parseIntAfter(s string, start int) (int, error) {
 		return 0, fmt.Errorf("no digits found")
 	}
 	return sign * val, nil
+}
+
+// isLowValueResponse decides whether a completed stream should be treated as a
+// failure and trigger fallback. Currently this applies to long_context and
+// complex scenarios when the model produced very little output.
+func isLowValueResponse(scenario router.Scenario, outputTokens int, hasContent bool) bool {
+	if outputTokens >= 64 {
+		return false
+	}
+	if hasContent {
+		return false
+	}
+	switch scenario {
+	case router.ScenarioLongContext, router.ScenarioComplex:
+		return true
+	default:
+		return false
+	}
 }
 
 // headerWritten returns true if headers have been written to the response.
@@ -266,6 +326,7 @@ func NewMessagesHandler(
 	metrics *metrics.Metrics,
 	captureLogger *debug.CaptureLogger,
 	hist *history.History,
+	storage StorageWriter,
 ) *MessagesHandler {
 	return &MessagesHandler{
 		client:              openCodeClient,
@@ -284,6 +345,7 @@ func NewMessagesHandler(
 		metrics:             metrics,
 		captureLogger:       captureLogger,
 		history:             hist,
+		storage:             storage,
 	}
 }
 
@@ -401,7 +463,13 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	needsTools := len(anthropicReq.Tools) > 0
 	modelChain, routeResult, err := h.buildModelChain(anthropicReq.Model, routerMessages, tokenCount, isStreaming, anthropicReq.MaxTokens, facts.NeedsVision, needsTools)
 	if err != nil {
-		h.sendError(w, http.StatusInternalServerError, "routing failed", err)
+		status := http.StatusInternalServerError
+		message := "routing failed"
+		if errors.Is(err, router.ErrUnknownProvider) {
+			status = http.StatusBadRequest
+			message = err.Error()
+		}
+		h.sendError(w, status, message, err)
 		return
 	}
 
@@ -422,9 +490,9 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	if isStreaming {
-		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario)
+		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	} else {
-		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario)
+		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	}
 }
 
@@ -433,8 +501,10 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 // respecting the streaming-scenario-routing toggle.
 //
 // Precedence:
-//  1. If requestedModel matches an entry in model_overrides, use that as the
-//     primary and append the scenario chain as a deduplicated safety net.
+//  1. If requestedModel matches an entry in model_overrides (exact) or
+//     model_family_overrides (family keyword substring, e.g. "opus"), use that
+//     as the primary and append the scenario chain as a deduplicated safety net.
+//     Exact overrides win over family matches.
 //  2. Otherwise, fall through to scenario-based routing via routeOnce.
 func (h *MessagesHandler) buildModelChain(
 	requestedModel string,
@@ -449,7 +519,11 @@ func (h *MessagesHandler) buildModelChain(
 	var result router.RouteResult
 
 	if requestedModel != "" {
-		if overrideResult, ok := h.modelRouter.RouteWithOverride(requestedModel); ok {
+		overrideResult, ok := h.modelRouter.RouteWithOverride(requestedModel)
+		if !ok {
+			overrideResult, ok = h.modelRouter.RouteWithFamilyOverride(requestedModel)
+		}
+		if ok {
 			scenarioResult, err := h.routeOnce(routerMessages, tokenCount, "", isStreaming)
 			if err != nil {
 				return overrideResult.GetModelChain(), overrideResult, err
@@ -527,6 +601,7 @@ func (h *MessagesHandler) handleStreaming(
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
 	scenario router.Scenario,
+	requestID string,
 ) {
 	clientCtx := r.Context()
 
@@ -583,18 +658,29 @@ func (h *MessagesHandler) handleStreaming(
 				"cache_read_input_tokens", rw.usage.cacheReadInputTokens,
 				"cache_creation_input_tokens", rw.usage.cacheCreationInputTokens,
 			)
+			rec := history.RequestRecord{
+				ID:           requestID,
+				Model:        model.ModelID,
+				Provider:     model.Provider,
+				Scenario:     string(scenario),
+				StartTime:    streamStart,
+				Duration:     latency,
+				InputTokens:  rw.usage.inputTokens,
+				OutputTokens: rw.usage.outputTokens,
+				Streaming:    true,
+				Success:      true,
+				Attempt:      1, // streaming fallback attempts not yet tracked in record; treat as primary
+			}
 			if h.history != nil {
-				h.history.Add(history.RequestRecord{
-					Model:        model.ModelID,
-					Provider:     model.Provider,
-					Scenario:     string(scenario),
-					StartTime:    streamStart,
-					Duration:     latency,
-					InputTokens:  rw.usage.inputTokens,
-					OutputTokens: rw.usage.outputTokens,
-					Streaming:    true,
-					Success:      true,
-				})
+				h.history.Add(rec)
+			}
+			if h.storage != nil {
+				if err := h.storage.InsertRequest(rec); err != nil {
+					h.logger.Warn("failed to insert request into storage", "error", err)
+				}
+				if err := h.storage.InsertLatency(model.ModelID, latency); err != nil {
+					h.logger.Warn("failed to insert latency sample into storage", "error", err)
+				}
 			}
 		}
 
@@ -613,7 +699,17 @@ func (h *MessagesHandler) handleStreaming(
 					"model", model.ModelID, "idle_timeout", idleTimeout)
 				if rw.ssePayloadWritten {
 					h.sendStreamError(rw, "stream idle after SSE payload started")
-					h.metrics.RecordFailure()
+					h.metrics.RecordFailureForModel(model.ModelID)
+					return false // abort
+				}
+				return true // continue to next model
+			}
+			if err == transformer.ErrEmptyStream {
+				h.logger.Warn("upstream "+action+" stream empty, trying next model",
+					"model", model.ModelID)
+				if rw.ssePayloadWritten {
+					h.sendStreamError(rw, "empty stream after SSE payload started")
+					h.metrics.RecordFailureForModel(model.ModelID)
 					return false // abort
 				}
 				return true // continue to next model
@@ -621,7 +717,7 @@ func (h *MessagesHandler) handleStreaming(
 			h.logger.Warn(action+" streaming failed", "model", model.ModelID, "error", err)
 			if rw.ssePayloadWritten {
 				h.sendStreamError(rw, "all upstream models failed after SSE payload started")
-				h.metrics.RecordFailure()
+				h.metrics.RecordFailureForModel(model.ModelID)
 				return false // abort — cannot fallback after SSE payload started
 			}
 			return true // continue to next model
@@ -629,7 +725,7 @@ func (h *MessagesHandler) handleStreaming(
 
 		// Try new provider-based dispatch first.
 		if h.providerRegistry != nil {
-			if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+			if prov, ok := h.providerRegistry.Get(client.Provider(model)); ok {
 				caps, ok := prov.ModelCapabilities(model.ModelID)
 				if !ok || !caps.SupportsStreaming {
 					h.logger.Warn("model does not support streaming", "model", model.ModelID, "provider", model.Provider)
@@ -671,6 +767,16 @@ func (h *MessagesHandler) handleStreaming(
 						errProxy = fmt.Errorf("streaming timeout (%v) exceeded", timeout)
 					}
 					if !handleStreamError(errProxy, model, wireFormat.String()) {
+						return
+					}
+					continue
+				}
+
+				if isLowValueResponse(scenario, rw.getOutputTokens(), rw.hasContent()) {
+					h.logger.Warn("upstream returned low-value response, triggering fallback",
+						"model", model.ModelID, "provider", model.Provider,
+						"scenario", scenario, "output_tokens", rw.getOutputTokens())
+					if !handleStreamError(transformer.ErrEmptyStream, model, wireFormat.String()) {
 						return
 					}
 					continue
@@ -1062,6 +1168,7 @@ func (h *MessagesHandler) handleNonStreaming(
 	modelChain []config.ModelConfig,
 	rawBody json.RawMessage,
 	scenario router.Scenario,
+	requestID string,
 ) {
 	ctx := r.Context()
 	startTime := time.Now()
@@ -1076,7 +1183,7 @@ func (h *MessagesHandler) handleNonStreaming(
 
 			// Try new provider-based dispatch first.
 			if h.providerRegistry != nil {
-				if prov, ok := h.providerRegistry.Get(model.Provider); ok {
+				if prov, ok := h.providerRegistry.Get(client.Provider(model)); ok {
 					execResult, execErr := prov.Execute(attemptCtx, normalizedReq, model)
 					if execErr != nil {
 						return nil, execErr
@@ -1120,7 +1227,7 @@ func (h *MessagesHandler) handleNonStreaming(
 			h.logger.Info("request context canceled during non-streaming fallback", "error", err)
 			return
 		}
-		h.metrics.RecordFailure()
+		h.metrics.RecordFailureForModel(result.ModelID)
 		h.sendError(w, http.StatusBadGateway, "all models failed", err)
 		return
 	}
@@ -1149,18 +1256,29 @@ func (h *MessagesHandler) handleNonStreaming(
 		outputTokens = msgResp.Usage.OutputTokens
 	}
 
+	rec := history.RequestRecord{
+		ID:           requestID,
+		Model:        result.ModelID,
+		Provider:     provider,
+		Scenario:     string(scenario),
+		StartTime:    startTime,
+		Duration:     latency,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		Streaming:    false,
+		Success:      true,
+		Attempt:      result.Attempted,
+	}
 	if h.history != nil {
-		h.history.Add(history.RequestRecord{
-			Model:        result.ModelID,
-			Provider:     provider,
-			Scenario:     string(scenario),
-			StartTime:    startTime,
-			Duration:     latency,
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
-			Streaming:    false,
-			Success:      true,
-		})
+		h.history.Add(rec)
+	}
+	if h.storage != nil {
+		if err := h.storage.InsertRequest(rec); err != nil {
+			h.logger.Warn("failed to insert request into storage", "error", err)
+		}
+		if err := h.storage.InsertLatency(result.ModelID, latency); err != nil {
+			h.logger.Warn("failed to insert latency sample into storage", "error", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

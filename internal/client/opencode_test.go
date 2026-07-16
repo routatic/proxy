@@ -1,10 +1,15 @@
 package client
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/pkg/types"
 )
 
 func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
@@ -841,6 +846,161 @@ func TestGetProviderAPIKeys_ProviderKeysPrecedence(t *testing.T) {
 	want := []string{"go-specific-key"}
 	if len(got) != len(want) || got[0] != want[0] {
 		t.Errorf("getProviderAPIKeys() = %v, want %v (provider keys should take precedence)", got, want)
+	}
+}
+
+func TestOpenRouterKeys(t *testing.T) {
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			APIKey: "openrouter-specific-key",
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter-model"}
+	got := c.getProviderAPIKeys(model)
+
+	want := []string{"openrouter-specific-key"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("getProviderAPIKeys() = %v, want %v", got, want)
+	}
+}
+
+func TestOpenRouterEndpoint(t *testing.T) {
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			BaseURL: "https://openrouter.ai/api/v1",
+			APIKey:  "openrouter-key",
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter-model"}
+	endpoint := c.getEndpoint("openrouter-model", model)
+
+	if endpoint.BaseURL != cfg.OpenRouter.BaseURL {
+		t.Errorf("getEndpoint BaseURL = %q, want %q", endpoint.BaseURL, cfg.OpenRouter.BaseURL)
+	}
+	if endpoint.APIKey != cfg.OpenRouter.APIKey {
+		t.Errorf("getEndpoint APIKey = %q, want %q", endpoint.APIKey, cfg.OpenRouter.APIKey)
+	}
+}
+
+func TestOpenRouterTimeout(t *testing.T) {
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			TimeoutMs:          120000,
+			StreamTimeoutMs:    180000,
+			StreamingTimeoutMs: 240000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter-model"}
+
+	if got := c.RequestTimeout(model); got != 120*time.Second {
+		t.Errorf("RequestTimeout = %v, want 120s", got)
+	}
+	if got := c.StreamIdleTimeout(model); got != 180*time.Second {
+		t.Errorf("StreamIdleTimeout = %v, want 180s", got)
+	}
+	if got := c.StreamingTimeout(model); got != 240*time.Second {
+		t.Errorf("StreamingTimeout = %v, want 240s", got)
+	}
+}
+
+func TestOpenRouterChatCompletion_UsesBearerAuth(t *testing.T) {
+	var gotURL string
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp-1","object":"chat.completion","created":1,"model":"openrouter/model","choices":[],"usage":{}}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			BaseURL: ts.URL,
+			APIKey:  "openrouter-key",
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter/model"}
+	req := &types.ChatCompletionRequest{
+		Model:    "openrouter/model",
+		Messages: []types.ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	}
+	_, err := c.ChatCompletionNonStreaming(context.Background(), "openrouter/model", req, model)
+	if err != nil {
+		t.Fatalf("ChatCompletionNonStreaming() error = %v", err)
+	}
+
+	if gotURL != "/" {
+		t.Errorf("request URL = %q, want %q", gotURL, "/")
+	}
+	if gotAuth != "Bearer openrouter-key" {
+		t.Errorf("Authorization header = %q, want %q", gotAuth, "Bearer openrouter-key")
+	}
+}
+
+func TestOpenRouterChatCompletion_UsesOpenRouterBaseURL(t *testing.T) {
+	var gotURL string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp-2","object":"chat.completion","created":2,"model":"openrouter/model","choices":[],"usage":{}}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			BaseURL: ts.URL,
+			APIKey:  "openrouter-key",
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter/model"}
+	req := &types.ChatCompletionRequest{
+		Model:    "openrouter/model",
+		Messages: []types.ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	}
+	_, err := c.ChatCompletionNonStreaming(context.Background(), "openrouter/model", req, model)
+	if err != nil {
+		t.Fatalf("ChatCompletionNonStreaming() error = %v", err)
+	}
+
+	if gotURL != "/" {
+		t.Errorf("request URL = %q, want %q", gotURL, "/")
+	}
+}
+
+func TestOpenRouterTimeout_FallsBackToTimeoutMs(t *testing.T) {
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			TimeoutMs:          120000,
+			StreamTimeoutMs:    0,
+			StreamingTimeoutMs: 0,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter-model"}
+
+	if got := c.StreamIdleTimeout(model); got != 120*time.Second {
+		t.Errorf("StreamIdleTimeout = %v, want 120s", got)
+	}
+	if got := c.StreamingTimeout(model); got != 120*time.Second {
+		t.Errorf("StreamingTimeout = %v, want 120s", got)
 	}
 }
 

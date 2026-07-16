@@ -21,6 +21,16 @@ For migration, `~/.config/oc-go-cc/config.json` is loaded when the new config fi
     "base_url": "https://api.anthropic.com"
   },
 
+  "enable_cost_based_routing": false,
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["opencode-go", "aws-bedrock"],
+    "max_context_window": 1000000,
+    "penalty_per_provider": {
+      "openrouter": 0.05
+    }
+  },
+
   "models": {
     "default": {
       "provider": "opencode-go",
@@ -201,6 +211,218 @@ routatic-proxy supports three providers for upstream API calls:
 
 Set `wire_format: "anthropic"` for models that need raw Anthropic Messages format (e.g., Claude on Bedrock). Requires `anthropic_base_url` to be configured.
 
+### OpenRouter (`openrouter`)
+
+- Unified API for accessing 200+ models from multiple providers (OpenAI, Anthropic, Google, Meta, Mistral, and more)
+- Uses OpenAI Chat Completions API format
+- Pay-as-you-go pricing with competitive rates
+- Set `"provider": "openrouter"` in your model config to use OpenRouter
+
+#### Configuration Schema
+
+```json
+{
+  "openrouter": {
+    "name": "openrouter",
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key": "${OPENROUTER_API_KEY}",
+    "api_keys": ["${OPENROUTER_KEY_1}", "${OPENROUTER_KEY_2}"],
+    "enabled": true,
+    "timeout_ms": 300000,
+    "stream_timeout_ms": 60000
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | No | Provider display name (defaults to "openrouter") |
+| `base_url` | `string` | No | API endpoint base URL. Default: `https://openrouter.ai/api/v1` |
+| `api_key` | `string` | Yes* | Single API key for authentication. Required if `api_keys` not set |
+| `api_keys` | `string[]` | Yes* | Multiple API keys for round-robin rotation. Required if `api_key` not set |
+| `enabled` | `bool` | No | Whether this provider is active. Default: `true` |
+| `timeout_ms` | `int` | No | Request timeout in milliseconds. Default: `300000` (5 minutes) |
+| `stream_timeout_ms` | `int` | No | Per-chunk timeout during streaming. Default: `60000` (1 minute) |
+
+*At least one of `api_key` or `api_keys` must be configured.
+
+#### Environment Variable Overrides
+
+| Variable | Description | Precedence |
+|----------|-------------|------------|
+| `ROUTATIC_PROXY_OPENROUTER_API_KEY` | Single API key override | Highest |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEYS` | Comma-separated keys for round-robin | Highest |
+| `ROUTATIC_PROXY_OPENROUTER_BASE_URL` | Custom base URL override | Highest |
+
+Environment variables take precedence over config file values. Config values support `${VAR}` interpolation.
+
+Precedence order: `*_API_KEYS` → `*_API_KEY` → config file `api_keys` → config file `api_key`
+
+#### Example Configurations
+
+**Single-key setup:**
+
+```json
+{
+  "openrouter": {
+    "api_key": "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+**Multi-key round-robin for load balancing:**
+
+```json
+{
+  "openrouter": {
+    "api_keys": [
+      "sk-or-v1-key-1",
+      "sk-or-v1-key-2",
+      "sk-or-v1-key-3"
+    ]
+  }
+}
+```
+
+**Custom base URL (for enterprise/self-hosted):**
+
+```json
+{
+  "openrouter": {
+    "base_url": "https://openrouter.mycompany.com/api/v1",
+    "api_key": "${OPENROUTER_API_KEY}",
+    "enabled": true
+  }
+}
+```
+
+#### Integration with Cost-Based Routing
+
+OpenRouter works seamlessly with `cost_routing`. Use `penalty_per_provider` to adjust effective costs:
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["openrouter", "opencode-go"],
+    "max_context_window": 1000000,
+    "penalty_per_provider": {
+      "openrouter": 0.02,
+      "opencode-go": 0.0,
+      "aws-bedrock": 0.05
+    }
+  }
+}
+```
+
+Penalties are additive to the raw model cost. Example: a model costing $0.10/1M tokens on OpenRouter with a 0.02 penalty has effective cost $0.12/1M tokens. Use this to bias routing preferences without excluding providers entirely.
+
+#### Model Resolution via Catalog
+
+Models are referenced using the `provider/model-name` pattern. OpenRouter models use the `openrouter/` prefix:
+
+```json
+{
+  "model_overrides": {
+    "claude-opus-4": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "gpt-4o": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "gemini-2.5-pro": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-2.5-pro-preview-07-11",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  }
+}
+```
+
+**Discovering models:**
+
+1. Visit [openrouter.ai/models](https://openrouter.ai/models) for the complete model list
+2. Use the `routatic-proxy models` command to see cached catalog entries
+3. Check the [OpenRouter API docs](https://openrouter.ai/docs) for pricing and context limits
+
+The `model_id` in your config must match OpenRouter's model identifier exactly (e.g., `anthropic/claude-opus-4`, `openai/gpt-4o`, `google/gemini-2.5-pro-preview-07-11`).
+
+#### Use Cases
+
+**Accessing specific models:** Use OpenRouter when you need models not available on other providers:
+
+```json
+{
+  "models": {
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max"
+    }
+  }
+}
+```
+
+**Fallback chains:** Include OpenRouter as a fallback when primary providers fail:
+
+```json
+{
+  "fallbacks": {
+    "default": [
+      { "provider": "opencode-go", "model_id": "deepseek-v4-pro" },
+      { "provider": "openrouter", "model_id": "anthropic/claude-sonnet-4.8" },
+      { "provider": "openrouter", "model_id": "openai/gpt-4.1" }
+    ]
+  }
+}
+```
+
+**Cost optimization:** Use `cost_routing` with provider penalties to automatically select the cheapest available model:
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["openrouter"],
+    "penalty_per_provider": {
+      "openrouter": -0.01
+    }
+  }
+}
+```
+
+**Specialized models:** Access niche models for specific tasks:
+
+```json
+{
+  "models": {
+    "think": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-r1-free",
+      "temperature": 0.6,
+      "max_tokens": 8192
+    },
+    "long_context": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-1.5-pro",
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "context_threshold": 80000
+    }
+  }
+}
+```
+
 ## Environment Variables
 
 Environment variables override config file values. Config values also support `${VAR}` interpolation.
@@ -213,6 +435,8 @@ Environment variables override config file values. Config values also support `$
 | `ROUTATIC_PROXY_PORT`         | Proxy listen port                           | `3456`                                           |
 | `ROUTATIC_PROXY_OPENCODE_URL` | OpenCode Go API endpoint                    | `https://opencode.ai/zen/go/v1/chat/completions` |
 | `ROUTATIC_PROXY_OPENCODE_ZEN_URL` | OpenCode Zen API endpoint              | `https://opencode.ai/zen/v1/chat/completions`    |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEY` | OpenRouter single API key           | —                                                |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEYS` | OpenRouter key pool (comma-separated) | —                                             |
 | `ROUTATIC_PROXY_LOG_LEVEL`    | Log level: `debug`, `info`, `warn`, `error` | `info`                                           |
 
 Legacy equivalents such as `OC_GO_CC_API_KEY`, `OC_GO_CC_CONFIG`, and `OC_GO_CC_PORT` continue to work. When both names are set, the `ROUTATIC_PROXY_*` value wins.
@@ -259,6 +483,45 @@ DeepSeek V4 users can set any scenario model to `deepseek-v4-pro` or `deepseek-v
 | **Background**   | File read, directory list, grep patterns                                     | `models.background`   | `qwen3.5-plus` |
 
 Routing priority: **Long Context** > **Think** > **Background** > **Default**
+
+## Cost-Based Routing
+
+When enabled, the proxy uses a catalog of model pricing data to automatically select the cheapest eligible model for each scenario, rather than always using the statically configured primary model.
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["opencode-go", "aws-bedrock"],
+    "max_context_window": 1000000,
+    "penalty_per_provider": {
+      "openrouter": 0.05
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `bool` | Activates cost-aware model selection. Can also be set via the legacy `enable_cost_based_routing` top-level flag. |
+| `prefer_providers` | `string[]` | Restricts candidate providers globally. When set, only models on these providers are considered. Intersected with per-scenario `preferred_providers` when both are set. |
+| `max_context_window` | `int64` | Hard cap on candidate model context window. Models exceeding this size are excluded. `0` (default) means no cap. |
+| `penalty_per_provider` | `map[string]float64` | Per-provider cost penalty added to the effective cost during selection. Use this to bias away from providers without removing them entirely. |
+
+When enabled, `SelectCheapest` resolves all eligible provider/model pairs for the matched scenario, applies the max context window cap, filters by the preferred providers set, and sorts by effective cost (raw cost + penalty). The cheapest candidate wins. This replaces the static `models.<scenario>` primary model.
+
+```json
+{
+  "cost_routing": {
+    "penalty_per_provider": {
+      "opencode-go": 0.1,
+      "openrouter": 0.05
+    }
+  }
+}
+```
+
+Penalties are additive to the raw cost. A model on `opencode-go` with base cost 2.0 and a penalty of 0.1 has effective cost 2.1.
 
 ## Fallback Chains
 
@@ -359,3 +622,87 @@ Recommended setup for Claude Code review workflows:
 ```
 
 Use the `fast` scenario for short/simple requests. Use `complex` or `long_context` for code review, multi-agent dispatch, large diffs, many tools, or long-context Claude Code sessions.
+
+## Claude Code Model Picker
+
+You can select proxy models from Claude Code's `/model` picker in two ways.
+
+### Type any model name (always works)
+
+Claude Code's `/model` picker also accepts a free-form model name. Type any value the proxy understands — a scenario alias (`default`, `fast`, `complex`, …), a `model_overrides` key, or a catalog canonical name like `opencode-go/kimi-k2.6` — and the proxy routes it. No extra configuration is needed; this works regardless of Claude Code version.
+
+### Gateway model discovery (opt-in, adds entries to the picker)
+
+Recent Claude Code versions can auto-populate the picker by querying the proxy's [`GET /v1/models`](docs/reference-api.md#get-v1models) endpoint. When enabled, discovered models appear in `/model` labeled **"From gateway"** alongside the built-in entries (Sonnet, Opus, …).
+
+Enable it by setting, alongside `ANTHROPIC_BASE_URL`:
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+export ANTHROPIC_AUTH_TOKEN=unused
+export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+```
+
+Discovery only runs when all of these hold: `ANTHROPIC_BASE_URL` is set, `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, no `CLAUDE_CODE_USE_*` provider variable is set, the base URL is not `api.anthropic.com`, and the Claude Code version supports it (≥ 2.1.129). Results are cached to `~/.claude/cache/gateway-models.json`.
+
+> **Important — Claude Code filters discovered model IDs.** Claude Code only shows discovered models whose `id` begins with **`claude`** or **`anthropic`**. The proxy's scenario aliases (`default`, `fast`, …) and catalog names (`opencode-go/kimi-k2.6`) are therefore **filtered out of the picker**. To make a proxy model appear via discovery, give it a `claude-*` name — the natural fit is a [`model_overrides`](#model-overrides-model_overrides) key:
+>
+> ```json
+> {
+>   "model_overrides": {
+>     "claude-glm-5.2": { "provider": "opencode-go", "model_id": "glm-5.2" }
+>   }
+> }
+> ```
+>
+> `claude-glm-5.2` then appears in the picker (labeled "From gateway"), and selecting it routes to GLM-5.2. Models with non-`claude`/`anthropic` IDs remain fully usable — just type them into `/model` directly.
+
+## Using with CC-Switch
+
+[CC-Switch](https://github.com/farion1231/cc-switch) is a desktop app for managing and hot-switching Claude Code providers. routatic-proxy works with it out of the box — the proxy speaks the Anthropic API that Claude Code (and therefore CC-Switch) already expects, so you add it like any other custom provider.
+
+### Add routatic-proxy as a custom provider
+
+1. Start the proxy: `routatic-proxy serve` (default listen address `http://127.0.0.1:3456`).
+2. In CC-Switch, click **Add Provider → Custom** and fill in:
+
+   | CC-Switch field | Value |
+   |-----------------|-------|
+   | **Name** | `routatic-proxy` (any label) |
+   | **Endpoint URL** | `http://127.0.0.1:3456` |
+   | **API Key** | any non-empty value (e.g. `unused`) — see note below |
+
+   CC-Switch writes these into Claude Code's config as:
+
+   ```json
+   {
+     "env": {
+       "ANTHROPIC_BASE_URL": "http://127.0.0.1:3456",
+       "ANTHROPIC_AUTH_TOKEN": "unused"
+     }
+   }
+   ```
+
+   These are the exact two environment variables the proxy relies on — the same ones from the manual quickstart in the [README](README.md).
+3. **Enable** the provider. Claude Code hot-reloads it, so no restart is needed.
+
+> **About the API Key field:** the token in `ANTHROPIC_AUTH_TOKEN` is what Claude Code sends to the *proxy*, not what the proxy sends upstream. Your real upstream keys live in the proxy's own config (`opencode_go.api_key`, `openrouter.api_key`, etc.) or environment (`ROUTATIC_PROXY_*`). If you set `api_key` / `api_keys` in the proxy config, that value must match what CC-Switch sends; if you leave proxy auth unset, any non-empty token works.
+
+### Configure specific models
+
+You have two ways to control which model a CC-Switch-selected request runs on:
+
+- **Let Claude Code pick, and honor it** — with `respect_requested_model: true` (the default), the proxy uses whatever model string Claude Code sends, resolving it against your `models` config and the catalog. Set it to `false` to force scenario-based routing regardless of the requested model.
+- **Pin a model alias** — use [`model_overrides`](#model-overrides-model_overrides) to map a client-visible model name to a fixed upstream model. For example, requesting `claude-sonnet-4.5` can be routed to any provider/model you choose.
+
+### CC-Switch "Fetch Models" button
+
+CC-Switch's custom-provider form has a **Fetch Models** button that calls the OpenAI-style `GET /v1/models` endpoint to populate a model dropdown. The proxy implements this endpoint: it returns every model identifier you can request — config `models` aliases, `model_overrides` keys, and catalog canonical names (`provider/model`). See [docs/reference-api.md](docs/reference-api.md#get-v1models).
+
+If the dropdown looks short, it usually means the model catalog has not synced into local storage yet; the scenario aliases (`default`, `fast`, `complex`, …) and any `model_overrides` keys always appear.
+
+### Troubleshooting
+
+- **CC-Switch reports the provider is unreachable** — confirm the proxy is running (`routatic-proxy status`) and the endpoint URL/port match `host`/`port` in your proxy config.
+- **401 / auth errors from the proxy** — the token CC-Switch sends must satisfy the proxy's `api_key` / `api_keys` (or those must be unset). This is proxy-side auth, unrelated to your upstream provider keys.
+- **Wrong model runs** — check routing precedence: `model_overrides` wins, then `respect_requested_model`, then scenario routing. See [Routing precedence](#routing-precedence).

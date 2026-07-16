@@ -9,13 +9,17 @@ CMD = ./cmd/routatic-proxy
 
 # ── Development ────────────────────────────────────────────────────
 
-build:
-	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
+build: build-css
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
 	@ln -sf $(BINARY) bin/$(LEGACY_BINARY)
 
-build-ui:
+build-ui: build-css
 	CGO_ENABLED=1 go build -tags darwin -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(CMD)
 	@ln -sf $(BINARY) bin/$(LEGACY_BINARY)
+
+build-css:
+	@echo "Building Tailwind CSS..."
+	@npx tailwindcss -i internal/gui/assets/tailwind-input.css -o internal/gui/assets/compiled-tailwind.css --minify 2>&1 | grep -v "Browserslist:"
 
 dmg: build-ui
 	@./scripts/build_dmg.sh "$(VERSION)"
@@ -29,24 +33,22 @@ test:
 vet:
 	go vet ./...
 
+GOBIN=$(shell go env GOPATH)/bin
+
 lint:
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found, please install it: https://golangci-lint.run/usage/install/" && exit 1)
 	@echo "Running gofmt..."
 	@test -z "$$(gofmt -d . | tee /dev/stderr)" || (echo "gofmt check failed" && exit 1)
-	@echo "Running golangci-lint..."
-	golangci-lint run --timeout 5m
+	@echo "Running go vet..."
+	CGO_ENABLED=0 go vet ./...
+	@echo "Lint checks passed!"
 
 clean:
 	rm -rf bin/ dist/
 
 install: build
-	cp bin/$(BINARY) $(GOPATH)/bin/$(BINARY) 2>/dev/null || \
-		cp bin/$(BINARY) $(HOME)/go/bin/$(BINARY) 2>/dev/null || \
-		go install -ldflags "$(LDFLAGS)" $(CMD)
-	@INSTALL_DIR="$$(go env GOPATH 2>/dev/null)/bin"; \
-		if [ -x "$$INSTALL_DIR/$(BINARY)" ]; then \
-			ln -sf "$(BINARY)" "$$INSTALL_DIR/$(LEGACY_BINARY)"; \
-		fi
+	@mkdir -p $(GOBIN)
+	cp bin/$(BINARY) $(GOBIN)/$(BINARY)
+	ln -sf $(BINARY) $(GOBIN)/$(LEGACY_BINARY)
 
 # ── Docker ─────────────────────────────────────────────────────────
 

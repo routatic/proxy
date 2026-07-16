@@ -61,6 +61,50 @@ The router analyzes each request and assigns it a scenario. Each scenario maps t
 
 **Streaming override**: when `enable_streaming_scenario_routing` is false (default), streaming requests always route to the `fast` model (Qwen3.6 Plus) for better TTFT.
 
+**Cost-based routing**: when `cost_routing.enabled` (or the legacy `enable_cost_based_routing`) is set, the `Selector` resolves all eligible models from the catalog for the matched scenario, applies the `max_context_window` cap, filters by `prefer_providers`, and sorts by effective cost (raw cost + per-provider penalty). The cheapest candidate becomes the primary model for that request, replacing the static `models.<scenario>` entry. This is implemented in `internal/router/selector.go`.
+
+### Catalog Schema
+
+The catalog (`~/.config/routatic-proxy/catalog/catalog.json`) is downloaded from `models.dev` and uses provider-prefixed model keys:
+
+```json
+{
+  "providers": {
+    "opencode-go": {
+      "name": "opencode-go",
+      "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
+      "enabled": true
+    }
+  },
+  "models": {
+    "opencode-go/kimi-k2.6": {
+      "id": "opencode-go/kimi-k2.6",
+      "name": "Kimi K2.6",
+      "limit": { "context": 256000 },
+      "rates": { "input": 0.5, "output": 1.5 },
+      "tool_call": true,
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "reasoning": false
+    }
+  }
+}
+```
+
+Key fields:
+- `id` — Full model key (`provider/model-name`)
+- `name` — Display name
+- `limit.context` — Context window size (tokens)
+- `rates.input`/`rates.output` — Cost per million tokens
+- `tool_call` — Whether the model supports tool calls
+- `modalities.input` — `["text"]` or `["text", "image"]` for vision support
+- `reasoning` — Whether the model supports reasoning mode
+
+Resolution in `internal/catalog/resolve.go`:
+- `ProviderFromModelKey(key)` extracts the provider prefix
+- `ModelNameFromKey(key)` extracts the model name portion
+- `ResolvedModel.ModelID` contains the model name only (e.g., `kimi-k2.6`)
+- `ResolvedModel.CanonicalName` contains the full key (e.g., `opencode-go/kimi-k2.6`)
+
 ## Request Transformation
 
 Claude Code sends Anthropic Messages API format. The proxy transforms to the provider's native format:

@@ -104,3 +104,24 @@ macOS 用户可以直接下载 `.dmg` 安装包：
 4. 从 Launchpad 或 Applications 文件夹启动 routatic-proxy
 
 安装后，系统托盘图标会自动显示，点击可打开控制台面板。
+
+## 更新
+
+如果你通过 `go install` 或直接下载发布二进制安装，可以使用内置命令自行更新：
+
+```bash
+# 查看是否有新版本可用，不进行任何更改
+routatic-proxy update --check
+
+# 下载、验证校验和并原地替换正在运行的二进制文件
+routatic-proxy update
+
+# 跳过确认提示（在脚本中有用）
+routatic-proxy update --yes
+```
+
+更新程序查询 [routatic/proxy 的 GitHub 发布页面](https://github.com/routatic/proxy/releases)，选择匹配你操作系统/架构的资源，在有 `checksums.txt` 时验证 SHA256，并在替换前将上一个二进制的 `.old` 备份写入运行中的可执行文件旁边。在 Windows 上，`.old` 备份会在进程退出后计划删除，因为在进程退出前运行中的可执行文件被锁定。
+
+`dev` 版本（例如从源码编译且没有版本标签）除非传递 `--force`，否则拒绝更新。
+
+如果你通过 **Homebrew**（`brew upgrade routatic-proxy`）或 **Scoop**（`scoop update routatic-proxy`）安装，建议使用你的包管理器——它跟踪相同的发布，并能干净地处理卸载/重新安装。

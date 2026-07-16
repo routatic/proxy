@@ -18,7 +18,7 @@ const (
 )
 
 func buildAutostartArgs(configPath string, port int) string {
-	args := "serve --background"
+	args := "start --background"
 	if configPath != "" {
 		args += ` --config "` + configPath + `"`
 	}

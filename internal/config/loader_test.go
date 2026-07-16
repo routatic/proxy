@@ -1074,6 +1074,115 @@ func containsHelper(s, substr string) bool {
 	return false
 }
 
+func TestEnvOverrides_OpenRouterSpecificKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "global-key",
+		"openrouter": {
+			"base_url": "https://openrouter.example.com/v1"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Setenv("ROUTATIC_PROXY_OPENROUTER_API_KEY", "openrouter-env-key")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENROUTER_API_KEY")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.OpenRouter.APIKey != "openrouter-env-key" {
+		t.Errorf("OpenRouter.APIKey = %q, want %q", cfg.OpenRouter.APIKey, "openrouter-env-key")
+	}
+	if cfg.OpenRouter.APIKeys != nil {
+		t.Errorf("OpenRouter.APIKeys = %v, want nil", cfg.OpenRouter.APIKeys)
+	}
+}
+
+func TestEnvOverrides_OpenRouterSpecificKeysPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "global-key",
+		"openrouter": {
+			"api_key": "openrouter-file-key",
+			"base_url": "https://openrouter.example.com/v1"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Setenv("ROUTATIC_PROXY_OPENROUTER_API_KEY", "openrouter-env-key")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENROUTER_API_KEY")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.OpenRouter.APIKey != "openrouter-env-key" {
+		t.Errorf("OpenRouter.APIKey = %q, want %q", cfg.OpenRouter.APIKey, "openrouter-env-key")
+	}
+}
+
+func TestEnvOverrides_OpenRouterCommaSeparatedKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	cfgJSON := `{
+		"api_key": "global-key",
+		"openrouter": {
+			"api_key": "openrouter-file-key",
+			"base_url": "https://openrouter.example.com/v1"
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	_ = os.Setenv("ROUTATIC_PROXY_CONFIG", cfgPath)
+	_ = os.Setenv("ROUTATIC_PROXY_OPENROUTER_API_KEYS", "openrouter-key-1,openrouter-key-2,openrouter-key-3")
+	defer func() {
+		_ = os.Unsetenv("ROUTATIC_PROXY_CONFIG")
+		_ = os.Unsetenv("ROUTATIC_PROXY_OPENROUTER_API_KEYS")
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	want := []string{"openrouter-key-1", "openrouter-key-2", "openrouter-key-3"}
+	if len(cfg.OpenRouter.APIKeys) != len(want) {
+		t.Errorf("OpenRouter.APIKeys = %v, want %v", cfg.OpenRouter.APIKeys, want)
+		return
+	}
+	for i := range cfg.OpenRouter.APIKeys {
+		if cfg.OpenRouter.APIKeys[i] != want[i] {
+			t.Errorf("OpenRouter.APIKeys[%d] = %q, want %q", i, cfg.OpenRouter.APIKeys[i], want[i])
+		}
+	}
+
+	if cfg.OpenRouter.APIKey != "" {
+		t.Errorf("OpenRouter.APIKey = %q, want empty string", cfg.OpenRouter.APIKey)
+	}
+}
+
 func TestDefaults_StreamingTimeoutFallback(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")

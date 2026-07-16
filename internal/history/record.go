@@ -16,4 +16,5 @@ type RequestRecord struct {
 	Streaming    bool          // whether this was a streaming request
 	Success      bool          // whether it completed successfully
 	ErrorMsg     string        // error message if failed
+	Attempt      int           // attempt number in fallback chain (1 = primary, >1 = fallback)
 }

@@ -1,5 +1,102 @@
 # Contributing
 
+## Prerequisites
+
+- [Go](https://go.dev/dl/) 1.25.0 or later
+- [golangci-lint](https://golangci-lint.run/usage/install/) (for linting)
+- [Git](https://git-scm.com/)
+- [Make](https://www.gnu.org/software/make/) (build automation)
+
+## Getting Started
+
+1. Fork and clone the repository:
+   ```bash
+   git clone https://github.com/<your-username>/routatic-proxy.git
+   cd routatic-proxy
+   ```
+
+2. Build the binary:
+   ```bash
+   make build
+   ```
+
+3. Run tests:
+   ```bash
+   make test
+   ```
+
+4. Run the proxy:
+   ```bash
+   make run
+   ```
+
+## Pull Request Process
+
+1. Create a feature branch from `main`: `git checkout -b feature/your-feature-name`
+2. Make your changes and ensure tests pass: `make test && make lint`
+3. Commit with a descriptive message explaining what changed and why
+4. Push to your fork and open a pull request against `main`
+5. Describe what your PR does and link any related issues
+
+### Beta Releases
+
+When your PR is merged to `main`, a beta release is automatically created:
+
+- **Trigger:** Push to `main` branch
+- **Version:** `vX.Y.Z-beta-YYYYMMDD-HHMMSS` (auto-generated)
+- **GitHub Release:** Marked as prerelease
+- **Testing:** Download and test before reporting issues
+
+Beta releases allow users to test new features immediately while maintaining a separate stable release channel.
+
+### Production Releases
+
+Production releases are manual and require careful testing:
+
+1. Ensure all changes are merged to `main` and tested via beta
+2. Update the `releases` branch from `main`: `git checkout releases && git merge main`
+3. Push to `releases` branch
+4. Go to GitHub Actions → Release workflow
+5. Click "Run workflow" and specify version (e.g., `v1.2.3`)
+6. The workflow will:
+   - Run full test suite
+   - Build cross-platform binaries
+   - Generate AI-powered changelog
+   - Create GitHub release
+   - Publish Docker images
+   - Update Homebrew tap and Scoop bucket
+
+See [README.md](README.md#release-channels) for more details on the dual release channel system.
+
+### Pre-push Hooks
+
+This repository uses git hooks to ensure code quality. Install them once after cloning:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+The pre-push hook runs these checks before allowing a push:
+- **Code formatting** (`gofmt`) — ensures consistent formatting
+- **Linting** (`go vet`) — catches common errors
+- **Tests** (`make test`) — runs all tests with race detector
+- **Build** (`make build`) — verifies the project compiles
+
+To bypass hooks temporarily (not recommended):
+```bash
+git push --no-verify
+```
+
+## Code Style
+
+This project follows standard Go conventions:
+- Format code with `gofmt` (run `make lint` to check)
+- Follow [Effective Go](https://go.dev/doc/effective_go) guidelines
+- Add doc comments to all exported functions, types, and methods
+- Write tests for new functionality
+
+---
+
 ## Development
 
 ```bash

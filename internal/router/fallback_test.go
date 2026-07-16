@@ -552,3 +552,374 @@ func TestExecuteWithFallback_UsageLimitErrorStopsFallback(t *testing.T) {
 		t.Error("model-a circuit breaker should NOT be open for usage limit error")
 	}
 }
+
+func TestIsAuthError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "401 unauthorized",
+			err:  &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`},
+			want: true,
+		},
+		{
+			name: "403 forbidden",
+			err:  &client.APIError{StatusCode: 403, Body: `{"error": "Access denied"}`},
+			want: true,
+		},
+		{
+			name: "400 bad request",
+			err:  &client.APIError{StatusCode: 400, Body: `{"error": "Bad request"}`},
+			want: false,
+		},
+		{
+			name: "429 rate limit",
+			err:  &client.APIError{StatusCode: 429, Body: `{"error": "Rate limit"}`},
+			want: false,
+		},
+		{
+			name: "500 internal error",
+			err:  &client.APIError{StatusCode: 500, Body: `{"error": "Internal error"}`},
+			want: false,
+		},
+		{
+			name: "Non-API error",
+			err:  errors.New("something went wrong"),
+			want: false,
+		},
+		{
+			name: "Nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsAuthError(tt.err); got != tt.want {
+				t.Errorf("IsAuthError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorShortCircuits(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+		{Provider: "opencode-go", ModelID: "model-c"},
+	}
+
+	callCount := 0
+	authErr := &client.APIError{
+		StatusCode: 401,
+		Body:       `{"error": "Invalid API key"}`,
+	}
+
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, authErr
+		},
+	)
+
+	// Auth error blocks the provider, so only the first model is tried
+	// (model-b and model-c are on the same blocked provider)
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (only first model tried, provider blocked)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error for auth failure")
+	}
+
+	// The error should be the auth error
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error, got: %v", err)
+	}
+
+	// Verify it's the correct APIError
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got: %T", err)
+	}
+	if apiErr.StatusCode != 401 {
+		t.Errorf("expected status code 401, got %d", apiErr.StatusCode)
+	}
+
+	// Circuit breaker should not be affected by auth errors (they're non-retryable)
+	states := handler.GetCircuitStates()
+	if state, ok := states["model-a"]; ok && state == "open" {
+		t.Error("model-a circuit breaker should NOT be open for auth error")
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorWithMultipleProviders(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-zen", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			if model.Provider == "opencode-go" {
+				return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+			}
+			return []byte("zen-success"), nil
+		},
+	)
+
+	// Auth error blocks the opencode-go provider, but the chain should
+	// continue to the opencode-zen provider which has valid credentials
+	if callCount != 2 {
+		t.Errorf("executor called %d times, want 2 (first provider blocked, second succeeds)", callCount)
+	}
+
+	if err != nil {
+		t.Fatalf("expected success from zen provider, got: %v", err)
+	}
+}
+
+func TestExecuteWithFallback_403ForbiddenShortCircuits(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	forbiddenErr := &client.APIError{
+		StatusCode: 403,
+		Body:       `{"error": "Access denied"}`,
+	}
+
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, forbiddenErr
+		},
+	)
+
+	// Should short-circuit on 403 just like 401
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (should short-circuit on 403)", callCount)
+	}
+
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error for 403, got: %v", err)
+	}
+}
+
+func TestProviderKeyCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *config.Config
+		provider string
+		want     int
+	}{
+		{
+			name:     "nil config defaults to single key",
+			config:   nil,
+			provider: "opencode-go",
+			want:     1,
+		},
+		{
+			name: "single key in provider config",
+			config: &config.Config{
+				OpenCodeGo: config.OpenCodeGoConfig{
+					APIKey: "key1",
+				},
+			},
+			provider: "opencode-go",
+			want:     1,
+		},
+		{
+			name: "multiple keys in provider config",
+			config: &config.Config{
+				OpenCodeGo: config.OpenCodeGoConfig{
+					APIKeys: []string{"key1", "key2", "key3"},
+				},
+			},
+			provider: "opencode-go",
+			want:     3,
+		},
+		{
+			name: "multiple keys in zen provider",
+			config: &config.Config{
+				OpenCodeZen: config.OpenCodeZenConfig{
+					APIKeys: []string{"key1", "key2"},
+				},
+			},
+			provider: "opencode-zen",
+			want:     2,
+		},
+		{
+			name: "fallback to global keys for unknown provider",
+			config: &config.Config{
+				APIKeys: []string{"global1", "global2"},
+			},
+			provider: "unknown-provider",
+			want:     2,
+		},
+		{
+			name: "empty keys defaults to single",
+			config: &config.Config{
+				OpenCodeGo: config.OpenCodeGoConfig{},
+			},
+			provider: "opencode-go",
+			want:     1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var atomicCfg *config.AtomicConfig
+			if tt.config != nil {
+				atomicCfg = config.NewAtomicConfig(tt.config, "")
+			}
+
+			got := client.ProviderKeyCount(atomicCfg, tt.provider)
+			if got != tt.want {
+				t.Errorf("ProviderKeyCount(%q) = %d, want %d", tt.provider, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorMultiKeyContinues(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	// Configure provider with multiple keys
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			APIKeys: []string{"key1", "key2", "key3"},
+		},
+	}
+	handler.SetAtomicConfig(config.NewAtomicConfig(cfg, ""))
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+		{Provider: "opencode-go", ModelID: "model-c"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+		},
+	)
+
+	// With multiple keys, provider is not blocked — all 3 models are tried
+	// (each might use a different key via round-robin)
+	if callCount != 3 {
+		t.Errorf("executor called %d times, want 3 (multi-key provider should try all models)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error after all models failed")
+	}
+
+	// All models failed but are not retryable, so the error is generic
+	if IsAuthError(err) {
+		t.Error("expected generic error (all models failed), not auth error")
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorSingleKeyShortCircuits(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+
+	// Configure provider with single key (explicitly)
+	cfg := &config.Config{
+		OpenCodeGo: config.OpenCodeGoConfig{
+			APIKey: "single-key",
+		},
+	}
+	handler.SetAtomicConfig(config.NewAtomicConfig(cfg, ""))
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+		},
+	)
+
+	// With single key, first model fails with 401, provider blocked, second skipped
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (first model fails, provider blocked)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error after all models failed")
+	}
+
+	// Error should be the auth error (propagated via usageLimitErr path)
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error, got: %v", err)
+	}
+}
+
+func TestExecuteWithFallback_AuthErrorNoConfigShortCircuits(t *testing.T) {
+	logger := slog.Default()
+	handler := NewFallbackHandler(logger, 3, 30*time.Second)
+	// No SetAtomicConfig called - should default to single-key behavior
+
+	ctx := context.Background()
+
+	models := []config.ModelConfig{
+		{Provider: "opencode-go", ModelID: "model-a"},
+		{Provider: "opencode-go", ModelID: "model-b"},
+	}
+
+	callCount := 0
+	_, _, err := handler.ExecuteWithFallback(ctx, models,
+		func(ctx context.Context, model config.ModelConfig) ([]byte, error) {
+			callCount++
+			return nil, &client.APIError{StatusCode: 401, Body: `{"error": "Invalid API key"}`}
+		},
+	)
+
+	// Without config, defaults to single-key behavior: first model fails, provider blocked
+	if callCount != 1 {
+		t.Errorf("executor called %d times, want 1 (first model fails, provider blocked)", callCount)
+	}
+
+	if err == nil {
+		t.Fatal("expected error after all models failed")
+	}
+
+	if !IsAuthError(err) {
+		t.Errorf("expected auth error, got: %v", err)
+	}
+}

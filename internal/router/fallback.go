@@ -18,9 +18,9 @@ import (
 type CircuitState int
 
 const (
-	CircuitClosed   CircuitState = iota // Normal operation
-	CircuitHalfOpen                     // Testing if service recovered
-	CircuitOpen                         // Failing fast, not attempting calls
+	CircuitClosed   CircuitState = iota // Normal operation — requests flow freely
+	CircuitHalfOpen                     // Recovery probe — allowing limited test requests
+	CircuitOpen                         // Failing fast — blocking all requests until timeout
 )
 
 // CircuitBreaker tracks failure rates and prevents calls to failing models.
@@ -36,7 +36,11 @@ type CircuitBreaker struct {
 	halfOpenCalls    int
 }
 
-// NewCircuitBreaker creates a circuit breaker with default thresholds.
+// NewCircuitBreaker creates a circuit breaker that opens after threshold
+// consecutive failures and stays open for recoveryTimeout before allowing
+// a probe. The defaults in NewFallbackHandler are 3 failures and 30s timeout,
+// which balances quick recovery from transient issues with protection against
+// sustained outages.
 func NewCircuitBreaker(threshold int, recoveryTimeout time.Duration) *CircuitBreaker {
 	return &CircuitBreaker{
 		state:            CircuitClosed,
@@ -46,7 +50,11 @@ func NewCircuitBreaker(threshold int, recoveryTimeout time.Duration) *CircuitBre
 	}
 }
 
-// AllowRequest returns true if the circuit allows a request.
+// AllowRequest returns whether the circuit should permit a request. In the
+// closed state, all requests pass. In the open state, requests are blocked
+// until recoveryTimeout elapses, at which point the circuit transitions to
+// half-open and allows a limited number of probe requests. A successful probe
+// closes the circuit; a failure reopens it.
 func (cb *CircuitBreaker) AllowRequest() bool {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -72,7 +80,10 @@ func (cb *CircuitBreaker) AllowRequest() bool {
 	return false
 }
 
-// RecordSuccess records a successful call.
+// RecordSuccess transitions the circuit toward a healthy state. In half-open
+// mode, accumulating enough successes (halfOpenMaxCalls, default 3) closes
+// the circuit. In closed mode, this resets the failure counter so transient
+// failures don't accumulate over time.
 func (cb *CircuitBreaker) RecordSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -90,7 +101,10 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	}
 }
 
-// RecordFailure records a failed call.
+// RecordFailure transitions the circuit toward an unhealthy state. In half-open
+// mode, any failure immediately reopens the circuit. In closed mode, once the
+// failure count reaches the threshold, the circuit opens and blocks subsequent
+// requests until the recovery timeout elapses.
 func (cb *CircuitBreaker) RecordFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -109,7 +123,9 @@ func (cb *CircuitBreaker) RecordFailure() {
 	}
 }
 
-// State returns the current circuit state.
+// State returns the current circuit breaker state (CircuitClosed, CircuitHalfOpen,
+// or CircuitOpen). Use this to inspect whether a model is being skipped due to
+// recent failures, or to expose circuit state via metrics/health endpoints.
 func (cb *CircuitBreaker) State() CircuitState {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -132,9 +148,14 @@ type FallbackHandler struct {
 	cbThreshold     int
 	cbTimeout       time.Duration
 	mu              sync.Mutex
+	atomicCfg       *config.AtomicConfig // Optional: for checking provider key counts
 }
 
-// NewFallbackHandler creates a new fallback handler with circuit breakers.
+// NewFallbackHandler creates a handler that tries models in sequence until one
+// succeeds, with per-model circuit breakers to skip failing models. Use this
+// when you need resilient upstream calls with automatic backoff — the handler
+// tracks failures per model and avoids hammering an already-failing endpoint.
+// Default threshold is 3 failures; default timeout is 30 seconds.
 func NewFallbackHandler(logger *slog.Logger, cbThreshold int, cbTimeout time.Duration) *FallbackHandler {
 	if logger == nil {
 		logger = slog.Default()
@@ -152,6 +173,14 @@ func NewFallbackHandler(logger *slog.Logger, cbThreshold int, cbTimeout time.Dur
 		cbThreshold:     cbThreshold,
 		cbTimeout:       cbTimeout,
 	}
+}
+
+// SetAtomicConfig sets the atomic config for the fallback handler.
+// This is used to check provider key counts for auth error handling.
+func (h *FallbackHandler) SetAtomicConfig(cfg *config.AtomicConfig) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.atomicCfg = cfg
 }
 
 // getCircuitBreaker returns or creates a circuit breaker for a model.
@@ -177,6 +206,8 @@ func (h *FallbackHandler) ExecuteWithFallback(
 	totalModels := len(models)
 	blockedProviders := make(map[string]bool)
 	var usageLimitErr error
+	var authErr error
+	authAttempted := 0
 
 	for i, model := range models {
 		if err := ctx.Err(); err != nil {
@@ -246,6 +277,31 @@ func (h *FallbackHandler) ExecuteWithFallback(
 			continue
 		}
 
+		// Auth errors (401/403) indicate invalid credentials.
+		// If the provider has a single API key, block it so its remaining
+		// models are skipped. If it has multiple keys, don't block the
+		// round-robin — the next attempt will use a different key.
+		if IsAuthError(err) {
+			keyCount := client.ProviderKeyCount(h.atomicCfg, provider)
+			if keyCount <= 1 {
+				h.logger.Warn("authentication error, blocking provider",
+					"provider", provider,
+					"model", model.ModelID,
+					"error", err,
+				)
+				blockedProviders[provider] = true
+				authErr = err
+				authAttempted = i + 1
+				continue
+			}
+			h.logger.Warn("authentication error, but provider has multiple keys, trying next",
+				"provider", provider,
+				"model", model.ModelID,
+				"key_count", keyCount,
+				"error", err,
+			)
+		}
+
 		if IsRetryableError(err) {
 			cb.RecordFailure()
 			h.logger.Warn("model failed, trying fallback",
@@ -261,6 +317,15 @@ func (h *FallbackHandler) ExecuteWithFallback(
 				"remaining", totalModels-i-1,
 			)
 		}
+	}
+
+	if authErr != nil {
+		return &FallbackResult{
+			ModelID:     models[0].ModelID,
+			Success:     false,
+			Attempted:   authAttempted,
+			TotalModels: totalModels,
+		}, nil, authErr
 	}
 
 	if usageLimitErr != nil {
@@ -343,6 +408,22 @@ func IsUsageLimitError(err error) bool {
 	// The error body contains: {"type":"error","error":{"type":"GoUsageLimitError",...}}
 	errStr := err.Error()
 	return strings.Contains(errStr, "GoUsageLimitError")
+}
+
+// IsAuthError returns true if the error is an authentication error (401 or 403).
+// Auth errors are non-retryable and indicate invalid or expired credentials.
+// Since all models from the same provider share the same API key, fallback
+// attempts will fail identically, so we short-circuit the fallback chain.
+func IsAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == 401 || apiErr.StatusCode == 403
+	}
+	return false
 }
 
 // GetCircuitStates returns the state of all circuit breakers.

@@ -8,10 +8,11 @@ import (
 	"strconv"
 )
 
-// BackgroundOpts are the options passed from the serve command.
+// BackgroundOpts are the options passed from the start/serve command.
 type BackgroundOpts struct {
 	ConfigPath string // --config flag value, may be empty
 	Port       int    // --port flag value, 0 means default
+	Command    string // "start" or "serve", defaults to "serve"
 }
 
 // ForkIntoBackground starts the current binary as a detached background process.
@@ -30,8 +31,12 @@ func ForkIntoBackground(opts BackgroundOpts) error {
 		_ = os.Remove(paths.PIDFile)
 	}
 
-	// Build args for the child process: routatic-proxy serve --_daemonize [--config X] [--port N]
-	args := []string{"serve", "--_daemonize"}
+	// Build args for the child process: routatic-proxy <command> --_daemonize [--config X] [--port N]
+	command := opts.Command
+	if command == "" {
+		command = "serve"
+	}
+	args := []string{command, "--_daemonize"}
 	if opts.ConfigPath != "" {
 		configPath, err := filepath.Abs(opts.ConfigPath)
 		if err != nil {

@@ -55,6 +55,24 @@ Homebrew and Scoop installs also provide `oc-go-cc` as an alias for `routatic-pr
 
 ## Docker
 
+### Pull the prebuilt image
+
+Prebuilt multi-arch images (linux/amd64, linux/arm64) are published to GitHub Container Registry:
+
+```bash
+# Latest stable release
+docker pull ghcr.io/routatic/proxy:latest
+
+# Latest beta (newest prerelease build)
+docker pull ghcr.io/routatic/proxy:beta
+
+# A specific stable release
+docker pull ghcr.io/routatic/proxy:v1.0.0
+
+docker run -d --restart unless-stopped --name routatic-proxy \
+  --env-file .env -p 3456:3456 ghcr.io/routatic/proxy:latest
+```
+
 ### Quick start with Makefile
 
 ```bash

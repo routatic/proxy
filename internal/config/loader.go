@@ -21,11 +21,15 @@ const (
 	defaultTimeoutMs        = 300000
 	defaultLogLevel         = "info"
 	defaultAnthropicAPIURL  = "https://api.anthropic.com"
+	defaultCatalogMaxAge    = 24
+	defaultCatalogSourceURL = "https://models.dev/catalog.json"
 
 	defaultZenBaseURL          = "https://opencode.ai/zen/v1/chat/completions"
 	defaultZenAnthropicBaseURL = "https://opencode.ai/zen/v1/messages"
 	defaultZenResponsesBaseURL = "https://opencode.ai/zen/v1/responses"
 	defaultZenGeminiBaseURL    = "https://opencode.ai/zen/v1/models"
+
+	defaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
 )
 
 // envVarPattern matches ${ENV_VAR} placeholders in config values.
@@ -190,6 +194,15 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.AWSBedrock.APIKey = ""
 	}
 
+	if v := envValue("ROUTATIC_PROXY_OPENROUTER_API_KEY"); v != "" {
+		cfg.OpenRouter.APIKey = v
+		cfg.OpenRouter.APIKeys = nil
+	}
+	if v := envValue("ROUTATIC_PROXY_OPENROUTER_API_KEYS"); v != "" {
+		cfg.OpenRouter.APIKeys = parseCommaSeparatedKeys(v)
+		cfg.OpenRouter.APIKey = ""
+	}
+
 	if v := envValue("ROUTATIC_PROXY_HOST"); v != "" {
 		cfg.Host = v
 	}
@@ -263,6 +276,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.OpenCodeZen.GeminiBaseURL == "" {
 		cfg.OpenCodeZen.GeminiBaseURL = defaultZenGeminiBaseURL
 	}
+	if cfg.OpenRouter.BaseURL == "" {
+		cfg.OpenRouter.BaseURL = defaultOpenRouterBaseURL
+	}
 	if cfg.OpenCodeZen.TimeoutMs == 0 {
 		cfg.OpenCodeZen.TimeoutMs = defaultTimeoutMs
 	}
@@ -281,6 +297,15 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ModelOverrides == nil {
 		cfg.ModelOverrides = make(map[string]ModelConfig)
+	}
+	if cfg.ModelFamilyOverrides == nil {
+		cfg.ModelFamilyOverrides = make(map[string]ModelConfig)
+	}
+	if cfg.Catalog.MaxAgeHours == 0 {
+		cfg.Catalog.MaxAgeHours = defaultCatalogMaxAge
+	}
+	if cfg.Catalog.SourceURL == "" {
+		cfg.Catalog.SourceURL = defaultCatalogSourceURL
 	}
 }
 
@@ -326,7 +351,18 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("aws_bedrock.api_keys: %w", err)
 	}
 
+	if err := validateSingleAPIKey(cfg.OpenRouter.APIKey); err != nil {
+		return fmt.Errorf("openrouter.api_key: %w", err)
+	}
+	if err := validateAPIKeys(cfg.OpenRouter.APIKeys); err != nil {
+		return fmt.Errorf("openrouter.api_keys: %w", err)
+	}
+
 	if err := validateModelOverrides(cfg.ModelOverrides); err != nil {
+		return err
+	}
+
+	if err := validateModelFamilyOverrides(cfg.ModelFamilyOverrides); err != nil {
 		return err
 	}
 
@@ -375,6 +411,11 @@ func validateAnthropicToolsDisabled(cfg *Config) error {
 			fmt.Fprintf(os.Stderr, "WARNING: config: model_overrides[%q] has anthropic_tools_disabled=true — this is only effective on models routing to the Anthropic endpoint\n", key)
 		}
 	}
+	for key, mc := range cfg.ModelFamilyOverrides {
+		if mc.AnthropicToolsDisabled {
+			fmt.Fprintf(os.Stderr, "WARNING: config: model_family_overrides[%q] has anthropic_tools_disabled=true — this is only effective on models routing to the Anthropic endpoint\n", key)
+		}
+	}
 	return nil
 }
 
@@ -408,12 +449,30 @@ func validateAPIKeys(keys []string) error {
 // (surfacing far from the config error); an unknown provider would silently
 // fall through to defaults at request time.
 func validateModelOverrides(overrides map[string]ModelConfig) error {
+	return validateOverrideMap("model_overrides", overrides)
+}
+
+// validateModelFamilyOverrides ensures each family override entry has a
+// non-empty family key, a non-empty model_id, and a recognized provider.
+func validateModelFamilyOverrides(overrides map[string]ModelConfig) error {
+	for key := range overrides {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("model_family_overrides has an empty family key")
+		}
+	}
+	return validateOverrideMap("model_family_overrides", overrides)
+}
+
+// validateOverrideMap validates the shared shape of override maps: each entry
+// must have a non-empty model_id and a recognized provider. label names the
+// config section for error messages.
+func validateOverrideMap(label string, overrides map[string]ModelConfig) error {
 	for key, mc := range overrides {
 		if mc.ModelID == "" {
-			return fmt.Errorf("model_overrides[%q] is missing required field model_id", key)
+			return fmt.Errorf("%s[%q] is missing required field model_id", label, key)
 		}
 		if mc.Provider != "" && mc.Provider != "opencode-go" && mc.Provider != "opencode-zen" {
-			return fmt.Errorf("model_overrides[%q] has invalid provider %q (must be \"opencode-go\" or \"opencode-zen\")", key, mc.Provider)
+			return fmt.Errorf("%s[%q] has invalid provider %q (must be \"opencode-go\" or \"opencode-zen\")", label, key, mc.Provider)
 		}
 	}
 	return nil

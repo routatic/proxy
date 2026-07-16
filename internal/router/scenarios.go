@@ -38,6 +38,11 @@ type MessageContent struct {
 	ImageHashes []string
 }
 
+// RequestFacts summarizes relevant properties of the request for scenario
+// detection — specifically whether the latest user message contains an image,
+// whether the text suggests complex intent, and the raw text for pattern
+// matching. This enables scenario detection to make routing decisions without
+// re-parsing the full message history.
 type RequestFacts struct {
 	LatestUserText          string
 	LatestUserHasImage      bool
@@ -124,6 +129,11 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 	}
 }
 
+// AnalyzeRequestFacts extracts routing-relevant facts from the message history.
+// It identifies the latest user message, checks for new images (avoiding
+// false positives from historical images), and flags complex or vision-related
+// intent. The result feeds into DetectScenario and is also useful for logging
+// and debugging routing decisions.
 func AnalyzeRequestFacts(messages []MessageContent) RequestFacts {
 	facts := RequestFacts{}
 	latestIdx := -1
@@ -185,20 +195,18 @@ func latestUserMessages(messages []MessageContent) []MessageContent {
 	return nil
 }
 
-// hasComplexPattern looks for complex operations that need more capable models.
-// This includes tool-based operations (executing functions, writing/editing files, etc.)
+// hasComplexPattern looks for truly complex or architectural operations that need
+// the most capable models.  It is intentionally narrow: common coding/debugging
+// tasks ("build", "debug", "create file", "bash") are NOT complex, because they
+// appear constantly in tool results and ordinary conversation and would otherwise
+// route every turn to the complex model.
 func hasComplexPattern(messages []MessageContent) bool {
 	complexKeywords := []string{
-		// Architectural
+		// Architectural / large-scale design
 		"architect", "architecture", "refactor", "redesign",
 		"complex", "difficult", "challenging",
 		"optimize", "performance", "efficiency",
 		"design pattern", "best practice",
-		"bug", "debug", "error", "exception", "stack trace",
-		// Tool-related keywords indicate complex operations
-		"execute", "run command", "bash", "shell",
-		"implement", "build", "create", "add feature",
-		"write to", "edit file", "create file",
 	}
 
 	for _, msg := range messages {

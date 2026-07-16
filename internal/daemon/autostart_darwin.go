@@ -22,7 +22,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ProgramArguments</key>
     <array>
         <string>{{.BinaryPath}}</string>
-        <string>serve</string>
+        <string>start</string>
         <string>--background</string>
         {{- if .ConfigPath}}
         <string>--config</string>
