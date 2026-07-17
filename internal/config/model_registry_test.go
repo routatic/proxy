@@ -29,14 +29,14 @@ func TestResolveModelConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "kimi-k3 gets hardcoded metadata (256K context, 32K output, vision)",
+			name: "kimi-k3 gets hardcoded metadata (1M context, 131K output, vision)",
 			input: ModelConfig{
 				ModelID: "kimi-k3",
 			},
 			expected: ModelConfig{
 				ModelID:         "kimi-k3",
-				ContextWindow:   256000,
-				MaxOutputTokens: 32768,
+				ContextWindow:   1000000,
+				MaxOutputTokens: 131072,
 				Vision:          true,
 				ContextMargin:   DefaultContextMargin,
 				SupportsTools:   boolPtr(true),

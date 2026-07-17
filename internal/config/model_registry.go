@@ -21,7 +21,7 @@ var modelMetadata = map[string]ModelMetadata{
 	"glm-5.2":                {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 	"glm-5.1":                {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
 	"glm-5":                  {ContextWindow: 200000, MaxOutputTokens: 8192, Vision: false, SupportsTools: true},
-	"kimi-k3":                {ContextWindow: 256000, MaxOutputTokens: 32768, Vision: true, SupportsTools: true},
+	"kimi-k3":                {ContextWindow: 1000000, MaxOutputTokens: 131072, Vision: true, SupportsTools: true},
 	"kimi-k2.7-code":         {ContextWindow: 256000, MaxOutputTokens: 32768, Vision: true, SupportsTools: true},
 	"kimi-k2.6":              {ContextWindow: 256000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},
 	"kimi-k2.5":              {ContextWindow: 256000, MaxOutputTokens: 8192, Vision: true, SupportsTools: true},

@@ -21,7 +21,7 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 | **Kimi K2.5**      | Go            | **1,850**              | ★★☆☆☆           | ★★★★☆   |
 | **Kimi K2.6**      | Go            | **~1,150**             | ★☆☆☆☆           | ★★★★★   |
 | **Kimi K2.7 Code** | Go            | **1,350**              | ★☆☆☆☆           | ★★★★★   |
-| **Kimi K3**        | Go            | **_TBD_**              | ★☆☆☆☆           | ★★★★★   |
+| **Kimi K3**        | Go            | **$3/$15 per 1M**      | ☆☆☆☆☆           | ★★★★★   |
 | **GLM-5**          | Go            | **1,150**              | ★☆☆☆☆           | ★★★★☆   |
 | **GLM-5.1**        | Go            | **880**                | ☆☆☆☆☆           | ★★★★★   |
 | **GLM-5.2**        | Go            | **880**                | ☆☆☆☆☆           | ★★★★★   |
@@ -736,14 +736,17 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
 - **Model ID:** `kimi-k3`
 - **Provider:** OpenCode Go (Moonshot AI upstream)
 - **Endpoint:** OpenAI-compatible (`/v1/chat/completions`)
-- **Context:** ~256K tokens
+- **Context:** 1M tokens
 - **Quality:** ★★★★★
-- **Max Output:** 32K tokens
+- **Max Output:** 131K tokens
+- **Modalities:** Text, image, and video input
+- **Cost:** $3.00 / 1M input tokens · $15.00 / 1M output tokens
+- **Released:** July 2026
 - **Best For:**
   - Latest-generation code generation and agentic tool use
-  - Complex refactoring requiring long outputs
+  - Long-context work (1M window) and very long outputs
+  - Multimodal tasks (image/video input)
 - **When to Use:** When you want the newest Kimi generation; falls back to Kimi K2.7 Code, then Kimi K2.6
-- **Note:** Specs (cost, exact context/output limits) are provisional — verify against Moonshot AI's official docs once K3 is confirmed live.
 
 #### Kimi K2.7 Code — Code Specialist
 

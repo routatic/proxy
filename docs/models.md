@@ -9,7 +9,7 @@ Complete model reference for routatic-proxy including OpenCode Go, Zen, OpenRout
 | Model              | Context      | Best For                                      |
 | ------------------ | ------------ | --------------------------------------------- |
 | **GLM-5.2**        | ~200K tokens | Critical architecture, production code review |
-| **Kimi K3**        | ~256K tokens | Latest Kimi, code + agentic, 32K max output   |
+| **Kimi K3**        | ~1M tokens   | Latest Kimi, code + agentic, 131K max output  |
 | **Kimi K2.7 Code** | ~256K tokens | Large code generation, 32K max output         |
 | **Qwen3.7 Plus**   | ~128K tokens | General coding, better quality than Qwen3.6   |
 | **Qwen3.7 Max**    | ~128K tokens | Complex coding, Qwen's best quality           |
