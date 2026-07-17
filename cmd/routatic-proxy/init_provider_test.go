@@ -79,21 +79,21 @@ func TestInitCmd_ProviderFlag(t *testing.T) {
 			}
 
 			// Parse and verify it's valid JSON
-			var cfg map[string]interface{}
+			var cfg map[string]any
 			if err := json.Unmarshal(data, &cfg); err != nil {
 				t.Errorf("config is not valid JSON: %v", err)
 				return
 			}
 
 			// Check that models section exists
-			models, ok := cfg["models"].(map[string]interface{})
+			models, ok := cfg["models"].(map[string]any)
 			if !ok {
 				t.Error("config missing 'models' section")
 				return
 			}
 
 			// Verify default model uses the correct provider
-			defaultModel, ok := models["default"].(map[string]interface{})
+			defaultModel, ok := models["default"].(map[string]any)
 			if !ok {
 				t.Error("config missing 'models.default' section")
 				return
@@ -133,20 +133,20 @@ func TestInitCmd_NoProviderFlag(t *testing.T) {
 	}
 
 	// Parse and verify it's valid JSON
-	var cfg map[string]interface{}
+	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Errorf("config is not valid JSON: %v", err)
 		return
 	}
 
 	// Default config should use opencode-go
-	models, ok := cfg["models"].(map[string]interface{})
+	models, ok := cfg["models"].(map[string]any)
 	if !ok {
 		t.Error("config missing 'models' section")
 		return
 	}
 
-	defaultModel, ok := models["default"].(map[string]interface{})
+	defaultModel, ok := models["default"].(map[string]any)
 	if !ok {
 		t.Error("config missing 'models.default' section")
 		return
@@ -188,7 +188,7 @@ func TestInitCmd_ConfigAlreadyExists(t *testing.T) {
 		return
 	}
 
-	var cfg map[string]interface{}
+	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Errorf("config is not valid JSON: %v", err)
 		return
@@ -218,21 +218,21 @@ func TestGetProviderConfig_AllProviders(t *testing.T) {
 			}
 
 			// Verify it's valid JSON
-			var cfg map[string]interface{}
+			var cfg map[string]any
 			if err := json.Unmarshal([]byte(config), &cfg); err != nil {
 				t.Errorf("config for %s is not valid JSON: %v", provider, err)
 				return
 			}
 
 			// Verify models section exists
-			models, ok := cfg["models"].(map[string]interface{})
+			models, ok := cfg["models"].(map[string]any)
 			if !ok {
 				t.Errorf("config for %s missing 'models' section", provider)
 				return
 			}
 
 			// Verify default model uses correct provider
-			defaultModel, ok := models["default"].(map[string]interface{})
+			defaultModel, ok := models["default"].(map[string]any)
 			if !ok {
 				t.Errorf("config for %s missing 'models.default' section", provider)
 				return
@@ -246,46 +246,67 @@ func TestGetProviderConfig_AllProviders(t *testing.T) {
 	}
 }
 
-// TestDefaultAndOpenCodeGoConfigsInSync guards the hand-synced duplication
-// between getDefaultConfig() (main.go) and getOpenCodeGoConfig()
-// (init_provider.go). Their comments claim they are "the same"; this test
-// makes that a CI-enforced invariant so the two templates cannot drift.
-func TestDefaultAndOpenCodeGoConfigsInSync(t *testing.T) {
-	var def, ocg map[string]interface{}
-	if err := json.Unmarshal([]byte(getDefaultConfig()), &def); err != nil {
-		t.Fatalf("getDefaultConfig() invalid JSON: %v", err)
+// TestDefaultAndOpenCodeGoConfigsIdentical asserts the two default generators
+// return byte-identical content. Both now read the single embedded
+// templates/default_config.json, so this is a regression guard against anyone
+// re-introducing a divergent hand-written copy.
+func TestDefaultAndOpenCodeGoConfigsIdentical(t *testing.T) {
+	if getDefaultConfig() != getOpenCodeGoConfig() {
+		t.Error("getDefaultConfig() and getOpenCodeGoConfig() must return identical content (single source: templates/default_config.json)")
 	}
-	if err := json.Unmarshal([]byte(getOpenCodeGoConfig()), &ocg); err != nil {
-		t.Fatalf("getOpenCodeGoConfig() invalid JSON: %v", err)
-	}
+}
 
-	for _, section := range []string{"models", "fallbacks"} {
-		defJSON, _ := json.Marshal(def[section])
-		ocgJSON, _ := json.Marshal(ocg[section])
-		if string(defJSON) != string(ocgJSON) {
-			t.Errorf("%q section differs between getDefaultConfig() and getOpenCodeGoConfig(); keep them in sync", section)
+// TestExampleConfigSharedModelsMatchDefault guards the remaining, deliberate
+// duplication: configs/config.example.json is a documented superset of the
+// embedded default (it adds cost_routing, aws_bedrock, extra models, etc.).
+// For every model alias the two share, the definitions must be identical so
+// the example never documents a stale shape (e.g. a missing vision flag).
+func TestExampleConfigSharedModelsMatchDefault(t *testing.T) {
+	def := mustParseConfig(t, getDefaultConfig())
+
+	raw, err := os.ReadFile(filepath.Join("..", "..", "configs", "config.example.json"))
+	if err != nil {
+		t.Fatalf("read config.example.json: %v", err)
+	}
+	example := mustParseConfig(t, string(raw))
+
+	defModels, _ := def["models"].(map[string]any)
+	exModels, _ := example["models"].(map[string]any)
+
+	for alias, defModel := range defModels {
+		exModel, ok := exModels[alias]
+		if !ok {
+			t.Errorf("model %q exists in default config but is missing from config.example.json", alias)
+			continue
+		}
+		defJSON, _ := json.Marshal(defModel)
+		exJSON, _ := json.Marshal(exModel)
+		if string(defJSON) != string(exJSON) {
+			t.Errorf("model %q differs between default config and config.example.json:\n  default: %s\n  example: %s", alias, defJSON, exJSON)
 		}
 	}
 }
 
-// TestKimiK3PresentInAllTemplates ensures the kimi-k3 alias exists in both
-// embedded Go templates (config.example.json is validated separately).
-func TestKimiK3PresentInAllTemplates(t *testing.T) {
-	for name, gen := range map[string]func() string{
-		"getDefaultConfig":    getDefaultConfig,
-		"getOpenCodeGoConfig": getOpenCodeGoConfig,
-	} {
-		var cfg map[string]interface{}
-		if err := json.Unmarshal([]byte(gen()), &cfg); err != nil {
-			t.Fatalf("%s invalid JSON: %v", name, err)
-		}
-		models, _ := cfg["models"].(map[string]interface{})
-		if _, ok := models["kimi-k3"]; !ok {
-			t.Errorf("%s: models.kimi-k3 missing", name)
-		}
-		fallbacks, _ := cfg["fallbacks"].(map[string]interface{})
-		if _, ok := fallbacks["kimi-k3"]; !ok {
-			t.Errorf("%s: fallbacks.kimi-k3 missing", name)
-		}
+// TestKimiK3InDefaultConfig ensures the kimi-k3 alias and its fallback chain
+// are present in the embedded default (config.example.json is checked by
+// TestExampleConfigSharedModelsMatchDefault).
+func TestKimiK3InDefaultConfig(t *testing.T) {
+	cfg := mustParseConfig(t, getDefaultConfig())
+	models, _ := cfg["models"].(map[string]any)
+	if _, ok := models["kimi-k3"]; !ok {
+		t.Error("models.kimi-k3 missing from default config")
 	}
+	fallbacks, _ := cfg["fallbacks"].(map[string]any)
+	if _, ok := fallbacks["kimi-k3"]; !ok {
+		t.Error("fallbacks.kimi-k3 missing from default config")
+	}
+}
+
+func mustParseConfig(t *testing.T, s string) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		t.Fatalf("invalid JSON config: %v", err)
+	}
+	return m
 }

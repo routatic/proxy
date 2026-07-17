@@ -1,0 +1,423 @@
+{
+  "api_key": "${ROUTATIC_PROXY_API_KEY}",
+  "host": "127.0.0.1",
+  "port": 3456,
+  "hot_reload": false,
+  "enable_streaming_scenario_routing": false,
+  "respect_requested_model": false,
+  "anthropic_first": {
+    "enabled": false,
+    "base_url": "https://api.anthropic.com"
+  },
+  "models": {
+    "background": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-flash",
+      "temperature": 0.5,
+      "max_tokens": 2048
+    },
+    "default": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    },
+    "long_context": {
+      "provider": "opencode-go",
+      "model_id": "minimax-m3",
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "context_threshold": 80000
+    },
+    "think": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.2",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "complex": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    },
+    "fast": {
+      "provider": "opencode-go",
+      "model_id": "deepseek-v4-flash",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "glm-5.2": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.2",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": false
+    },
+    "kimi-k3": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k3",
+      "temperature": 0.7,
+      "max_tokens": 32768,
+      "vision": true
+    },
+    "kimi-k2.7-code": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.7-code",
+      "temperature": 0.7,
+      "max_tokens": 32768,
+      "vision": true
+    },
+    "qwen3.7-plus": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-plus",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "qwen3.7-max": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-max",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    }
+  },
+  "fallbacks": {
+    "background": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-max"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "nemotron-3-ultra-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "mimo-v2.5-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "deepseek-v4-flash-free"
+      }
+    ],
+    "default": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-max"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "nemotron-3-ultra-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "mimo-v2.5-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "deepseek-v4-flash-free"
+      }
+    ],
+    "long_context": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-max"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "nemotron-3-ultra-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "mimo-v2.5-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "deepseek-v4-flash-free"
+      }
+    ],
+    "think": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-max"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "nemotron-3-ultra-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "mimo-v2.5-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "deepseek-v4-flash-free"
+      }
+    ],
+    "complex": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-max"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "nemotron-3-ultra-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "mimo-v2.5-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "deepseek-v4-flash-free"
+      }
+    ],
+    "fast": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-max"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "nemotron-3-ultra-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "mimo-v2.5-free"
+      },
+      {
+        "provider": "opencode-zen",
+        "model_id": "deepseek-v4-flash-free"
+      }
+    ],
+    "glm-5.2": [
+      {
+        "provider": "opencode-go",
+        "model_id": "glm-5.1"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "kimi-k2.6"
+      }
+    ],
+    "kimi-k3": [
+      {
+        "provider": "opencode-go",
+        "model_id": "kimi-k2.7-code"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "kimi-k2.6"
+      }
+    ],
+    "kimi-k2.7-code": [
+      {
+        "provider": "opencode-go",
+        "model_id": "kimi-k2.6"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "glm-5.1"
+      }
+    ],
+    "qwen3.7-plus": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.6-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "kimi-k2.6"
+      }
+    ],
+    "qwen3.7-max": [
+      {
+        "provider": "opencode-go",
+        "model_id": "qwen3.7-plus"
+      },
+      {
+        "provider": "opencode-go",
+        "model_id": "kimi-k2.6"
+      }
+    ]
+  },
+  "model_overrides": {
+    "deepseek-v4-pro": {
+      "provider": "opencode-zen",
+      "model_id": "deepseek-v4-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": {
+        "type": "enabled"
+      }
+    },
+    "deepseek-v4-flash-free": {
+      "provider": "opencode-zen",
+      "model_id": "deepseek-v4-flash-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "grok-build-0.1": {
+      "provider": "opencode-zen",
+      "model_id": "grok-build-0.1",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "big-pickle": {
+      "provider": "opencode-zen",
+      "model_id": "big-pickle",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "mimo-v2.5-free": {
+      "provider": "opencode-zen",
+      "model_id": "mimo-v2.5-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "north-mini-code-free": {
+      "provider": "opencode-zen",
+      "model_id": "north-mini-code-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "nemotron-3-ultra-free": {
+      "provider": "opencode-zen",
+      "model_id": "nemotron-3-ultra-free",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "claude-fable-5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-fable-5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-8": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-8",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-6": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-6",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-5": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-5",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-opus-4-1": {
+      "provider": "opencode-zen",
+      "model_id": "claude-opus-4-1",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "claude-sonnet-4": {
+      "provider": "opencode-zen",
+      "model_id": "claude-sonnet-4",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "gemini-3.5-flash": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3.5-flash",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "gemini-3.1-pro": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3.1-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "gemini-3-flash": {
+      "provider": "opencode-zen",
+      "model_id": "gemini-3-flash",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  },
+  "model_family_overrides": {
+    "opus": {
+      "provider": "opencode-go",
+      "model_id": "glm-5.1",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "sonnet": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k2.6",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "haiku": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-plus",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "vision": true
+    }
+  },
+  "opencode_go": {
+    "base_url": "https://opencode.ai/zen/go/v1/chat/completions",
+    "anthropic_base_url": "https://opencode.ai/zen/go/v1/messages",
+    "api_key": "",
+    "api_keys": [],
+    "timeout_ms": 300000
+  },
+  "opencode_zen": {
+    "base_url": "https://opencode.ai/zen/v1/chat/completions",
+    "anthropic_base_url": "https://opencode.ai/zen/v1/messages",
+    "responses_base_url": "https://opencode.ai/zen/v1/responses",
+    "gemini_base_url": "https://opencode.ai/zen/v1/models",
+    "api_key": "",
+    "api_keys": [],
+    "timeout_ms": 300000
+  },
+  "logging": {
+    "level": "info",
+    "requests": true
+  }
+}
