@@ -142,8 +142,14 @@ jobs:
 
           echo "Using OpenRouter model: $MODEL"
 
-          # Generate changelog for commits since previous tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # Generate changelog from the last stable (non-beta) release.
+          # Exclude prerelease/beta tags and the tag being released so notes
+          # reflect the full diff since the previous production release.
+          CURRENT_TAG="${{ steps.version.outputs.tag }}"
+          PREVIOUS_TAG=$(git tag --sort=-creatordate \
+            | grep -vi 'beta' \
+            | grep -v "^${CURRENT_TAG}$" \
+            | head -n 1)
 
           if [ -n "$PREVIOUS_TAG" ]; then
             echo "Generating AI changelog from $PREVIOUS_TAG to ${{ steps.version.outputs.tag }}"
