@@ -146,7 +146,10 @@ jobs:
           # Exclude prerelease/beta tags and the tag being released so notes
           # reflect the full diff since the previous production release.
           CURRENT_TAG="${{ steps.version.outputs.tag }}"
-          PREVIOUS_TAG=$(git tag --sort=-creatordate \
+          PREVIOUS_TAG=$(git tag --list --sort=-version:refname \
+            | grep -vi 'beta' \
+            | grep -v "^${CURRENT_TAG}$" \
+            | head -n 1)
             | grep -vi 'beta' \
             | grep -v "^${CURRENT_TAG}$" \
             | head -n 1)
