@@ -900,6 +900,10 @@ func maskString(s string, visible int) string {
 
 // getDefaultConfig returns a default configuration JSON template.
 // Optimized for cost-efficiency: uses cheaper models by default, expensive ones only when needed.
+//
+// SYNC: The "models" and "fallbacks" blocks here are duplicated in
+// getOpenCodeGoConfig() (init_provider.go) and configs/config.example.json.
+// When adding/renaming a model or changing a flag (e.g. vision), update all three.
 func getDefaultConfig() string {
 	return `{
   "api_key": "${ROUTATIC_PROXY_API_KEY}",

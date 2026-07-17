@@ -371,6 +371,10 @@ func getOpenCodeZenConfig() string {
 }
 
 // getOpenCodeGoConfig returns the default config optimized for OpenCode Go.
+//
+// SYNC: The "models" and "fallbacks" blocks here are duplicated in
+// getDefaultConfig() (main.go) and configs/config.example.json.
+// When adding/renaming a model or changing a flag (e.g. vision), update all three.
 func getOpenCodeGoConfig() string {
 	// This is the same as getDefaultConfig() but explicit for provider
 	return `{

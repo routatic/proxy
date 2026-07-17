@@ -245,3 +245,47 @@ func TestGetProviderConfig_AllProviders(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultAndOpenCodeGoConfigsInSync guards the hand-synced duplication
+// between getDefaultConfig() (main.go) and getOpenCodeGoConfig()
+// (init_provider.go). Their comments claim they are "the same"; this test
+// makes that a CI-enforced invariant so the two templates cannot drift.
+func TestDefaultAndOpenCodeGoConfigsInSync(t *testing.T) {
+	var def, ocg map[string]interface{}
+	if err := json.Unmarshal([]byte(getDefaultConfig()), &def); err != nil {
+		t.Fatalf("getDefaultConfig() invalid JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(getOpenCodeGoConfig()), &ocg); err != nil {
+		t.Fatalf("getOpenCodeGoConfig() invalid JSON: %v", err)
+	}
+
+	for _, section := range []string{"models", "fallbacks"} {
+		defJSON, _ := json.Marshal(def[section])
+		ocgJSON, _ := json.Marshal(ocg[section])
+		if string(defJSON) != string(ocgJSON) {
+			t.Errorf("%q section differs between getDefaultConfig() and getOpenCodeGoConfig(); keep them in sync", section)
+		}
+	}
+}
+
+// TestKimiK3PresentInAllTemplates ensures the kimi-k3 alias exists in both
+// embedded Go templates (config.example.json is validated separately).
+func TestKimiK3PresentInAllTemplates(t *testing.T) {
+	for name, gen := range map[string]func() string{
+		"getDefaultConfig":    getDefaultConfig,
+		"getOpenCodeGoConfig": getOpenCodeGoConfig,
+	} {
+		var cfg map[string]interface{}
+		if err := json.Unmarshal([]byte(gen()), &cfg); err != nil {
+			t.Fatalf("%s invalid JSON: %v", name, err)
+		}
+		models, _ := cfg["models"].(map[string]interface{})
+		if _, ok := models["kimi-k3"]; !ok {
+			t.Errorf("%s: models.kimi-k3 missing", name)
+		}
+		fallbacks, _ := cfg["fallbacks"].(map[string]interface{})
+		if _, ok := fallbacks["kimi-k3"]; !ok {
+			t.Errorf("%s: fallbacks.kimi-k3 missing", name)
+		}
+	}
+}
