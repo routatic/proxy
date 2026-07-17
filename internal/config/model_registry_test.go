@@ -29,6 +29,20 @@ func TestResolveModelConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "kimi-k3 gets hardcoded metadata (256K context, 32K output, vision)",
+			input: ModelConfig{
+				ModelID: "kimi-k3",
+			},
+			expected: ModelConfig{
+				ModelID:         "kimi-k3",
+				ContextWindow:   256000,
+				MaxOutputTokens: 32768,
+				Vision:          true,
+				ContextMargin:   DefaultContextMargin,
+				SupportsTools:   boolPtr(true),
+			},
+		},
+		{
 			name: "ModelRef present preserves explicit catalog capabilities",
 			input: ModelConfig{
 				ModelID:       "deepseek-v4-flash",

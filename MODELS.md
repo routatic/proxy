@@ -21,6 +21,7 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 | **Kimi K2.5**      | Go            | **1,850**              | ★★☆☆☆           | ★★★★☆   |
 | **Kimi K2.6**      | Go            | **~1,150**             | ★☆☆☆☆           | ★★★★★   |
 | **Kimi K2.7 Code** | Go            | **1,350**              | ★☆☆☆☆           | ★★★★★   |
+| **Kimi K3**        | Go            | **_TBD_**              | ★☆☆☆☆           | ★★★★★   |
 | **GLM-5**          | Go            | **1,150**              | ★☆☆☆☆           | ★★★★☆   |
 | **GLM-5.1**        | Go            | **880**                | ☆☆☆☆☆           | ★★★★★   |
 | **GLM-5.2**        | Go            | **880**                | ☆☆☆☆☆           | ★★★★★   |
@@ -339,14 +340,14 @@ The catalog system extracts the provider from the key prefix:
 
 | Models                                                                                                             | Endpoint                                         | Format                   |
 | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------ |
-| GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, MiMo-V2.5, MiMo-V2.5-Pro, DeepSeek V4 Pro, DeepSeek V4 Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI-compatible        |
+| GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, Kimi K3, MiMo-V2.5, MiMo-V2.5-Pro, DeepSeek V4 Pro, DeepSeek V4 Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI-compatible        |
 | **MiniMax M2.5, MiniMax M2.7, MiniMax M3, Qwen3.5 Plus, Qwen3.6 Plus, Qwen3.7 Plus, Qwen3.7 Max**          | `https://opencode.ai/zen/go/v1/messages`         | **Anthropic-compatible** |
 
 ### OpenCode Zen Endpoints
 
 | Models                                                                           | Endpoint                                     | Format                   |
 | -------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------ |
-| MiniMax M2.5, MiniMax M2.7, MiniMax M3, GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, DeepSeek V4 Pro, DeepSeek V4 Flash, DeepSeek V4 Flash Free, Grok Build 0.1, Big Pickle, MiMo-V2.5 Free, North Mini Code Free, Nemotron 3 Ultra Free | `https://opencode.ai/zen/v1/chat/completions` | OpenAI-compatible        |
+| MiniMax M2.5, MiniMax M2.7, MiniMax M3, GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, Kimi K3, DeepSeek V4 Pro, DeepSeek V4 Flash, DeepSeek V4 Flash Free, Grok Build 0.1, Big Pickle, MiMo-V2.5 Free, North Mini Code Free, Nemotron 3 Ultra Free | `https://opencode.ai/zen/v1/chat/completions` | OpenAI-compatible        |
 | **Claude models** (claude-fable-5, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-opus-4-5, claude-opus-4-1, claude-sonnet-4-6, claude-sonnet-4-5, claude-sonnet-4, claude-haiku-4-5, claude-3-5-haiku), **Qwen models** (qwen3.5-plus, qwen3.6-plus, qwen3.7-plus, qwen3.7-max) | `https://opencode.ai/zen/v1/messages`        | **Anthropic-compatible** |
 | **GPT models** (gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.3-codex, gpt-5.3-codex-spark, gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini, gpt-5, gpt-5-codex, gpt-5-nano) | `https://opencode.ai/zen/v1/responses`       | **OpenAI Responses**     |
 | **Gemini models** (gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash)             | `https://opencode.ai/zen/v1/models/{id}`     | **Google Gemini**        |
@@ -729,6 +730,20 @@ Default → Use Kimi K2.6 (1,850 req/$12, ★★★★★) or Qwen3.6 Plus (3,30
   - Complex multi-file refactoring
   - Production code review
 - **When to Use:** Use instead of GLM-5.1 for the latest improvements
+
+#### Kimi K3 — Latest Kimi Flagship
+
+- **Model ID:** `kimi-k3`
+- **Provider:** OpenCode Go (Moonshot AI upstream)
+- **Endpoint:** OpenAI-compatible (`/v1/chat/completions`)
+- **Context:** ~256K tokens
+- **Quality:** ★★★★★
+- **Max Output:** 32K tokens
+- **Best For:**
+  - Latest-generation code generation and agentic tool use
+  - Complex refactoring requiring long outputs
+- **When to Use:** When you want the newest Kimi generation; falls back to Kimi K2.7 Code, then Kimi K2.6
+- **Note:** Specs (cost, exact context/output limits) are provisional — verify against Moonshot AI's official docs once K3 is confirmed live.
 
 #### Kimi K2.7 Code — Code Specialist
 

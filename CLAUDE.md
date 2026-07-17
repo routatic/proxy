@@ -50,7 +50,8 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 | GLM-5.2 | Go | Premium | Complex reasoning, architecture decisions (new) |
 | GLM-5.1 | Go | Standard | Complex patterns, tool operations |
 | GLM-5 | Go | Standard | Reasoning tasks (deprecated May 14, 2026) |
-| Kimi K2.7 Code | Go | Code specialist | Code generation, 32K output context (new) |
+| Kimi K3 | Go | Code specialist | Latest Kimi, code + agentic, 32K output context (new) |
+| Kimi K2.7 Code | Go | Code specialist | Code generation, 32K output context |
 | Kimi K2.6 | Go | Standard | General purpose, default fallback |
 | Qwen3.7 Plus | Go | Fast | Streaming, low-latency (new) |
 | Qwen3.7 Max | Go | Fast | Background tasks (new) |

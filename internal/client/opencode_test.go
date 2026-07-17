@@ -54,6 +54,11 @@ func TestIsAnthropicModelOnlyRoutesNativeAnthropicModels(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "kimi k3 uses openai endpoint",
+			modelID: "kimi-k3",
+			want:    false,
+		},
+		{
 			name:    "glm-5.1 uses openai endpoint",
 			modelID: "glm-5.1",
 			want:    false,

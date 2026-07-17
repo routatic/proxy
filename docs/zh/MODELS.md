@@ -23,6 +23,7 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 | **Kimi K2.5** | Go | **1,850** | ★★☆☆☆ | ★★★★☆ |
 | **Kimi K2.6** | Go | **~1,150** | ★☆☆☆☆ | ★★★★★ |
 | **Kimi K2.7 Code** | Go | **1,350** | ★☆☆☆☆ | ★★★★★ |
+| **Kimi K3** | Go | **_待定_** | ★☆☆☆☆ | ★★★★★ |
 | **GLM-5** | Go | **1,150** | ★☆☆☆☆ | ★★★★☆ |
 | **GLM-5.1** | Go | **880** | ☆☆☆☆☆ | ★★★★★ |
 | **GLM-5.2** | Go | **880** | ☆☆☆☆☆ | ★★★★★ |
@@ -57,7 +58,7 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 
 | 模型 | 端点 | 格式 |
 |------|------|------|
-| GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, MiMo-V2.5, MiMo-V2.5-Pro, DeepSeek V4 Pro, DeepSeek V4 Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI 兼容 |
+| GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, Kimi K3, MiMo-V2.5, MiMo-V2.5-Pro, DeepSeek V4 Pro, DeepSeek V4 Flash | `https://opencode.ai/zen/go/v1/chat/completions` | OpenAI 兼容 |
 | **MiniMax M2.5, MiniMax M2.7, MiniMax M3, Qwen3.5 Plus, Qwen3.6 Plus, Qwen3.7 Plus, Qwen3.7 Max** | `https://opencode.ai/zen/go/v1/messages` | **Anthropic 兼容** |
 
 ### OpenCode Zen 端点

@@ -960,6 +960,13 @@ func getDefaultConfig() string {
       "temperature": 0.7,
       "max_tokens": 8192
     },
+    "kimi-k3": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k3",
+      "temperature": 0.7,
+      "max_tokens": 32768,
+      "vision": true
+    },
     "kimi-k2.7-code": {
       "provider": "opencode-go",
       "model_id": "kimi-k2.7-code",
@@ -1024,6 +1031,10 @@ func getDefaultConfig() string {
     ],
     "glm-5.2": [
       { "provider": "opencode-go", "model_id": "glm-5.1" },
+      { "provider": "opencode-go", "model_id": "kimi-k2.6" }
+    ],
+    "kimi-k3": [
+      { "provider": "opencode-go", "model_id": "kimi-k2.7-code" },
       { "provider": "opencode-go", "model_id": "kimi-k2.6" }
     ],
     "kimi-k2.7-code": [
