@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -461,6 +462,8 @@ type catalogLockResponse struct {
 	Synced     bool       `json:"synced"`
 }
 
+const maxTestRequestBody = 1 << 20
+
 // handleTestSend proxies a chat request to the proxy server and streams the
 // response back. This avoids CORS issues that would arise from the browser
 // calling the proxy port directly.
@@ -473,13 +476,19 @@ func (s *Server) handleTestSend(w http.ResponseWriter, r *http.Request) {
 	proxyPort := s.getProxyPort()
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/v1/messages", proxyPort)
 
-	// Read the incoming body.
+	r.Body = http.MaxBytesReader(w, r.Body, maxTestRequestBody)
+	defer r.Body.Close()
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
 
 	// Forward to the proxy.
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, proxyURL, bytes.NewReader(body))

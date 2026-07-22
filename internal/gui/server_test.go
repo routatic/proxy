@@ -1,11 +1,15 @@
 package gui
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,5 +156,80 @@ func TestHandleCatalogSync_UpstreamError(t *testing.T) {
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestHandleTestSend_MethodNotAllowed(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/api/test/send", nil)
+	rr := httptest.NewRecorder()
+
+	s.handleTestSend(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandleTestSend_RequestBodyTooLarge(t *testing.T) {
+	s := &Server{proxyPort: 1}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/test/send",
+		bytes.NewReader(bytes.Repeat([]byte("x"), maxTestRequestBody+1)),
+	)
+	rr := httptest.NewRecorder()
+
+	s.handleTestSend(rr, req)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func TestHandleTestSend_ForwardsRequest(t *testing.T) {
+	const requestBody = `{"model":"test-model","messages":[{"role":"user","content":"hello"}]}`
+
+	var gotMethod string
+	var gotContentType string
+	var gotBody []byte
+	proxy := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotContentType = r.Header.Get("Content-Type")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for proxy: %v", err)
+	}
+	proxy.Listener = listener
+	proxy.Start()
+	defer proxy.Close()
+
+	s := &Server{proxyPort: proxy.Listener.Addr().(*net.TCPAddr).Port}
+	req := httptest.NewRequest(http.MethodPost, "/api/test/send", strings.NewReader(requestBody))
+	rr := httptest.NewRecorder()
+
+	s.handleTestSend(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("forwarded method = %q, want %q", gotMethod, http.MethodPost)
+	}
+	if gotContentType != "application/json" {
+		t.Fatalf("forwarded content type = %q, want application/json", gotContentType)
+	}
+	if string(gotBody) != requestBody {
+		t.Fatalf("forwarded body = %q, want %q", gotBody, requestBody)
+	}
+	if rr.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("response content type = %q, want application/json", rr.Header().Get("Content-Type"))
+	}
+	if rr.Body.String() != `{"ok":true}` {
+		t.Fatalf("response body = %q, want %q", rr.Body.String(), `{"ok":true}`)
 	}
 }
