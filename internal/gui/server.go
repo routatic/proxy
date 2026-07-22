@@ -477,7 +477,7 @@ func (s *Server) handleTestSend(w http.ResponseWriter, r *http.Request) {
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/v1/messages", proxyPort)
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxTestRequestBody)
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -504,7 +504,7 @@ func (s *Server) handleTestSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("proxy request failed: %v", err), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Copy status code and headers.
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
