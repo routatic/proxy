@@ -40,8 +40,11 @@ func TestEnableDisableAutostart_Darwin(t *testing.T) {
 	if !strings.Contains(content, "<key>Label</key>\n    <string>com.routatic.proxy</string>") {
 		t.Errorf("Plist missing correct Label string")
 	}
-	if !strings.Contains(content, "<string>serve</string>") {
-		t.Errorf("Plist missing serve command")
+	if !strings.Contains(content, "<string>start</string>") {
+		t.Errorf("Plist missing start command")
+	}
+	if !strings.Contains(content, "<string>--background</string>") {
+		t.Errorf("Plist missing --background flag")
 	}
 	if !strings.Contains(content, "<string>--config</string>\n        <string>/tmp/mock-config.json</string>") {
 		t.Errorf("Plist missing config path arguments")

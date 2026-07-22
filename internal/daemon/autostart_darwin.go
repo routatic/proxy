@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/template"
 )
 
@@ -53,6 +54,10 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <dict>
         <key>PATH</key>
         <string>{{.EnvPath}}</string>
+        {{- range $key, $val := .ExtraEnv}}
+        <key>{{$key}}</key>
+        <string>{{$val}}</string>
+        {{- end}}
     </dict>
 </dict>
 </plist>
@@ -66,6 +71,7 @@ type plistData struct {
 	Port       int
 	LogFile    string
 	EnvPath    string
+	ExtraEnv   map[string]string
 }
 
 // EnableAutostart creates the launchd plist and loads it.
@@ -89,6 +95,17 @@ func EnableAutostart(configPath string, port int) error {
 		envPath = "/usr/local/bin:/usr/bin:/bin"
 	}
 
+	extraEnv := make(map[string]string)
+	for _, e := range os.Environ() {
+		k, v, ok := strings.Cut(e, "=")
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(k, "ROUTATIC_PROXY_") {
+			extraEnv[k] = v
+		}
+	}
+
 	data := plistData{
 		Label:      LaunchAgent,
 		BinaryPath: paths.BinaryPath,
@@ -96,6 +113,7 @@ func EnableAutostart(configPath string, port int) error {
 		Port:       port,
 		LogFile:    paths.LogFile,
 		EnvPath:    envPath,
+		ExtraEnv:   extraEnv,
 	}
 
 	tmpl, err := template.New("plist").Parse(plistTemplate)
