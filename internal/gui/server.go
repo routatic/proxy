@@ -509,7 +509,14 @@ func (s *Server) handleTestSend(w http.ResponseWriter, r *http.Request) {
 	// Copy status code and headers.
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	written, err := io.Copy(w, resp.Body)
+	if err != nil {
+		logger := s.logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Error("failed to stream proxy response", "err", err, "bytes_written", written)
+	}
 }
 
 func (s *Server) handleCatalogLock(w http.ResponseWriter, r *http.Request) {
