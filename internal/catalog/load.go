@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 )
 
@@ -60,14 +61,21 @@ func validateCatalog(catalog *Catalog) error {
 		return errors.New("catalog models map is empty")
 	}
 
+	var hasUnknown bool
 	for key := range catalog.Models {
 		provider := ProviderFromModelKey(key)
 		if provider == "" {
 			return fmt.Errorf("model key %q does not include a provider prefix (expected format: provider/model)", key)
 		}
 		if _, ok := catalog.Providers[provider]; !ok {
-			return fmt.Errorf("model key %q references unknown provider %q", key, provider)
+			slog.Warn("skipping model with unknown provider", "model", key, "provider", provider)
+			delete(catalog.Models, key)
+			hasUnknown = true
 		}
+	}
+
+	if hasUnknown && len(catalog.Models) == 0 {
+		return errors.New("all models reference unknown providers, catalog is unusable")
 	}
 
 	return nil

@@ -167,15 +167,21 @@ func TestRunModelsList_MissingCatalog(t *testing.T) {
 	configPath := writeTestConfig(t, tmp, `{"api_key": "test-global-key"}`)
 	// Intentionally do not write catalog.json.
 
-	cmd, _ := newCaptureCommand(t)
+	// Override the storage path to use a temp directory so we don't
+	// accidentally pick up the user's real catalog.
+	origDBPath := storage.DefaultConfig.DatabasePath
+	storage.DefaultConfig.DatabasePath = filepath.Join(tmp, "data.db")
+	defer func() { storage.DefaultConfig.DatabasePath = origDBPath }()
+
+	cmd, buf := newCaptureCommand(t)
 	t.Setenv("ROUTATIC_PROXY_CONFIG", configPath)
 
 	err := runModelsList(cmd, configPath, "")
-	if err == nil {
-		t.Fatal("expected error for missing catalog, got nil")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "catalog not found; run 'routatic-proxy catalog sync' first"
-	if !strings.Contains(err.Error(), want) {
-		t.Fatalf("expected error containing %q, got: %v", want, err)
+	output := buf.String()
+	if !strings.Contains(output, "catalog not found") {
+		t.Fatalf("expected output containing %q, got: %s", "catalog not found", output)
 	}
 }

@@ -150,6 +150,18 @@ func (ic *IndexedCatalog) ListProviderModels(provider string) []ResolvedModel {
 		return nil
 	}
 
+	// Prefer the pre-built ProviderModels index (populated during Load /
+	// LoadFromSQLite). Fall back to iterating Models by key prefix for
+	// backward compatibility with hand-built catalogs (e.g. tests).
+	if len(ic.ProviderModels) > 0 {
+		models := ic.ProviderModels[provider]
+		result := make([]ResolvedModel, 0, len(models))
+		for _, model := range models {
+			result = append(result, resolvedModel(providerCfg, model.ID, model))
+		}
+		return result
+	}
+
 	prefix := provider + "/"
 	var result []ResolvedModel
 	for key, model := range ic.Models {

@@ -98,6 +98,29 @@ func catalogSyncCmd() *cobra.Command {
 			cmd.Printf("  SHA256: %s\n", lock.SHA256)
 			cmd.Printf("  Bytes:  %d\n", lock.Bytes)
 			cmd.Printf("  TTL:    %d hours\n", lock.TTLHours)
+
+			// Migrate the downloaded JSON catalog to SQLite so that
+			// 'routatic-proxy models list' and other SQLite-backed commands
+			// can find it.
+			jsonPath := filepath.Join(catalogDir, "catalog.json")
+			db, err := storage.Open(storage.DefaultConfig)
+			if err != nil {
+				return fmt.Errorf("open database: %w", err)
+			}
+			defer func() { _ = db.Close() }()
+
+			ctx := cmd.Context()
+			migrated, err := catalog.MigrateFromJSON(ctx, db, jsonPath)
+			if err != nil {
+				return fmt.Errorf("migrate catalog to SQLite: %w", err)
+			}
+
+			if migrated {
+				cmd.Println("  Catalog migrated to SQLite database")
+			} else {
+				cmd.Println("  SQLite catalog already up to date")
+			}
+
 			return nil
 		},
 	}
