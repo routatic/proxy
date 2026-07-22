@@ -774,19 +774,10 @@ func runModelsList(cmd *cobra.Command, configPath, provider string) error {
 
 	cat, err := catalog.LoadFromSQLite(ctx, db)
 	if err != nil {
-		cmd.Println("catalog not found; run 'routatic-proxy catalog sync' first")
-		return nil
+		return fmt.Errorf("catalog not found; run 'routatic-proxy catalog sync' first")
 	}
 
-	// When a specific provider is requested, use it directly. Otherwise
-	// show all providers that have models in the catalog.
-	var providers []string
-	if provider != "" {
-		providers = []string{provider}
-	} else {
-		providers = catalogProviders(cat)
-	}
-
+	providers := selectProviders(provider, cfg)
 	if len(providers) == 0 {
 		if provider != "" {
 			cmd.Printf("No models found for provider %q.\n", provider)
@@ -830,17 +821,30 @@ func runModelsList(cmd *cobra.Command, configPath, provider string) error {
 	return nil
 }
 
-// catalogProviders returns all provider names from the catalog that have at
-// least one model, sorted.
-func catalogProviders(cat *catalog.IndexedCatalog) []string {
-	providers := make([]string, 0, len(cat.ProviderModels))
-	for p := range cat.ProviderModels {
-		if len(cat.ProviderModels[p]) > 0 {
-			providers = append(providers, p)
+// selectProviders returns the providers to display. If provider is non-empty,
+// only that provider is returned when it exists in the catalog; otherwise all
+// configured (enabled) providers are returned.
+func selectProviders(provider string, cfg *config.Config) []string {
+	if provider != "" {
+		return []string{provider}
+	}
+
+	globalKeys := cfg.EffectiveAPIKeys()
+	providerKeys := map[string][]string{
+		"opencode-go":  cfg.OpenCodeGo.EffectiveAPIKeys(),
+		"opencode-zen": cfg.OpenCodeZen.EffectiveAPIKeys(),
+		"aws-bedrock":  cfg.AWSBedrock.EffectiveAPIKeys(),
+		"openrouter":   cfg.OpenRouter.EffectiveAPIKeys(),
+	}
+
+	var enabled []string
+	for p, keys := range providerKeys {
+		if len(keys) > 0 || len(globalKeys) > 0 {
+			enabled = append(enabled, p)
 		}
 	}
-	sort.Strings(providers)
-	return providers
+	sort.Strings(enabled)
+	return enabled
 }
 
 // autostartCmd returns the command to manage autostart on login.
