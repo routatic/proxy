@@ -3,10 +3,12 @@
 package gui
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -174,6 +176,7 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 	mux.HandleFunc("/api/proxy/stop", s.handleProxyStop)
 	mux.HandleFunc("/api/catalog/lock", s.handleCatalogLock)
 	mux.HandleFunc("/api/catalog/sync", s.handleCatalogSync)
+	mux.HandleFunc("/api/test/send", s.handleTestSend)
 
 	// New endpoints for advanced GUI features
 
@@ -456,6 +459,48 @@ type catalogLockResponse struct {
 	TTLHours   int        `json:"ttl_hours,omitempty"`
 	AgeSeconds int64      `json:"age_seconds"`
 	Synced     bool       `json:"synced"`
+}
+
+// handleTestSend proxies a chat request to the proxy server and streams the
+// response back. This avoids CORS issues that would arise from the browser
+// calling the proxy port directly.
+func (s *Server) handleTestSend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	proxyPort := s.getProxyPort()
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/v1/messages", proxyPort)
+
+	// Read the incoming body.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Forward to the proxy.
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, proxyURL, bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "failed to create proxy request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("proxy request failed: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy status code and headers.
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (s *Server) handleCatalogLock(w http.ResponseWriter, r *http.Request) {

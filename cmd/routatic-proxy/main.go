@@ -373,11 +373,13 @@ Press Ctrl+C to stop the server.`,
 			if !headless {
 				// Start GUI server on port 3445.
 				guiSrv = gui.New(gui.Options{
-					History:      srv.History,
-					Metrics:      srv.Metrics(),
-					AtomicConfig: atomicCfg,
-					ProxyPort:    cfg.Port,
-					Storage:      srv.Storage(),
+					History:          srv.History,
+					Metrics:          srv.Metrics(),
+					AtomicConfig:     atomicCfg,
+					ProxyPort:        cfg.Port,
+					Storage:          srv.Storage(),
+					CatalogDir:       resolveCatalogDir(configPath),
+					CatalogSourceURL: cfg.Catalog.SourceURL,
 				})
 				guiSrv.SetProxyRunning(true)
 
