@@ -10,7 +10,8 @@ import (
 
 // openGUI opens the dashboard in a native macOS webview. It returns a channel
 // that is closed when the user closes the window, signaling that the proxy
-// should shut down.
+// should shut down. The webview runs on the calling goroutine (main thread)
+// to satisfy macOS AppKit requirements.
 func openGUI(guiURL string) (<-chan struct{}, error) {
 	fmt.Printf("\nDashboard: %s\n", guiURL)
 	fmt.Println("Opening native window...")

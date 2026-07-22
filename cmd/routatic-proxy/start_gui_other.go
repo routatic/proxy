@@ -2,9 +2,7 @@
 
 package main
 
-import (
-	"fmt"
-)
+import "fmt"
 
 // openGUI prints the dashboard URL. It returns a nil channel because there is
 // no native window to wait on — only SIGINT stops the proxy.
