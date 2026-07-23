@@ -269,7 +269,7 @@ jobs:
             if [ -z "$CHANGELOG" ] || [ "$CHANGELOG" = "null" ]; then
               echo "Warning: AI changelog generation failed, using commit list instead" >&2
               echo "API response: $RESPONSE" >&2
-              CHANGELOG="## Commits\n\n$(git log \"${PREVIOUS_TAG}..HEAD\" --pretty=format:'- %s')"
+              CHANGELOG="## Commits\n\n$(git log "${PREVIOUS_TAG}..HEAD" --pretty=format:'- %s')"
             fi
           else
             echo "No previous tag found, using commit list"
