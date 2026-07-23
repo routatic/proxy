@@ -4,27 +4,39 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 
-	"github.com/webview/webview_go"
+	"github.com/routatic/proxy/internal/tray"
 )
 
-// openGUI opens the dashboard in a native macOS webview. It returns a channel
-// that is closed when the user closes the window, signaling that the proxy
-// should shut down. The webview runs on the calling goroutine (main thread)
-// to satisfy macOS AppKit requirements.
+// openGUI starts the system tray icon and opens the dashboard in the default
+// browser. It returns a channel that is closed when the user clicks "Quit" in
+// the tray menu, signaling that the proxy should shut down.
+//
+// systray.Run must be called from the main OS thread on macOS (AppKit
+// requirement). The goroutine that calls this function must be the main
+// goroutine locked to the OS thread via runtime.LockOSThread, OR the library
+// handles it internally (getlantern/systray does).
 func openGUI(guiURL string) (<-chan struct{}, error) {
 	fmt.Printf("\nDashboard: %s\n", guiURL)
-	fmt.Println("Opening native window...")
+
+	// Open dashboard in default browser.
+	_ = exec.Command("open", guiURL).Start()
 
 	done := make(chan struct{})
+
 	go func() {
-		wv := webview.New(false)
-		defer wv.Destroy()
-		wv.SetTitle("routatic-proxy")
-		wv.SetSize(1200, 800, webview.HintNone)
-		wv.Navigate(guiURL)
-		wv.Run()
-		close(done)
+		tray.Run(tray.Callbacks{
+			InitiallyRunning:   true,
+			InitiallyAutostart: false,
+			OnOpen: func() {
+				_ = exec.Command("open", guiURL).Start()
+			},
+			OnQuit: func() {
+				close(done)
+			},
+		})
 	}()
+
 	return done, nil
 }

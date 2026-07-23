@@ -390,8 +390,8 @@ Press Ctrl+C to stop the server.`,
 					return fmt.Errorf("start gui server: %w", err)
 				}
 
-				// Open GUI (macOS: native webview, Linux/Windows: print URL).
-				// guiDone is closed when the native window is dismissed (CGO
+				// Open GUI (macOS: system tray + browser, Linux/Windows: print URL).
+				// guiDone is closed when the user quits from the tray (CGO
 				// path); it is nil on non-CGO platforms where only SIGINT
 				// stops the proxy.
 				var guiErr error
