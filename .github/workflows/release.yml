@@ -40,8 +40,6 @@ jobs:
     name: Build & Release
     needs: validate
     runs-on: macos-latest
-    env:
-      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     outputs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
@@ -53,6 +51,12 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+
+      - name: Check signing availability
+        id: signing
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: echo "enabled=$([ -n "$SIGNPATH_API_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Determine version
         id: version
@@ -74,7 +78,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          go install github.com/tc-hib/go-winres@latest
+          go install github.com/tc-hib/go-winres@v0.3.3
 
           # Parse version components (e.g., "0.5.3" → "0.5.3.0")
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
@@ -126,7 +130,7 @@ jobs:
           ls -lh dist/
 
       - name: Package Windows binaries for signing
-        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
         run: |
           mkdir -p signing
           cp dist/routatic-proxy_windows-amd64.exe signing/
@@ -134,7 +138,7 @@ jobs:
           cd signing && zip ../windows-binaries.zip *.exe
 
       - name: Sign Windows binaries (SignPath)
-        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
         uses: signpath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -149,7 +153,7 @@ jobs:
           wait-for-completion-timeout-in-seconds: 300
 
       - name: Replace with signed Windows binaries
-        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
         run: |
           unzip -o windows-binaries-signed.zip -d signed/
           cp signed/routatic-proxy_windows-amd64.exe dist/routatic-proxy_windows-amd64.exe
