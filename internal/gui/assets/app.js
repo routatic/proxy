@@ -1575,14 +1575,19 @@ const TestModule = {
     this.testModelSelect.innerHTML = '<option value="">Select a model...</option>';
 
     try {
-      const r = await fetch('/api/metrics');
+      const r = await fetch('/api/proxy/config');
       if (!r.ok) return;
       const data = await r.json();
-      const models = Object.keys(data.model_counts || {});
-      models.sort().forEach(m => {
+      const modelIds = new Set();
+      // Only collect model_overrides and model_family_overrides — the
+      // top-level "models" keys are routing scenarios (fast, default,
+      // long_context, etc.), not real model IDs.
+      Object.keys(data.model_overrides || {}).forEach(k => modelIds.add(k));
+      Object.keys(data.model_family_overrides || {}).forEach(k => modelIds.add(k));
+      [...modelIds].sort().forEach(id => {
         const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
+        opt.value = id;
+        opt.textContent = id;
         this.testModelSelect.appendChild(opt);
       });
     } catch (e) {}
@@ -1617,7 +1622,7 @@ const TestModule = {
 
     const start = performance.now();
     try {
-      const r = await fetch('/v1/messages', {
+      const r = await fetch('/api/test/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
