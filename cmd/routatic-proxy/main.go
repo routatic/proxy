@@ -349,6 +349,7 @@ Press Ctrl+C to stop the server.`,
 			defer cancel()
 
 			var guiSrv *gui.Server
+			var guiDone <-chan struct{}
 
 			// Start proxy in background.
 			go func() {
@@ -373,11 +374,13 @@ Press Ctrl+C to stop the server.`,
 			if !headless {
 				// Start GUI server on port 3445.
 				guiSrv = gui.New(gui.Options{
-					History:      srv.History,
-					Metrics:      srv.Metrics(),
-					AtomicConfig: atomicCfg,
-					ProxyPort:    cfg.Port,
-					Storage:      srv.Storage(),
+					History:          srv.History,
+					Metrics:          srv.Metrics(),
+					AtomicConfig:     atomicCfg,
+					ProxyPort:        cfg.Port,
+					Storage:          srv.Storage(),
+					CatalogDir:       resolveCatalogDir(configPath),
+					CatalogSourceURL: cfg.Catalog.SourceURL,
 				})
 				guiSrv.SetProxyRunning(true)
 
@@ -387,9 +390,14 @@ Press Ctrl+C to stop the server.`,
 					return fmt.Errorf("start gui server: %w", err)
 				}
 
-				// Open GUI (macOS: native webview, Linux/Windows: print URL)
-				if err := openGUI(guiURL); err != nil {
-					slog.Warn("GUI error", "error", err)
+				// Open GUI (macOS: system tray + browser, Linux/Windows: print URL).
+				// guiDone is closed when the user quits from the tray (CGO
+				// path); it is nil on non-CGO platforms where only SIGINT
+				// stops the proxy.
+				var guiErr error
+				guiDone, guiErr = openGUI(guiURL)
+				if guiErr != nil {
+					slog.Warn("GUI error", "error", guiErr)
 					fmt.Printf("\nDashboard: %s\n", guiURL)
 					fmt.Println("\nPress Ctrl+C to stop.")
 				}
@@ -397,13 +405,16 @@ Press Ctrl+C to stop the server.`,
 				fmt.Println("\nRunning in headless mode (no dashboard). Press Ctrl+C to stop.")
 			}
 
-			// Wait for signal.
+			// Wait for signal or GUI window close.
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 			select {
 			case <-sigCh:
 				fmt.Println("\nShutting down...")
 			case <-ctx.Done():
+			case <-guiDone:
+				fmt.Println("\nGUI window closed, shutting down...")
+				cancel()
 			}
 
 			// Graceful shutdown.
