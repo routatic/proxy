@@ -774,6 +774,7 @@ func runModelsList(cmd *cobra.Command, configPath, provider string) error {
 
 	cat, err := catalog.LoadFromSQLite(ctx, db)
 	if err != nil {
+		slog.Warn("catalog not available", "error", err)
 		cmd.Println("catalog not found; run 'routatic-proxy catalog sync' first")
 		return nil
 	}

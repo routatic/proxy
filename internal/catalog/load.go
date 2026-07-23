@@ -61,7 +61,7 @@ func validateCatalog(catalog *Catalog) error {
 		return errors.New("catalog models map is empty")
 	}
 
-	var hasUnknown bool
+	var toDelete []string
 	for key := range catalog.Models {
 		provider := ProviderFromModelKey(key)
 		if provider == "" {
@@ -69,12 +69,15 @@ func validateCatalog(catalog *Catalog) error {
 		}
 		if _, ok := catalog.Providers[provider]; !ok {
 			slog.Warn("skipping model with unknown provider", "model", key, "provider", provider)
-			delete(catalog.Models, key)
-			hasUnknown = true
+			toDelete = append(toDelete, key)
 		}
 	}
 
-	if hasUnknown && len(catalog.Models) == 0 {
+	for _, key := range toDelete {
+		delete(catalog.Models, key)
+	}
+
+	if len(toDelete) > 0 && len(catalog.Models) == 0 {
 		return errors.New("all models reference unknown providers, catalog is unusable")
 	}
 

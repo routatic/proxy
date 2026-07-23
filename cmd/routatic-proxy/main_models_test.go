@@ -169,6 +169,7 @@ func TestRunModelsList_MissingCatalog(t *testing.T) {
 
 	// Override the storage path to use a temp directory so we don't
 	// accidentally pick up the user's real catalog.
+	// NOTE: mutates package-level var — this test must NOT use t.Parallel().
 	origDBPath := storage.DefaultConfig.DatabasePath
 	storage.DefaultConfig.DatabasePath = filepath.Join(tmp, "data.db")
 	defer func() { storage.DefaultConfig.DatabasePath = origDBPath }()
