@@ -55,7 +55,7 @@ jobs:
       - name: Check signing availability
         id: signing
         env:
-          USE_SIGNPATH: ${{ secrets.USE_SIGNPATH }}
+          USE_SIGNPATH: ${{ vars.USE_SIGNPATH }}
         run: echo "enabled=$([ "$USE_SIGNPATH" = "true" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Determine version
