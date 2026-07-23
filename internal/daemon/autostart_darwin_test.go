@@ -13,6 +13,8 @@ func TestEnableDisableAutostart_Darwin(t *testing.T) {
 	// Setup temporary home directory
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	// Set a ROUTATIC_PROXY_* var with characters that need XML escaping.
+	t.Setenv("ROUTATIC_PROXY_API_KEY", "sk-test&key<value>")
 
 	configPath := "/tmp/mock-config.json"
 	port := 9999
@@ -51,6 +53,15 @@ func TestEnableDisableAutostart_Darwin(t *testing.T) {
 	}
 	if !strings.Contains(content, "<string>--port</string>\n        <string>9999</string>") {
 		t.Errorf("Plist missing port arguments")
+	}
+
+	// Verify ROUTATIC_PROXY_* env var is present and XML-escaped.
+	if !strings.Contains(content, "<key>ROUTATIC_PROXY_API_KEY</key>") {
+		t.Errorf("Plist missing ROUTATIC_PROXY_API_KEY env var")
+	}
+	// The value should be XML-escaped: & -> &amp;, < -> &lt;, > -> &gt;
+	if !strings.Contains(content, "<string>sk-test&amp;key&lt;value&gt;</string>") {
+		t.Errorf("Plist missing XML-escaped API key value. Content:\n%s", content)
 	}
 
 	// Disable autostart

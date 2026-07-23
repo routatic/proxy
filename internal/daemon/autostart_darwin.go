@@ -4,6 +4,7 @@ package daemon
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,7 +57,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
         <string>{{.EnvPath}}</string>
         {{- range $key, $val := .ExtraEnv}}
         <key>{{$key}}</key>
-        <string>{{$val}}</string>
+        <string>{{xmlEscape $val}}</string>
         {{- end}}
     </dict>
 </dict>
@@ -116,7 +117,9 @@ func EnableAutostart(configPath string, port int) error {
 		ExtraEnv:   extraEnv,
 	}
 
-	tmpl, err := template.New("plist").Parse(plistTemplate)
+	tmpl, err := template.New("plist").Funcs(template.FuncMap{
+		"xmlEscape": html.EscapeString,
+	}).Parse(plistTemplate)
 	if err != nil {
 		return fmt.Errorf("cannot parse plist template: %w", err)
 	}
