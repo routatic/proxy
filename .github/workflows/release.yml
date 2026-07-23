@@ -40,6 +40,8 @@ jobs:
     name: Build & Release
     needs: validate
     runs-on: macos-latest
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     outputs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
@@ -124,7 +126,7 @@ jobs:
           ls -lh dist/
 
       - name: Package Windows binaries for signing
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
         run: |
           mkdir -p signing
           cp dist/routatic-proxy_windows-amd64.exe signing/
@@ -132,7 +134,7 @@ jobs:
           cd signing && zip ../windows-binaries.zip *.exe
 
       - name: Sign Windows binaries (SignPath)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
         uses: signpath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -147,7 +149,7 @@ jobs:
           wait-for-completion-timeout-in-seconds: 300
 
       - name: Replace with signed Windows binaries
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
         run: |
           unzip -o windows-binaries-signed.zip -d signed/
           cp signed/routatic-proxy_windows-amd64.exe dist/routatic-proxy_windows-amd64.exe
