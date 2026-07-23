@@ -389,10 +389,10 @@ Press Ctrl+C to stop the server.`,
 
 				// Open GUI (macOS: native webview, Linux/Windows: print URL)
 				if err := openGUI(guiURL); err != nil {
-				slog.Warn("GUI error", "error", err)
-				fmt.Printf("\nDashboard: %s\n", guiURL)
-				fmt.Println("\nPress Ctrl+C to stop.")
-			}
+					slog.Warn("GUI error", "error", err)
+					fmt.Printf("\nDashboard: %s\n", guiURL)
+					fmt.Println("\nPress Ctrl+C to stop.")
+				}
 			} else {
 				fmt.Println("\nRunning in headless mode (no dashboard). Press Ctrl+C to stop.")
 			}
