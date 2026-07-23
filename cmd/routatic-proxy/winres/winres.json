@@ -1,0 +1,47 @@
+{
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "Routatic.Proxy",
+          "version": "0.0.0.0"
+        },
+        "description": "Routatic Proxy - AI Model Router",
+        "minimum-os": "win7",
+        "execution-level": "asInvoker",
+        "ui-access": false,
+        "auto-elevate": false,
+        "dpi-awareness": "system",
+        "disable-theming": false,
+        "disable-window-filtering": false,
+        "high-resolution-scrolling-aware": false,
+        "ultra-high-resolution-scrolling-aware": false,
+        "long-path-aware": true,
+        "gdi-scaling": false
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "0.0.0.0",
+          "product_version": "0.0.0.0"
+        },
+        "info": {
+          "0409": {
+            "Comments": "AI model routing proxy for Claude Code",
+            "CompanyName": "Routatic",
+            "FileDescription": "Routatic Proxy - AI Model Router",
+            "FileVersion": "0.0.0.0",
+            "InternalName": "routatic-proxy",
+            "LegalCopyright": "Copyright (c) 2024-2026 Routatic",
+            "OriginalFilename": "routatic-proxy.exe",
+            "ProductName": "Routatic Proxy",
+            "ProductVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  }
+}

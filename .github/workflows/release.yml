@@ -68,6 +68,31 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "Releasing as $TAG"
 
+      - name: Generate Windows resource files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          go install github.com/tc-hib/go-winres@latest
+
+          # Parse version components (e.g., "0.5.3" → "0.5.3.0")
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          FILE_VER="${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}.0"
+
+          # Update version in winres.json
+          cd cmd/routatic-proxy
+          sed -i.bak "s/\"file_version\": \"0.0.0.0\"/\"file_version\": \"${FILE_VER}\"/" winres/winres.json
+          sed -i.bak "s/\"product_version\": \"0.0.0.0\"/\"product_version\": \"${FILE_VER}\"/" winres/winres.json
+          sed -i.bak "s/\"FileVersion\": \"0.0.0.0\"/\"FileVersion\": \"${VERSION}\"/" winres/winres.json
+          sed -i.bak "s/\"ProductVersion\": \"0.0.0.0\"/\"ProductVersion\": \"${VERSION}\"/" winres/winres.json
+          rm -f winres/winres.json.bak
+
+          # Generate .syso files for both Windows architectures
+          go-winres make --arch amd64 --out rsrc_windows_amd64.syso
+          go-winres make --arch arm64 --out rsrc_windows_arm64.syso
+          cd ../..
+
       - name: Build cross-platform binaries
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -97,6 +122,34 @@ jobs:
           echo ""
           echo "Built binaries:"
           ls -lh dist/
+
+      - name: Sign Windows binaries
+        if: env.WINDOWS_SIGN_CERT != ''
+        env:
+          WINDOWS_SIGN_CERT: ${{ secrets.WINDOWS_SIGN_CERT }}
+          WINDOWS_SIGN_KEY: ${{ secrets.WINDOWS_SIGN_KEY }}
+        run: |
+          brew install osslsigncode
+
+          # Decode certificate and key from base64 secrets
+          echo "$WINDOWS_SIGN_CERT" | base64 -d > /tmp/cert.pem
+          echo "$WINDOWS_SIGN_KEY" | base64 -d > /tmp/key.pem
+
+          for EXE in dist/routatic-proxy_windows-*.exe; do
+            echo "Signing ${EXE}..."
+            osslsigncode sign \
+              -certs /tmp/cert.pem \
+              -key /tmp/key.pem \
+              -t http://timestamp.digicert.com \
+              -n "Routatic Proxy" \
+              -url "https://github.com/routatic/proxy" \
+              -in "$EXE" \
+              -out "${EXE}.signed"
+            mv "${EXE}.signed" "$EXE"
+          done
+
+          # Clean up
+          rm -f /tmp/cert.pem /tmp/key.pem
 
       - name: Generate checksums
         run: |

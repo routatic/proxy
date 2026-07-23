@@ -22,3 +22,6 @@ router.test
 .playwright-mcp
 .gstack/
 node_modules/
+
+# Generated Windows resource files (built by go-winres in CI)
+*.syso
