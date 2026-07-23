@@ -387,8 +387,8 @@ Press Ctrl+C to stop the server.`,
 					return fmt.Errorf("start gui server: %w", err)
 				}
 
-			// Open GUI (macOS: native webview, Linux/Windows: print URL)
-			if err := openGUI(guiURL); err != nil {
+				// Open GUI (macOS: native webview, Linux/Windows: print URL)
+				if err := openGUI(guiURL); err != nil {
 				slog.Warn("GUI error", "error", err)
 				fmt.Printf("\nDashboard: %s\n", guiURL)
 				fmt.Println("\nPress Ctrl+C to stop.")
