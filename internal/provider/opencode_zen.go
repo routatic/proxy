@@ -18,6 +18,10 @@ import (
 	"github.com/routatic/proxy/pkg/types"
 )
 
+// upstreamUserAgent mirrors the opencode client User-Agent so Zen free-tier
+// rate limiting treats routatic-proxy traffic like the native client.
+const upstreamUserAgent = "opencode/routatic-proxy"
+
 // OpenCodeZenProvider implements core.Provider for the OpenCode Zen backend.
 // Zen supports four wire formats determined by model ID: Anthropic (Claude,
 // Qwen), Responses (GPT), Gemini, and Chat Completions (everything else).
@@ -206,6 +210,7 @@ func (p *OpenCodeZenProvider) executeAnthropic(ctx context.Context, req *core.No
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", upstreamUserAgent)
 	httpReq.Header.Set("x-api-key", apiKey)
 
 	start := time.Now()
@@ -249,6 +254,7 @@ func (p *OpenCodeZenProvider) streamAnthropic(ctx context.Context, req *core.Nor
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", upstreamUserAgent)
 	httpReq.Header.Set("x-api-key", apiKey)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
@@ -394,6 +400,7 @@ func (p *OpenCodeZenProvider) doRequest(ctx context.Context, endpoint, apiKey st
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", upstreamUserAgent)
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
 	}
@@ -424,6 +431,7 @@ func (p *OpenCodeZenProvider) doJSONRequest(ctx context.Context, endpoint, apiKe
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", upstreamUserAgent)
 
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
