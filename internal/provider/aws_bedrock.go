@@ -266,6 +266,7 @@ func (p *AWSBedrockProvider) executeAnthropic(ctx context.Context, req *core.Nor
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", routaticUserAgent)
 	if cfg.AWSBedrock.ProjectID != "" {
 		httpReq.Header.Set("OpenAI-Project", cfg.AWSBedrock.ProjectID)
 	}
@@ -314,6 +315,7 @@ func (p *AWSBedrockProvider) streamAnthropic(ctx context.Context, req *core.Norm
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", routaticUserAgent)
 	if cfg.AWSBedrock.ProjectID != "" {
 		httpReq.Header.Set("OpenAI-Project", cfg.AWSBedrock.ProjectID)
 	}
@@ -390,6 +392,7 @@ func (p *AWSBedrockProvider) doBedrockRequest(ctx context.Context, endpoint, api
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("User-Agent", routaticUserAgent)
 	if projectID != "" {
 		httpReq.Header.Set("OpenAI-Project", projectID)
 	}

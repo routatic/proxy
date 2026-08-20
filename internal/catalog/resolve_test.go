@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -236,6 +237,26 @@ func TestResolveShort_Name(t *testing.T) {
 	}
 	if got.CanonicalName != "opencode-go/legacy-name" {
 		t.Errorf("CanonicalName = %q, want %q", got.CanonicalName, "opencode-go/legacy-name")
+	}
+}
+
+func TestResolveShort_CaseInsensitiveCanonicalizesUniqueModel(t *testing.T) {
+	ic := newFixtureCatalog()
+
+	got, err := ic.ResolveShort("DeepSeek-V4-Flash")
+	if err != nil {
+		t.Fatalf("ResolveShort unexpected error: %v", err)
+	}
+	if got.ModelID != "deepseek-v4-flash" || got.CanonicalName != "opencode-go/deepseek-v4-flash" {
+		t.Fatalf("ResolveShort = %+v, want canonical deepseek model", got)
+	}
+}
+
+func TestResolveShort_CaseInsensitiveStillRejectsAmbiguity(t *testing.T) {
+	ic := newFixtureCatalog()
+
+	if _, err := ic.ResolveShort("KIMI-K2.6"); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("ResolveShort error = %v, want ambiguity", err)
 	}
 }
 

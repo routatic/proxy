@@ -10,6 +10,8 @@ import (
 	"github.com/routatic/proxy/internal/config"
 )
 
+const routaticUserAgent = "routatic-proxy"
+
 // baseProvider holds shared HTTP transport and key rotation used by all
 // provider implementations in this package.
 type baseProvider struct {

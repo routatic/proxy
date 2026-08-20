@@ -80,10 +80,14 @@ func (t *ResponseTransformer) transformContent(msg types.ChatMessage) ([]types.C
 
 	// Preserve reasoning content as a thinking block so it round-trips correctly
 	// on multi-turn tool-calling conversations.
+	// Clients running the extended-thinking beta discard thinking blocks that
+	// carry no signature, which empties the whole response. Upstream
+	// OpenAI-compatible providers never send one, so stand in a placeholder.
 	if msg.ReasoningContent != nil && *msg.ReasoningContent != "" {
 		blocks = append(blocks, types.ContentBlock{
-			Type:     "thinking",
-			Thinking: *msg.ReasoningContent,
+			Type:      "thinking",
+			Thinking:  *msg.ReasoningContent,
+			Signature: thinkingSignaturePlaceholder,
 		})
 	}
 

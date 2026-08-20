@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -26,6 +27,26 @@ func TestResolveModelConfig(t *testing.T) {
 				Vision:          true,
 				ContextMargin:   DefaultContextMargin,
 				SupportsTools:   boolPtr(true),
+			},
+		},
+		{
+			name:  "known mixed-case model uses canonical ID and metadata",
+			input: ModelConfig{ModelID: "DeepSeek-V4-Pro"},
+			expected: ModelConfig{
+				ModelID:         "deepseek-v4-pro",
+				ContextWindow:   1000000,
+				MaxOutputTokens: 8192,
+				ContextMargin:   DefaultContextMargin,
+				SupportsTools:   boolPtr(true),
+			},
+		},
+		{
+			name:  "unknown custom model preserves case",
+			input: ModelConfig{ModelID: "Vendor-Custom-Pro"},
+			expected: ModelConfig{
+				ModelID:       "Vendor-Custom-Pro",
+				ContextMargin: DefaultContextMargin,
+				SupportsTools: boolPtr(true),
 			},
 		},
 		{
@@ -104,5 +125,15 @@ func TestResolveModelConfig(t *testing.T) {
 				t.Errorf("SupportsTools = %v, want %v", *got.SupportsTools, *tt.expected.SupportsTools)
 			}
 		})
+	}
+}
+
+// CanonicalModelID relies on every registry key being lowercase to make its
+// case-insensitive lookup unambiguous.
+func TestModelMetadataKeysAreLowercase(t *testing.T) {
+	for key := range modelMetadata {
+		if key != strings.ToLower(key) {
+			t.Errorf("modelMetadata key %q is not lowercase; CanonicalModelID assumes lowercase keys", key)
+		}
 	}
 }

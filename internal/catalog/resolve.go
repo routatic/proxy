@@ -69,28 +69,27 @@ func (ic *IndexedCatalog) Resolve(sel Selector) (ResolvedModel, error) {
 }
 
 // ResolveShort resolves a legacy short model id to a fully materialized model/provider pair.
-// It first matches by model key, then by model Name, then by key suffix. All matches are
-// collected before checking provider availability, so an enabled provider on a lower-priority
-// match won't be shadowed by a disabled provider on a higher-priority match.
+// It matches by model key, then by model Name, then by key suffix — each exactly first, and
+// only then case-insensitively, so an exact match always wins over a differently cased one.
+// All matches for a given pass are collected before checking provider availability, so an
+// enabled provider on a lower-priority match won't be shadowed by a disabled provider on a
+// higher-priority match.
 func (ic *IndexedCatalog) ResolveShort(short string) (ResolvedModel, error) {
 	if model, ok := ic.Models[short]; ok {
 		return ic.resolveWithFirstEnabledProvider(model, short)
 	}
 
-	var matches []string
-	for key, model := range ic.Models {
-		if model.Name == short {
-			matches = append(matches, key)
+	exact := func(a, b string) bool { return a == b }
+	for _, matchesShort := range []func(a, b string) bool{exact, strings.EqualFold} {
+		var matches []string
+		for key, model := range ic.Models {
+			if matchesShort(model.Name, short) || matchesShort(modelNameFromKey(key), short) || matchesShort(key, short) {
+				matches = append(matches, key)
+			}
 		}
-	}
-	for key := range ic.Models {
-		if modelNameFromKey(key) == short {
-			matches = append(matches, key)
+		if len(matches) > 0 {
+			return ic.resolveFromMatches(short, matches)
 		}
-	}
-
-	if len(matches) > 0 {
-		return ic.resolveFromMatches(short, matches)
 	}
 
 	return ResolvedModel{}, fmt.Errorf("unknown short model id: %q", short)

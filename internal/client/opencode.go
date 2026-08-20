@@ -52,6 +52,11 @@ const (
 	ProviderOpenCodeZen = "opencode-zen"
 	ProviderAWSBedrock  = "aws-bedrock"
 	ProviderOpenRouter  = "openrouter"
+
+	routaticUserAgent    = "routatic-proxy"
+	openRouterReferer    = "https://github.com/routatic/proxy"
+	openRouterTitle      = "routatic-proxy"
+	openRouterCategories = "cli-agent"
 )
 
 // APIError represents an HTTP API error returned by an upstream provider.
@@ -322,6 +327,13 @@ func IsOpenRouter(model config.ModelConfig) bool {
 	return Provider(model) == ProviderOpenRouter
 }
 
+func setOpenRouterHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", routaticUserAgent)
+	req.Header.Set("HTTP-Referer", openRouterReferer)
+	req.Header.Set("X-OpenRouter-Title", openRouterTitle)
+	req.Header.Set("X-OpenRouter-Categories", openRouterCategories)
+}
+
 // EndpointType determines which Zen endpoint format to use.
 type EndpointType int
 
@@ -430,6 +442,9 @@ func (c *OpenCodeClient) ChatCompletion(
 		httpReq.Header.Set("x-api-key", endpoint.APIKey)
 	} else {
 		httpReq.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
+	}
+	if IsOpenRouter(modelConfig) {
+		setOpenRouterHeaders(httpReq)
 	}
 
 	if req.Stream != nil && *req.Stream {
@@ -578,6 +593,9 @@ func (c *OpenCodeClient) ResponsesCompletion(
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
+	if IsOpenRouter(modelConfig) {
+		setOpenRouterHeaders(httpReq)
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -675,6 +693,9 @@ func (c *OpenCodeClient) GeminiCompletion(
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+endpoint.APIKey)
+	if IsOpenRouter(modelConfig) {
+		setOpenRouterHeaders(httpReq)
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

@@ -93,6 +93,10 @@ func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel s
 
 	// Look up the requested model in config to inherit its settings
 	primary, ok := cfg.Models[requestedModel]
+	canonicalRequestedModel := config.CanonicalModelID(requestedModel)
+	if !ok && canonicalRequestedModel != requestedModel {
+		primary, ok = cfg.Models[canonicalRequestedModel]
+	}
 	if !ok {
 		// Not in legacy config — try the catalog before falling back to the
 		// legacy unknown-model behavior. Provider-qualified references that
@@ -108,12 +112,12 @@ func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel s
 			} else if providerQualified {
 				return RouteResult{}, false, fmt.Errorf("model reference %q uses unknown provider %q: %w", requestedModel, sel.Provider, ErrUnknownProvider)
 			} else {
-				primary = r.legacyUnknownModelConfig(cfg, requestedModel)
+				primary = r.legacyUnknownModelConfig(cfg, canonicalRequestedModel)
 			}
 		} else if providerQualified {
 			return RouteResult{}, false, fmt.Errorf("model reference %q uses unknown provider %q: %w", requestedModel, sel.Provider, ErrUnknownProvider)
 		} else {
-			primary = r.legacyUnknownModelConfig(cfg, requestedModel)
+			primary = r.legacyUnknownModelConfig(cfg, canonicalRequestedModel)
 		}
 	}
 	primary = config.ResolveModelConfig(primary)

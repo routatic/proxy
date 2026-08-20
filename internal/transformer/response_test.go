@@ -423,3 +423,33 @@ func TestTransformResponseWithoutCacheTokens(t *testing.T) {
 		t.Errorf("Usage.CacheCreationInputTokens = %d, want %d", got, want)
 	}
 }
+
+func TestTransformResponse_ThinkingBlockCarriesSignature(t *testing.T) {
+	transformer := NewResponseTransformer()
+	reasoning := "Let me work through this"
+	resp := &types.ChatCompletionResponse{
+		ID:    "chatcmpl-sig",
+		Model: "kimi-k2.6",
+		Choices: []types.Choice{
+			{
+				Index:        0,
+				Message:      types.ChatMessage{Role: "assistant", ReasoningContent: &reasoning},
+				FinishReason: "stop",
+			},
+		},
+	}
+
+	anthropicResp, err := transformer.TransformResponse(resp, "kimi-k2.6")
+	if err != nil {
+		t.Fatalf("TransformResponse() error = %v", err)
+	}
+
+	if got, want := anthropicResp.Content[0].Type, "thinking"; got != want {
+		t.Fatalf("Content[0].Type = %q, want %q", got, want)
+	}
+	// Clients running the extended-thinking beta discard thinking blocks that
+	// carry no signature, which empties the whole response.
+	if anthropicResp.Content[0].Signature == "" {
+		t.Error("Content[0].Signature is empty, want a non-empty signature")
+	}
+}

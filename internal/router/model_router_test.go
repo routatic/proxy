@@ -505,6 +505,12 @@ func TestResolveRequestedModel(t *testing.T) {
 				Temperature: 0.3,
 				MaxTokens:   2048,
 			},
+			"deepseek-v4-pro": {
+				Provider:    "opencode-go",
+				ModelID:     "deepseek-v4-pro",
+				Temperature: 0.7,
+				MaxTokens:   8192,
+			},
 		},
 		Fallbacks: map[string][]config.ModelConfig{
 			"default": {{Provider: "opencode-go", ModelID: "qwen3.5-plus"}},
@@ -537,6 +543,13 @@ func TestResolveRequestedModel(t *testing.T) {
 			wantProvider:   "opencode-go",
 			wantModelID:    "deepseek-v4-flash",
 			wantModelRef:   "deepseek-v4-flash",
+		},
+		{
+			name:           "mixed-case known model resolves to configured canonical ID",
+			requestedModel: "DeepSeek-V4-Pro",
+			wantProvider:   "opencode-go",
+			wantModelID:    "deepseek-v4-pro",
+			wantModelRef:   "",
 		},
 		{
 			name:           "config model takes precedence over catalog",

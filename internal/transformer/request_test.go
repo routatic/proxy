@@ -496,6 +496,13 @@ func TestTransformRequestThinkingDecisionMatrix(t *testing.T) {
 			wantThink: "",
 		},
 		{
+			name:      "kimi ignores request and history thinking without explicit capability",
+			messages:  thinkingHistory,
+			thinking:  json.RawMessage(`{"type":"enabled","budget_tokens":4096}`),
+			model:     config.ModelConfig{ModelID: "kimi-k2.6"},
+			wantThink: "",
+		},
+		{
 			name:      "request disabled overrides explicit model thinking",
 			messages:  userOnly,
 			thinking:  json.RawMessage(`{"type":"disabled"}`),

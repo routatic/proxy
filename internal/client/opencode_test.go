@@ -955,6 +955,52 @@ func TestOpenRouterChatCompletion_UsesBearerAuth(t *testing.T) {
 	}
 }
 
+func TestOpenRouterChatCompletion_UsesAttributionHeaders(t *testing.T) {
+	var gotHeaders http.Header
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp-1","object":"chat.completion","created":1,"model":"openrouter/model","choices":[],"usage":{}}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		OpenRouter: config.OpenRouterConfig{
+			BaseURL: ts.URL,
+			APIKey:  "openrouter-key",
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenRouter, ModelID: "openrouter/model"}
+	req := &types.ChatCompletionRequest{
+		Model:    "openrouter/model",
+		Messages: []types.ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	}
+	if _, err := c.ChatCompletionNonStreaming(context.Background(), "openrouter/model", req, model); err != nil {
+		t.Fatalf("ChatCompletionNonStreaming() error = %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		header string
+		want   string
+	}{
+		{name: "user agent", header: "User-Agent", want: "routatic-proxy"},
+		{name: "referer", header: "HTTP-Referer", want: "https://github.com/routatic/proxy"},
+		{name: "title", header: "X-OpenRouter-Title", want: "routatic-proxy"},
+		{name: "category", header: "X-OpenRouter-Categories", want: "cli-agent"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gotHeaders.Get(tt.header); got != tt.want {
+				t.Errorf("%s = %q, want %q", tt.header, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestOpenRouterChatCompletion_UsesOpenRouterBaseURL(t *testing.T) {
 	var gotURL string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
