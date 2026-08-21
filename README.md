@@ -96,6 +96,10 @@ export ANTHROPIC_AUTH_TOKEN=unused
 claude
 ```
 
+**Fedora / RHEL:** each release ships `x86_64` and `aarch64` RPMs —
+`sudo dnf install https://github.com/routatic/proxy/releases/download/vX.Y.Z/routatic-proxy-X.Y.Z-1.x86_64.rpm`.
+See [docs/fedora-setup.md](docs/fedora-setup.md) for package contents and the systemd user service.
+
 See [INSTALLATION.md](INSTALLATION.md) for Homebrew, Scoop, Docker, and build-from-source options.
 
 Prefer a GUI for switching providers? routatic-proxy works with [CC-Switch](https://github.com/farion1231/cc-switch) — see [Using with CC-Switch](CONFIGURATION.md#using-with-cc-switch).

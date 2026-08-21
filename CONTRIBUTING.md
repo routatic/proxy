@@ -3,9 +3,18 @@
 ## Prerequisites
 
 - [Go](https://go.dev/dl/) 1.25.0 or later
-- [golangci-lint](https://golangci-lint.run/usage/install/) (for linting)
 - [Git](https://git-scm.com/)
 - [Make](https://www.gnu.org/software/make/) (build automation)
+
+Optional but recommended:
+
+- [golangci-lint](https://golangci-lint.run/usage/install/) — used by the repo's
+  `pre-push` hook (`scripts/git-hooks/pre-push`, installed via
+  `scripts/install-hooks.sh`). The hook runs `golangci-lint run --timeout 5m`
+  when the binary is on your `PATH` and skips the step with a warning when it
+  isn't. There is no `.golangci.yml` in the repo, so its default linter set
+  applies. CI and `make lint` do **not** run golangci-lint — `make lint` is a
+  `gofmt` check plus `go vet`.
 
 ## Getting Started
 
@@ -43,7 +52,10 @@
 When your PR is merged to `main`, a beta release is automatically created:
 
 - **Trigger:** Push to `main` branch
-- **Version:** `vX.Y.Z-beta-YYYYMMDD-HHMMSS` (auto-generated)
+- **Version:** `v{UPCOMING}-beta.{N}` (auto-generated) — `{UPCOMING}` is the latest
+  production version with the patch incremented, `{N}` is a sequential counter
+  that resets to 1 once that version ships as stable. Example: with `v0.6.3`
+  stable, betas are `v0.6.4-beta.1`, `v0.6.4-beta.2`, …
 - **GitHub Release:** Marked as prerelease
 - **Testing:** Download and test before reporting issues
 

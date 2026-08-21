@@ -2,6 +2,8 @@
 
 [English](../../INSTALLATION.md) | **中文**
 
+> **注意：** 本翻译可能落后于英文原版。如有疑问，请以 [INSTALLATION.md](../../INSTALLATION.md)（英文）为准。
+
 ## Homebrew（macOS 和 Linux）
 
 ```bash

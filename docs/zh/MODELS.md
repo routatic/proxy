@@ -2,6 +2,8 @@
 
 [English](../../MODELS.md) | **中文**
 
+> **注意：** 本翻译可能落后于英文原版。如有疑问，请以 [MODELS.md](../../MODELS.md)（英文）为准。
+
 OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议。
 
 **来源：** [OpenCode Go 文档](https://opencode.ai/docs/go/) | [OpenCode Zen 文档](https://opencode.ai/docs/zen/)
@@ -551,5 +553,5 @@ OpenCode Go 限制：
 ## 另请参阅
 
 - [OpenCode Go 文档](https://opencode.ai/docs/go/)
-- [routatic-proxy 配置](../configs/config.example.json)
-- [README.md](../README.md) 获取设置说明
+- [routatic-proxy 配置](../../configs/config.example.json)
+- [README.md](../../README.md) 获取设置说明

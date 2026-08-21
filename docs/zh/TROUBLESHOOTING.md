@@ -2,6 +2,8 @@
 
 [English](../../TROUBLESHOOTING.md) | **中文**
 
+> **注意：** 本文档与英文原版内容存在差异（当前中文版包含英文版尚未收录的章节）。两个版本请交叉参考：[TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)（英文）。
+
 ## Windows Scoop 后台模式
 
 在 Windows 上，`routatic-proxy serve -b` 使用原生 Windows 进程 API，并保持 Scoop shim 路径不变。这意味着后台模式不需要 `nohup` 或类似 Unix 的 shell，Scoop 提供的环境变量继续工作。

@@ -131,6 +131,84 @@ jobs:
           echo "Built binaries:"
           ls -lh dist/
 
+      # RPM packaging runs here rather than on a Linux runner: nfpm is pure Go
+      # and writes RPMs natively (no rpmbuild), and every asset must go into the
+      # single atomic `gh release create` call below — this repo publishes
+      # immutable releases, which reject post-creation asset uploads.
+      - name: Verify Linux binaries
+        run: |
+          set -euo pipefail
+
+          # Read the ELF header directly instead of grepping `file` output:
+          # macOS and Linux word it differently, and a guard that silently
+          # always passes is worse than no guard.
+          #   bytes 0-3  magic  7f 45 4c 46
+          #   byte  4    class  02 = 64-bit
+          #   byte  5    data   01 = little-endian
+          #   bytes 18-19 e_machine (LE): 3e00 = x86-64, b700 = AArch64
+          check() {
+            BIN="dist/routatic-proxy_linux-$1"
+            EXPECT_MACHINE="$2"
+
+            if [ ! -f "$BIN" ]; then
+              echo "::error::Missing $BIN — the cross-compile step did not produce it"
+              exit 1
+            fi
+            if [ ! -x "$BIN" ]; then
+              echo "::error::$BIN is not executable"
+              exit 1
+            fi
+
+            HEADER=$(dd if="$BIN" bs=1 count=20 2>/dev/null | od -An -tx1 | tr -d ' \n')
+            MAGIC="${HEADER:0:8}"
+            CLASS="${HEADER:8:2}"
+            MACHINE="${HEADER:36:4}"
+
+            if [ "$MAGIC" != "7f454c46" ]; then
+              echo "::error::$BIN is not an ELF binary (magic=$MAGIC)"
+              exit 1
+            fi
+            if [ "$CLASS" != "02" ]; then
+              echo "::error::$BIN is not 64-bit ELF (class=$CLASS)"
+              exit 1
+            fi
+            if [ "$MACHINE" != "$EXPECT_MACHINE" ]; then
+              echo "::error::$BIN has wrong ELF machine: got $MACHINE, want $EXPECT_MACHINE"
+              exit 1
+            fi
+
+            echo "$1: ok (ELF64, e_machine=$MACHINE)"
+          }
+
+          check amd64 3e00
+          check arm64 b700
+
+      - name: Build RPM packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
+
+          # nfpm's semver schema turns 0.5.3-beta.1 into RPM version
+          # 0.5.3~beta.1, which sorts below the matching stable release.
+          # Go arch names go in; nfpm maps amd64 -> x86_64, arm64 -> aarch64.
+          for ARCH in amd64 arm64; do
+            echo "Packaging ${ARCH}..."
+            NFPM_VERSION="$VERSION" \
+            NFPM_ARCH="$ARCH" \
+            NFPM_BINARY="dist/routatic-proxy_linux-${ARCH}" \
+              "$(go env GOPATH)/bin/nfpm" package \
+                --config packaging/nfpm.yaml --packager rpm --target dist/
+          done
+
+          COUNT=$(find dist -name '*.rpm' | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne 2 ]; then
+            echo "::error::Expected 2 RPMs, found ${COUNT}"
+            exit 1
+          fi
+          ls -lh dist/*.rpm
+
       - name: Stage Windows binaries for signing
         if: ${{ steps.signing.outputs.enabled == 'true' }}
         run: |
@@ -170,7 +248,10 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum routatic-proxy_* > checksums.txt
+          # Covers the raw binaries (routatic-proxy_*) and the RPMs
+          # (routatic-proxy-<version>-<rel>.<arch>.rpm) in one pass. Neither
+          # glob can match checksums.txt itself.
+          sha256sum routatic-proxy_* routatic-proxy-*.rpm > checksums.txt
           cat checksums.txt
 
       - name: Build CGO-enabled binary (for DMG)
@@ -287,6 +368,7 @@ jobs:
             --notes-file changelog.md \
             --prerelease \
             dist/routatic-proxy_* \
+            dist/routatic-proxy-*.rpm \
             dist/checksums.txt \
             bin/RoutaticProxy.dmg
 

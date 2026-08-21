@@ -6,13 +6,30 @@ Complete model reference for routatic-proxy including OpenCode Go, Zen, OpenRout
 
 ## OpenCode Go Models
 
-| Model              | Context      | Best For                                      |
-| ------------------ | ------------ | --------------------------------------------- |
-| **GLM-5.2**        | ~200K tokens | Critical architecture, production code review |
-| **Kimi K3**        | ~1M tokens   | Latest Kimi, code + agentic, 131K max output  |
-| **Kimi K2.7 Code** | ~256K tokens | Large code generation, 32K max output         |
-| **Qwen3.7 Plus**   | ~128K tokens | General coding, better quality than Qwen3.6   |
-| **Qwen3.7 Max**    | ~128K tokens | Complex coding, Qwen's best quality           |
+Context and max-output values come from the built-in registry (`modelMetadata` in `internal/config/model_registry.go`).
+
+| Model                     | Context      | Max output | Vision | Best For                                        |
+| ------------------------- | ------------ | ---------- | ------ | ----------------------------------------------- |
+| **DeepSeek V4 Pro**       | ~1M tokens   | 8192       | no     | Default + complex scenarios in the shipped config |
+| **DeepSeek V4 Flash**     | ~1M tokens   | 4096       | no     | Background / fast scenarios, cheap and quick    |
+| **GLM-5.2**               | ~200K tokens | 8192       | no     | Critical architecture, production code review   |
+| **GLM-5.1**               | ~200K tokens | 8192       | no     | Complex patterns, tool-heavy operations         |
+| **Kimi K3**               | ~1M tokens   | 131072     | yes    | Latest Kimi, code + agentic, huge max output    |
+| **Kimi K2.7 Code**        | ~256K tokens | 32768      | yes    | Large code generation                           |
+| **Kimi K2.6**             | ~256K tokens | 8192       | yes    | General purpose, common fallback                |
+| **Kimi K2.5**             | ~256K tokens | 8192       | yes    | Previous-generation Kimi fallback               |
+| **MiniMax M3**            | ~1M tokens   | 128000     | no     | Long-context scenario, very large output budget |
+| **MiniMax M2.7**          | ~200K tokens | 8192       | no     | Previous MiniMax generation                     |
+| **MiniMax M2.5**          | ~200K tokens | 4096       | no     | Older MiniMax generation                        |
+| **MiMo V2.5 Pro**         | ~1M tokens   | 16384      | no     | Step-by-step reasoning, larger output           |
+| **MiMo V2.5**             | ~1M tokens   | 8192       | no     | Step-by-step reasoning                          |
+| **MiMo V2 Omni**          | ~1M tokens   | 8192       | yes    | Multimodal MiMo                                 |
+| **Qwen3.7 Max**           | ~1M tokens   | 8192       | yes    | Complex coding, Qwen's best quality             |
+| **Qwen3.7 Plus**          | ~1M tokens   | 8192       | yes    | General coding, better quality than Qwen3.6     |
+| **Qwen3.6 Plus**          | ~1M tokens   | 8192       | yes    | Streaming fallback                              |
+| **Qwen3.5 Plus**          | ~1M tokens   | 8192       | yes    | Simple read-only ops                            |
+
+All registry models support tool use. The registry is provider-agnostic — the free variants (`deepseek-v4-flash-free`, `mimo-v2.5-free`) are wired to Zen in the shipped config.
 
 See [MODELS.md](../MODELS.md) for the complete model list including costs and routing recommendations.
 
@@ -35,21 +52,7 @@ See [MODELS.md](../MODELS.md#opencodes-zen) for the full Zen model list.
 
 OpenRouter provides unified access to 100+ models from multiple providers through a single API endpoint.
 
-### Popular Models
-
-| Model | Provider | Context Window | Input Cost ($/M) | Output Cost ($/M) | Best For |
-|-------|----------|----------------|------------------|-------------------|----------|
-| **Claude 3.5 Sonnet** | Anthropic | 200K | $3.00 | $15.00 | Complex reasoning, coding, analysis |
-| **Claude 3 Opus** | Anthropic | 200K | $15.00 | $75.00 | Maximum quality, difficult tasks |
-| **GPT-4o** | OpenAI | 128K | $2.50 | $10.00 | General purpose, vision tasks |
-| **GPT-4o Mini** | OpenAI | 128K | $0.15 | $0.60 | Cost-effective, high volume |
-| **Gemini 2.5 Pro** | Google | 1M | $1.25 | $10.00 | Long context, coding, reasoning |
-| **Gemini 2.0 Flash** | Google | 1M | $0.10 | $0.40 | Fast responses, cost efficiency |
-| **Llama 3.3 70B** | Meta | 128K | $0.12 | $0.30 | Open source, customizable |
-| **Mistral Large** | Mistral | 128K | $2.00 | $6.00 | European provider, GDPR compliant |
-| **DeepSeek V3** | DeepSeek | 64K | $0.07 | $1.10 | Cost efficiency, coding |
-
-See [docs/openrouter.md](./openrouter.md) for complete OpenRouter setup and configuration.
+Model IDs, context windows, and pricing change often, so this page does not keep its own copy. See [openrouter.md](./openrouter.md) ("Model Examples") for the model-key list plus complete OpenRouter setup and configuration, and [openrouter.ai/models](https://openrouter.ai/models) for authoritative live pricing and context limits.
 
 ---
 

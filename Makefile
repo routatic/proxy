@@ -1,4 +1,4 @@
-.PHONY: build build-ui run test clean install dist lint vet docker-up docker-stop
+.PHONY: build build-ui run test clean install dist rpm lint vet docker-up docker-stop
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -111,3 +111,29 @@ dist: clean
 	@echo ""
 	@echo "Built binaries:"
 	@ls -lh dist/
+
+# ── RPM Packaging (Fedora / RHEL) ──────────────────────────────────
+# Mirrors the CI job. Requires nfpm:
+#   go install github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION)
+NFPM_VERSION = v2.47.0
+RPM_VERSION ?= $(patsubst v%,%,$(VERSION))
+
+rpm:
+	@command -v nfpm >/dev/null || { \
+		echo "nfpm not found. Install with:"; \
+		echo "  go install github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION)"; \
+		exit 1; \
+	}
+	@mkdir -p dist
+	@for arch in amd64 arm64; do \
+		echo "  → linux/$$arch"; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch \
+			go build -ldflags "$(RELEASE_LDFLAGS)" \
+				-o "dist/$(BINARY)_linux-$$arch" $(CMD); \
+		NFPM_VERSION="$(RPM_VERSION)" \
+		NFPM_ARCH="$$arch" \
+		NFPM_BINARY="dist/$(BINARY)_linux-$$arch" \
+			nfpm package --config packaging/nfpm.yaml --packager rpm --target dist/; \
+	done
+	@echo ""
+	@ls -lh dist/*.rpm

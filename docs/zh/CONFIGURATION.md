@@ -2,6 +2,8 @@
 
 [English](../../CONFIGURATION.md) | **中文**
 
+> **注意：** 本翻译可能落后于英文原版。如有疑问，请以 [CONFIGURATION.md](../../CONFIGURATION.md)（英文）为准。
+
 ## 配置文件
 
 位置：`~/.config/routatic-proxy/config.json`

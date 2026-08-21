@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make build   # Build binary to bin/routatic-proxy (CGO disabled by default)
 make run     # Run without building
 make test    # Run tests with race detector
-make lint    # go vet + test
+make lint    # gofmt check + go vet (does NOT run tests)
 make clean   # Remove build artifacts
 make install # Build and install to $GOPATH/bin
 make dist    # Cross-compile for all platforms
@@ -38,37 +38,60 @@ make dist    # Cross-compile for all platforms
 
 If a model's upstream doesn't support Anthropic tool format (`type: "custom"` server-tool shorthands), set `"anthropic_tools_disabled": true` in the model config to force it through the Chat Completions transform path instead of the raw Anthropic endpoint.
 
-**Two API endpoints:**
+**Four endpoint types** (`EndpointType`, `internal/models/classifier.go`):
 
-- OpenAI endpoint (`/v1/chat/completions`) — used by most models (GLM, Kimi, MiMo, Qwen)
-- Anthropic endpoint (`/v1/messages`) — used only by MiniMax models
+- `EndpointChatCompletions` — OpenAI-compatible `/v1/chat/completions`. The default, and what most models use.
+- `EndpointAnthropic` — Anthropic `/v1/messages`.
+- `EndpointResponses` — OpenAI native `/v1/responses`. Used by the GPT-5.x families (`IsResponsesModel`).
+- `EndpointGemini` — Google `/v1/models/{id}`. Used by `gemini-3.5-flash`, `gemini-3.1-pro`, `gemini-3-flash` (`IsGeminiModel`).
 
-**Available models:**
+Which models take the Anthropic endpoint depends on the provider:
 
-| Model | Provider | Type | Best For |
-|-------|----------|------|----------|
-| GLM-5.2 | Go | Premium | Complex reasoning, architecture decisions (new) |
-| GLM-5.1 | Go | Standard | Complex patterns, tool operations |
-| GLM-5 | Go | Standard | Reasoning tasks (deprecated May 14, 2026) |
-| Kimi K3 | Go | Flagship | Latest Kimi, 1M context, 131K output, multimodal (new) |
-| Kimi K2.7 Code | Go | Code specialist | Code generation, 32K output context |
-| Kimi K2.6 | Go | Standard | General purpose, default fallback |
-| Qwen3.7 Plus | Go | Fast | Streaming, low-latency (new) |
-| Qwen3.7 Max | Go | Fast | Background tasks (new) |
-| Qwen3.6 Plus | Go | Fast | Streaming fallback |
-| Qwen3.5 Plus | Go | Fast | Simple read-only ops |
-| MiniMax | Zen | Long context | 1M context window |
-| MiMo | Go | Reasoning | Step-by-step reasoning |
+- **Go provider** — `IsAnthropicModel` (classifier.go) returns true for `minimax-m2.5`, `minimax-m2.7`, `minimax-m3` **and** `qwen3.5-plus`, `qwen3.6-plus`, `qwen3.7-plus`, `qwen3.7-max`. Everything else goes through the Chat Completions transform.
+- **Zen provider** — `ClassifyEndpoint` is Zen-specific. `IsZenAnthropicModel` routes any `claude-*` or `qwen*` model to Anthropic; MiniMax on Zen uses Chat Completions (unlike MiniMax on the Go provider).
+
+**Available models:** the built-in capability registry is `modelMetadata` in `internal/config/model_registry.go`. It supplies context window, max output tokens, and vision support whenever the runtime config omits them (`ResolveModelConfig`). Every entry has `SupportsTools: true`.
+
+| Model ID | Typical provider | Context | Max output | Vision | Best For |
+|----------|------------------|---------|-----------|--------|----------|
+| `deepseek-v4-pro` | Go | 1M | 8192 | no | Default + complex scenarios in the shipped config |
+| `deepseek-v4-flash` | Go | 1M | 4096 | no | Background / fast scenarios |
+| `deepseek-v4-flash-free` | Zen | 1M | 4096 | no | Free-tier fallback |
+| `glm-5.2` | Go | 200K | 8192 | no | Think scenario, architecture decisions |
+| `glm-5.1` | Go | 200K | 8192 | no | Complex patterns, tool operations |
+| `glm-5` | Go | 200K | 8192 | no | Reasoning tasks (deprecated May 14, 2026) |
+| `kimi-k3` | Go | 1M | 131072 | yes | Flagship Kimi, huge output budget, multimodal |
+| `kimi-k2.7-code` | Go | 256K | 32768 | yes | Large code generation |
+| `kimi-k2.6` | Go | 256K | 8192 | yes | General purpose, common fallback |
+| `kimi-k2.5` | Go | 256K | 8192 | yes | Previous-generation Kimi fallback |
+| `minimax-m3` | Go | 1M | 128000 | no | Long-context scenario in the shipped config |
+| `minimax-m2.7` | Go | 200K | 8192 | no | Previous MiniMax generation |
+| `minimax-m2.5` | Go | 200K | 4096 | no | Older MiniMax generation |
+| `mimo-v2.5-pro` | Go | 1M | 16384 | no | Step-by-step reasoning, larger output |
+| `mimo-v2.5` | Go | 1M | 8192 | no | Step-by-step reasoning |
+| `mimo-v2.5-free` | Zen | 1M | 8192 | no | Free-tier fallback |
+| `mimo-v2-omni` | Go | 1M | 8192 | yes | Multimodal MiMo |
+| `qwen3.7-max` | Go | 1M | 8192 | yes | Complex coding, Qwen's best quality |
+| `qwen3.7-plus` | Go | 1M | 8192 | yes | Streaming, low-latency |
+| `qwen3.6-plus` | Go | 1M | 8192 | yes | Streaming fallback |
+| `qwen3.5-plus` | Go | 1M | 8192 | yes | Simple read-only ops |
+
+The "typical provider" column reflects how the shipped config wires each model; the registry itself is provider-agnostic, so any model can be pointed at any provider in `config.json`. Zen additionally exposes many models that are not in the registry (Claude, Gemini, GPT-5.x, other free-tier models) — those get their capabilities from the catalog rather than `modelMetadata`.
 
 `internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `models.ClassifyEndpoint()` in `internal/models/classifier.go`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
 
-**Scenario detection priority** (`internal/router/scenarios.go`):
+**Scenario detection priority** (`DetectScenario`, `internal/router/scenarios.go`). Models below are the built-in defaults from `cmd/routatic-proxy/templates/default_config.json`, which is what `routatic-proxy init` writes:
 
-1. Long Context (>80K tokens, configurable) → MiniMax (1M context)
-2. Complex (architectural patterns, tool operations) → GLM-5.2
-3. Think (reasoning keywords in system prompt) → GLM-5.1
-4. Background (simple read-only ops, no tools) → Qwen3.7 Max
-5. Default → Kimi K2.6
+1. **Long context** — token count > threshold (`getLongContextThreshold`, default **100K**, configurable via the `long_context` model's `context_threshold`) → `minimax-m3`. If the latest user message also carries an image, the scenario is `vision_long_context` instead.
+2. **Vision** — the latest user message contains an image. Splits by intent: `vision_complex` when the text also shows complex intent, otherwise `vision`.
+3. **Complex** — architectural patterns or tool-heavy operations → `deepseek-v4-pro`.
+4. **Think** — reasoning keywords → `glm-5.2`.
+5. **Background** — simple read-only ops with no tools → `deepseek-v4-flash`.
+6. **Default** → `deepseek-v4-pro`.
+
+The three vision scenarios are `ScenarioVision`, `ScenarioVisionComplex`, and `ScenarioVisionLongContext` (scenarios.go). The shipped default config has no `vision*` model entries, so vision requests fall through to the ordinary scenario models unless you add them.
+
+Note: the human-readable `Reason` strings inside `scenarios.go` still name older models (GLM-5.1, Qwen3.5 Plus, Kimi K2.6). They are log text only — the actual model comes from config, not from those strings.
 
 **Model overrides:** two config blocks bypass scenario routing based on the requested model. `model_overrides` matches the `model` string **exactly** (best with CC-Switch, which sends a custom model string). `model_family_overrides` maps a Claude family keyword (`opus`, `sonnet`, `haiku`) via **case-insensitive substring** match, so the versioned IDs Claude Code sends natively (`claude-opus-4-20250514`) route without CC-Switch. Precedence: exact `model_overrides` → `model_family_overrides` (longest key first) → `respect_requested_model` → scenario routing. Both are wired through `ModelRouter.RouteWithOverride` / `RouteWithFamilyOverride` (`internal/router/model_router.go`) and merged with a deduplicated scenario safety-net chain in `buildModelChain` (`internal/handlers/messages.go`).
 
@@ -87,7 +110,7 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 
 Resolution functions in `internal/catalog/resolve.go` extract the provider from the key prefix. `ResolvedModel.ModelID` is the model name only (without provider prefix); `ResolvedModel.CanonicalName` is the full key.
 
-For streaming, the router downgrades to fast models (Qwen3.7 Plus) for better TTFT.
+For streaming, `RouteForStreaming` downgrades complex/think requests to the `fast` scenario for better TTFT (`deepseek-v4-flash` in the shipped default config).
 
 **Deprecated models:**
 - GLM-5 — deprecated May 14, 2026; use GLM-5.1 or GLM-5.2
@@ -96,17 +119,19 @@ For streaming, the router downgrades to fast models (Qwen3.7 Plus) for better TT
 
 **Long-running stream policy:** The proxy never kills a stream that is actively producing bytes. The server-level `WriteTimeout` is set to 0; instead each upstream read uses a per-`Read` deadline via `http.ResponseController.SetReadDeadline` that is renewed on every successful byte. If the gap between bytes exceeds `OpenCodeGo.stream_timeout_ms` (or `OpenCodeZen.stream_timeout_ms`), the connection is treated as stuck and the request is routed to the next fallback model. Defaults to `timeout_ms` when unset. Client disconnects during a stream are logged at `Debug` level — this is normal during Claude Code tool execution and is not a failure signal.
 
-**Provider-specific API keys:** Each provider (OpenCode Go, OpenCode Zen, AWS Bedrock) can have its own `api_key` or `api_keys` array. Provider-specific keys take precedence over global keys. This enables per-provider fallback strategies and key rotation.
+**Provider-specific API keys:** Each provider (OpenCode Go, OpenCode Zen, AWS Bedrock, OpenRouter) can have its own `api_key` or `api_keys` array. Provider-specific keys take precedence over global keys. This enables per-provider fallback strategies and key rotation.
 
 Environment variable overrides (single key):
 - `ROUTATIC_PROXY_OPENCODE_GO_API_KEY`
 - `ROUTATIC_PROXY_OPENCODE_ZEN_API_KEY`
 - `ROUTATIC_PROXY_AWS_BEDROCK_API_KEY`
+- `ROUTATIC_PROXY_OPENROUTER_API_KEY`
 
 Environment variable overrides (comma-separated keys for round-robin):
 - `ROUTATIC_PROXY_OPENCODE_GO_API_KEYS=key-1,key-2,key-3`
 - `ROUTATIC_PROXY_OPENCODE_ZEN_API_KEYS=key-1,key-2`
 - `ROUTATIC_PROXY_AWS_BEDROCK_API_KEYS=key-1,key-2`
+- `ROUTATIC_PROXY_OPENROUTER_API_KEYS=key-1,key-2`
 
 Precedence: `*_API_KEYS` → `*_API_KEY` → global `API_KEYS` → global `API_KEY`.
 
@@ -143,9 +168,9 @@ This project uses a dual release channel system for separating beta and producti
 
 ### Beta Channel (Automatic)
 - **Trigger:** Every push to `main` branch (see `.github/workflows/beta-release.yml`)
-- **Version format:** `v{UPCOMING}-beta.{N}` (e.g., `v0.5.3-beta.1`), where `{N}` is a sequential counter
+- **Version format:** `v{UPCOMING}-beta.{N}` (e.g., `v0.6.4-beta.1`), where `{N}` is a sequential counter
 - **GitHub release:** Marked as `prerelease: true`
-- **Docker tags:** `v{UPCOMING}-beta.{N}`, `beta-{UPCOMING}`, and `beta` (rolling pointer to newest beta)
+- **Docker tags:** `v{UPCOMING}-beta.{N}`, `beta-{PROD}` (the latest *stable* version, e.g. `beta-v0.6.3`), and `beta` (rolling pointer to newest beta)
 
 Beta releases are fully automated and include:
 - Test suite validation
@@ -167,16 +192,16 @@ Production releases include all beta features plus:
 ### Version Detection Script
 
 `.github/scripts/get-versions.sh` is used by the beta workflow to:
-1. Fetch tags from the `origin/releases` branch to get current production version (e.g., `v0.5.2`)
-2. Increment the **patch** to the next version (e.g., `v0.5.3`) - **beta is based on the upcoming patch release**
+1. Fetch tags from the `origin/releases` branch to get current production version (e.g., `v0.6.3`)
+2. Increment the **patch** to the next version (e.g., `v0.6.4`) - **beta is based on the upcoming patch release**
 3. Generate beta version by appending `-beta.{N}`, where `{N}` is `max(existing beta counters for this upcoming version) + 1` - **the counter resets to 1 once the upcoming version ships as stable**
 4. Output both versions as JSON for CI consumption
 
 
 **Version Format Explanation:**
-- `v0.5.3` = The upcoming production version (patch incremented from latest production)
+- `v0.6.4` = The upcoming production version (patch incremented from latest production)
 - `beta.1` = Sequential prerelease counter for that upcoming version
-- Full example: stable `v0.5.2` → `v0.5.3-beta.1`, then `v0.5.3-beta.2`, ... until `v0.5.3` ships → `v0.5.4-beta.1`
+- Full example: stable `v0.6.3` → `v0.6.4-beta.1`, then `v0.6.4-beta.2`, ... until `v0.6.4` ships → `v0.6.5-beta.1`
 
 ### Creating a Production Release
 

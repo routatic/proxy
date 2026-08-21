@@ -461,13 +461,14 @@ kill -HUP <PID>
 
 The proxy automatically detects the type of request and routes to the appropriate model based on context size and content analysis:
 
-| Scenario         | Trigger                                             | Model        | Why                                             |
-| ---------------- | --------------------------------------------------- | ------------ | ----------------------------------------------- |
-| **Long Context** | >80K tokens (configurable)                          | MiniMax M2.7 | 1M context window vs 128-256K for others        |
-| **Complex**      | "architect", "refactor", "complex" in system prompt | GLM-5.1      | Best reasoning & architectural understanding    |
-| **Think**        | "think", "plan", "reason" in system prompt          | GLM-5        | Good reasoning, cheaper than GLM-5.1            |
-| **Background**   | "read file", "grep", "list directory"               | Qwen3.5 Plus | Cheapest (~10K req/5hr), perfect for simple ops |
-| **Default**      | Everything else                                     | Kimi K2.6    | Best balance of quality & cost (~1.8K req/5hr)  |
+| Scenario         | Trigger                                             | Default Model       | Why                                          |
+| ---------------- | --------------------------------------------------- | ------------------- | -------------------------------------------- |
+| **Long Context** | >100K tokens (configurable)                         | `minimax-m3`        | 1M context window                            |
+| **Vision**       | Latest user message contains an image               | (not preconfigured) | Splits into `vision` / `vision_complex`      |
+| **Complex**      | "architect", "refactor", "complex" in system prompt | `deepseek-v4-pro`   | Best reasoning & architectural understanding |
+| **Think**        | "think", "plan", "reason" in system prompt          | `glm-5.2`           | Strong reasoning at lower cost               |
+| **Background**   | "read file", "grep", "list directory"               | `deepseek-v4-flash` | Cheap, perfect for simple ops                |
+| **Default**      | Everything else                                     | `deepseek-v4-pro`   | Best balance of quality & cost               |
 
 **See [MODELS.md](MODELS.md) for detailed model capabilities, costs, and routing recommendations.**
 
@@ -477,12 +478,14 @@ DeepSeek V4 users can set any scenario model to `deepseek-v4-pro` or `deepseek-v
 
 | Scenario         | Trigger                                                                      | Config Key            | Default Model  |
 | ---------------- | ---------------------------------------------------------------------------- | --------------------- | -------------- |
-| **Default**      | Standard chat                                                                | `models.default`      | `kimi-k2.6`    |
-| **Think**        | System prompt contains "think", "plan", "reason"; or thinking content blocks | `models.think`        | `glm-5.1`      |
-| **Long Context** | Token count exceeds `context_threshold`                                      | `models.long_context` | `minimax-m2.7` |
-| **Background**   | File read, directory list, grep patterns                                     | `models.background`   | `qwen3.5-plus` |
+| **Default**      | Standard chat                                                                | `models.default`      | `deepseek-v4-pro`   |
+| **Complex**      | Architectural keywords or tool-heavy operations                              | `models.complex`      | `deepseek-v4-pro`   |
+| **Think**        | System prompt contains "think", "plan", "reason"; or thinking content blocks | `models.think`        | `glm-5.2`           |
+| **Long Context** | Token count exceeds `context_threshold` (default 100K)                       | `models.long_context` | `minimax-m3`        |
+| **Vision**       | Latest user message contains an image                                        | `models.vision`       | (not preconfigured) |
+| **Background**   | File read, directory list, grep patterns                                     | `models.background`   | `deepseek-v4-flash` |
 
-Routing priority: **Long Context** > **Think** > **Background** > **Default**
+Routing priority: **Long Context** > **Vision** > **Complex** > **Think** > **Background** > **Default**
 
 ## Cost-Based Routing
 
