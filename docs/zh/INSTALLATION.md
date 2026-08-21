@@ -2,8 +2,6 @@
 
 [English](../../INSTALLATION.md) | **中文**
 
-> **注意：** 本翻译可能落后于英文原版。如有疑问，请以 [INSTALLATION.md](../../INSTALLATION.md)（英文）为准。
-
 ## Homebrew（macOS 和 Linux）
 
 ```bash
@@ -58,6 +56,24 @@ Move-Item -Path "routatic-proxy.exe" -Destination "$env:LOCALAPPDATA\Microsoft\W
 Homebrew 和 Scoop 安装也提供 `oc-go-cc` 作为 `routatic-proxy` 的别名。
 
 ## Docker
+
+### 拉取预构建镜像
+
+预构建的多架构镜像（linux/amd64、linux/arm64）发布在 GitHub Container Registry：
+
+```bash
+# 最新稳定版
+docker pull ghcr.io/routatic/proxy:latest
+
+# 最新 beta 版（最新的预发布构建）
+docker pull ghcr.io/routatic/proxy:beta
+
+# 特定的稳定版本
+docker pull ghcr.io/routatic/proxy:v1.0.0
+
+docker run -d --restart unless-stopped --name routatic-proxy \
+  --env-file .env -p 3456:3456 ghcr.io/routatic/proxy:latest
+```
 
 ### 使用 Makefile 快速启动
 

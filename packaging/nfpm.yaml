@@ -15,8 +15,9 @@ name: routatic-proxy
 arch: ${NFPM_ARCH}
 platform: linux
 version: ${NFPM_VERSION}
-# semver schema: a prerelease suffix (-beta.N) is folded into the RPM Release
-# field so beta packages sort *below* the matching stable release.
+# semver schema: a prerelease suffix (-beta.N) becomes an RPM tilde version,
+# e.g. 0.6.4-beta.1 -> Version 0.6.4~beta.1 with Release 1, so beta packages
+# sort *below* the matching stable release.
 version_schema: semver
 release: "1"
 maintainer: samuel tuyizere <tuyizeres0@gmail.com>

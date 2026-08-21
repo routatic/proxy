@@ -85,11 +85,16 @@ Each beta release includes:
 - `routatic-proxy-{version}-1.aarch64.rpm` - Fedora/RHEL package (ARM64)
 - `checksums.txt` - SHA256 checksums for all binaries and RPMs
 
-The RPMs are built with `nfpm` inside the `release` job and included in the same
-atomic `gh release create` call as everything else, because immutable releases
-reject assets added after the release exists. See `packaging/nfpm.yaml` and
-`make rpm`. Beta RPMs use an RPM-native prerelease version (`0.6.4~beta.1-1`)
-so they sort below the eventual stable package.
+The RPMs are built with `nfpm` and verified in a dedicated `rpm` job on
+ubuntu-latest (`.github/scripts/build-rpms.sh`, then `verify-rpm.sh` asserts
+metadata, payload paths, the `noreplace` config flag, and the packaged binary's
+ELF architecture). They are handed to the `release` job as the `rpm-packages`
+artifact and included in the same atomic `gh release create` call as everything
+else, because immutable releases reject assets added after the release exists.
+Verification runs on Linux because `rpm`/`rpm2cpio` do not exist on the macOS
+runner. See `packaging/nfpm.yaml` and `make rpm` for local builds. Beta RPMs use
+an RPM-native tilde version (`0.6.4~beta.1-1`) so they sort below the eventual
+stable package.
 
 ### Docker Tags for Beta
 

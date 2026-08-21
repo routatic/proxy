@@ -53,7 +53,51 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.13.1
           args: --timeout 5m
+  # Catches RPM packaging regressions on every PR instead of only at release
+  # time. Same build + assertion scripts the release workflows use; nothing is
+  # uploaded. The version is a placeholder — packaging correctness is what is
+  # under test here, not version derivation.
+  rpm:
+    name: RPM Packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Ensure rpm tooling
+        run: |
+          set -euo pipefail
+          MISSING=""
+          for TOOL in rpm rpm2cpio cpio; do
+            command -v "$TOOL" >/dev/null 2>&1 || MISSING="$MISSING $TOOL"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "Installing missing tooling:$MISSING"
+            sudo apt-get update
+            sudo apt-get install -y rpm cpio
+          fi
+          rpm --version
+
+      - name: Build RPM packages
+        env:
+          VERSION: 0.0.0-ci.1
+        run: bash .github/scripts/build-rpms.sh
+
+      - name: Verify RPM packages
+        env:
+          VERSION: 0.0.0-ci.1
+        run: |
+          set -euo pipefail
+          RPM_VERSION="$(printf '%s' "$VERSION" | tr '-' '~')"
+          bash .github/scripts/verify-rpm.sh \
+            "dist/routatic-proxy-${RPM_VERSION}-1.x86_64.rpm" "$VERSION" x86_64 3e00
+          bash .github/scripts/verify-rpm.sh \
+            "dist/routatic-proxy-${RPM_VERSION}-1.aarch64.rpm" "$VERSION" aarch64 b700

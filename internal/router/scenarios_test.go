@@ -267,8 +267,14 @@ func TestRouteForStreaming_RespectsConfiguredThreshold(t *testing.T) {
 	if result.Scenario != ScenarioLongContext {
 		t.Errorf("Expected ScenarioLongContext for 300000 tokens with threshold 256000, got %s", result.Scenario)
 	}
-	if !strings.Contains(result.Reason, "deepseek-v4-flash") {
-		t.Errorf("Expected reason to mention configured model 'deepseek-v4-flash', got: %s", result.Reason)
+	// Scenario detection happens before a model is resolved, so the reason
+	// explains the trigger and names no model. The resolved model is appended
+	// by the router — see TestRoute_ReasonReportsConfiguredModel.
+	if !strings.Contains(result.Reason, "256000") {
+		t.Errorf("Expected reason to mention the configured threshold, got: %s", result.Reason)
+	}
+	if strings.Contains(result.Reason, "deepseek-v4-flash") {
+		t.Errorf("Expected scenario reason not to name a model, got: %s", result.Reason)
 	}
 }
 
@@ -307,7 +313,48 @@ func TestRouteForStreaming_NilConfig(t *testing.T) {
 	if result.Scenario != ScenarioLongContext {
 		t.Errorf("Expected ScenarioLongContext for 110000 tokens with nil config, got %s", result.Scenario)
 	}
-	if !strings.Contains(result.Reason, "long_context") {
-		t.Errorf("Expected reason to contain fallback model name 'long_context', got: %s", result.Reason)
+	if !strings.Contains(result.Reason, "100000") {
+		t.Errorf("Expected reason to mention the default threshold, got: %s", result.Reason)
+	}
+}
+
+// TestDetectScenario_ReasonsNameNoModels guards against reintroducing
+// hardcoded model names into scenario reasons, which is how they went stale
+// before: the reason must describe the trigger only, since the model for a
+// scenario comes from config and is appended by the router.
+func TestDetectScenario_ReasonsNameNoModels(t *testing.T) {
+	cases := []struct {
+		name     string
+		messages []MessageContent
+		tokens   int
+	}{
+		{"complex", []MessageContent{{Role: "user", Content: "Architect a new service"}}, 100},
+		{"think", []MessageContent{{Role: "user", Content: "Think about this"}}, 100},
+		{"background", []MessageContent{{Role: "user", Content: "what is Go"}}, 100},
+		{"default", []MessageContent{{Role: "user", Content: "Hello"}}, 100},
+		{"long_context", []MessageContent{{Role: "user", Content: "Hello"}}, 70000},
+	}
+
+	// Substrings from model families this proxy routes to. None of them belong
+	// in a scenario reason.
+	banned := []string{"glm", "kimi", "qwen", "minimax", "mimo", "deepseek"}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for label, reason := range map[string]string{
+				"DetectScenario":    DetectScenario(tc.messages, tc.tokens, mockConfig()).Reason,
+				"RouteForStreaming": RouteForStreaming(tc.messages, tc.tokens, mockConfig()).Reason,
+			} {
+				if reason == "" {
+					t.Fatalf("%s: expected a non-empty reason", label)
+				}
+				lower := strings.ToLower(reason)
+				for _, model := range banned {
+					if strings.Contains(lower, model) {
+						t.Errorf("%s: reason names model %q (must describe the trigger only): %s", label, model, reason)
+					}
+				}
+			}
+		})
 	}
 }

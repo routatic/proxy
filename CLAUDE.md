@@ -9,6 +9,7 @@ make build   # Build binary to bin/routatic-proxy (CGO disabled by default)
 make run     # Run without building
 make test    # Run tests with race detector
 make lint    # gofmt check + go vet (does NOT run tests)
+make lint-strict # golangci-lint run with .golangci.yml (requires golangci-lint 2.x)
 make clean   # Remove build artifacts
 make install # Build and install to $GOPATH/bin
 make dist    # Cross-compile for all platforms
@@ -91,7 +92,7 @@ The "typical provider" column reflects how the shipped config wires each model; 
 
 The three vision scenarios are `ScenarioVision`, `ScenarioVisionComplex`, and `ScenarioVisionLongContext` (scenarios.go). The shipped default config has no `vision*` model entries, so vision requests fall through to the ordinary scenario models unless you add them.
 
-Note: the human-readable `Reason` strings inside `scenarios.go` still name older models (GLM-5.1, Qwen3.5 Plus, Kimi K2.6). They are log text only — the actual model comes from config, not from those strings.
+The `Reason` strings in `scenarios.go` describe only *why* a scenario matched and name no model. The resolved model is appended by `ModelRouter.Route` / `RouteForStreaming` (`describeRouting`), so the routing log line always reports the model that actually came from config — e.g. `scenario=complex (complex or tool-based operation keywords in latest user message) -> resolved model glm-5.2`. A test asserts detector reasons never name a model, so they cannot drift again.
 
 **Model overrides:** two config blocks bypass scenario routing based on the requested model. `model_overrides` matches the `model` string **exactly** (best with CC-Switch, which sends a custom model string). `model_family_overrides` maps a Claude family keyword (`opus`, `sonnet`, `haiku`) via **case-insensitive substring** match, so the versioned IDs Claude Code sends natively (`claude-opus-4-20250514`) route without CC-Switch. Precedence: exact `model_overrides` → `model_family_overrides` (longest key first) → `respect_requested_model` → scenario routing. Both are wired through `ModelRouter.RouteWithOverride` / `RouteWithFamilyOverride` (`internal/router/model_router.go`) and merged with a deduplicated scenario safety-net chain in `buildModelChain` (`internal/handlers/messages.go`).
 
@@ -217,12 +218,15 @@ Production releases include all beta features plus:
 Both workflows share the same stages:
 
 1. **validate** — Run `go vet`, `go test -race`, and build sanity check on ubuntu-latest
-2. **release** — Build cross-platform binaries and macOS DMG on macos-latest
-3. **docker** — Publish multi-arch Docker images on ubuntu-latest
+2. **rpm** — Build and verify the Fedora RPMs on ubuntu-latest, then pass them to `release` as the `rpm-packages` artifact (`.github/scripts/build-rpms.sh` and `verify-rpm.sh`)
+3. **release** — Build cross-platform binaries and macOS DMG on macos-latest, and publish every asset — binaries, DMG, RPMs, checksums — through one atomic `gh release create`
+4. **docker** — Publish multi-arch Docker images on ubuntu-latest
 
 Production adds:
-4. **homebrew** — Update the homebrew-tap formula
-5. **scoop** — Update the scoop-bucket manifest
+5. **homebrew** — Update the homebrew-tap formula
+6. **scoop** — Update the scoop-bucket manifest
+
+The RPMs are packaged in their own Linux job rather than in `release` for two reasons: `rpm`/`rpm2cpio` are unavailable on the macOS runner, so verification has to happen on Linux; and this repo publishes **immutable releases**, so assets cannot be added after `gh release create` — everything must be present for that single call.
 
 ## Skill routing
 

@@ -179,6 +179,6 @@ func (p *ScenarioPolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelConfig,
 		PolicyName: "scenario",
 		ModelID:    result.Primary.ModelID,
 		Provider:   result.Primary.Provider,
-		Reason:     fmt.Sprintf("scenario=%s: %s", result.Scenario, result.Scenario),
+		Reason:     result.Reason,
 	}, nil
 }

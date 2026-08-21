@@ -8,13 +8,18 @@
 
 Optional but recommended:
 
-- [golangci-lint](https://golangci-lint.run/usage/install/) — used by the repo's
-  `pre-push` hook (`scripts/git-hooks/pre-push`, installed via
-  `scripts/install-hooks.sh`). The hook runs `golangci-lint run --timeout 5m`
-  when the binary is on your `PATH` and skips the step with a warning when it
-  isn't. There is no `.golangci.yml` in the repo, so its default linter set
-  applies. CI and `make lint` do **not** run golangci-lint — `make lint` is a
-  `gofmt` check plus `go vet`.
+- [golangci-lint](https://golangci-lint.run/usage/install/) 2.x — configured by
+  `.golangci.yml` (schema v2) and run three ways: by CI on every PR, by
+  `make lint-strict`, and by the repo's `pre-push` hook
+  (`scripts/git-hooks/pre-push`, installed via `scripts/install-hooks.sh`). All
+  three run `golangci-lint run --timeout 5m` and pick up the same config. The
+  hook skips the step with a warning when the binary isn't on your `PATH`; CI
+  does not. `make lint` stays the fast check — `gofmt` plus `go vet`, no
+  golangci-lint.
+
+  The config is expected to pass with zero issues on a clean tree. See the
+  comments in `.golangci.yml` for which linters are enabled and which were
+  deliberately left out.
 
 ## Getting Started
 
@@ -91,6 +96,7 @@ This repository uses git hooks to ensure code quality. Install them once after c
 The pre-push hook runs these checks before allowing a push:
 - **Code formatting** (`gofmt`) — ensures consistent formatting
 - **Linting** (`go vet`) — catches common errors
+- **Linting** (`golangci-lint`, using `.golangci.yml`) — skipped if not installed
 - **Tests** (`make test`) — runs all tests with race detector
 - **Build** (`make build`) — verifies the project compiles
 
@@ -123,6 +129,12 @@ make test
 
 # Run go vet
 make vet
+
+# Fast checks (gofmt + go vet)
+make lint
+
+# Full lint pass (golangci-lint with .golangci.yml)
+make lint-strict
 
 # Clean build artifacts
 make clean

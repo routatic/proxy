@@ -166,7 +166,7 @@ When OpenCode Go returns `GoUsageLimitError`, remaining Go models are skipped fo
 
 ## Providers
 
-routatic-proxy supports three providers for upstream API calls:
+routatic-proxy supports four providers for upstream API calls:
 
 ### OpenCode Go (`opencode-go`)
 
