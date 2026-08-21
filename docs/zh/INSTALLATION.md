@@ -55,6 +55,26 @@ Move-Item -Path "routatic-proxy.exe" -Destination "$env:LOCALAPPDATA\Microsoft\W
 
 Homebrew 和 Scoop 安装也提供 `oc-go-cc` 作为 `routatic-proxy` 的别名。
 
+## Fedora / RHEL（RPM）
+
+每个发布版本都会提供 `x86_64` 和 `aarch64` 的 RPM 包，升级和卸载都可以交给 `dnf` 处理：
+
+```bash
+VERSION=0.6.3                       # 从 Releases 页面选择版本
+ARCH=$(uname -m)                    # x86_64 或 aarch64
+sudo dnf install "https://github.com/routatic/proxy/releases/download/v${VERSION}/routatic-proxy-${VERSION}-1.${ARCH}.rpm"
+```
+
+该软件包将二进制文件安装到 `/usr/bin/routatic-proxy`，配置模板安装到
+`/etc/routatic-proxy/config.json`（标记为 `noreplace`，升级时不会覆盖你的修改），
+并附带一个可选的 systemd **用户** 单元，可通过
+`systemctl --user enable --now routatic-proxy` 启用。RPM 包目前尚未进行 GPG 签名，
+请使用发布页面的 `checksums.txt` 校验。注意：`routatic-proxy update` 适用于独立二进制安装；
+使用 RPM 安装时，请通过 `dnf` 升级。
+
+完整的 Fedora 指南（含 systemd 与故障排除细节）见
+[docs/fedora-setup.md](../fedora-setup.md)。
+
 ## Docker
 
 ### 拉取预构建镜像

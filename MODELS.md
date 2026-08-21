@@ -8,6 +8,12 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 
 > 💰 **Cost-conscious routing matters!** Qwen3.5 Plus gives you 10,200 requests per $12, while GLM-5.1 gives you only 880 — that's **11.6x fewer requests** for the same budget.
 
+> **Note:** the requests-per-$12 figures below are approximate estimates for
+> comparison only — they are not derived from a machine-readable price list, and
+> the model catalog carries no rate data. Treat the ordering as meaningful and
+> the absolute numbers as indicative. Check your provider's current pricing
+> before budgeting.
+
 | Model              | Provider      | Requests per $12 (5hr) | Cost Efficiency | Quality |
 | ------------------ | ------------- | ---------------------- | --------------- | ------- |
 | **Qwen3.5 Plus**   | Go            | **10,200**             | ★★★★★           | ★★☆☆☆   |
@@ -19,7 +25,7 @@ Comprehensive guide to OpenCode Go and Zen models with capabilities, costs, and 
 | **MiMo-V2.5**      | Go            | **2,150**              | ★★★☆☆           | ★★★☆☆   |
 | **MiMo-V2.5-Pro**  | Go            | **1,290**              | ★★☆☆☆           | ★★★★☆   |
 | **Kimi K2.5**      | Go            | **1,850**              | ★★☆☆☆           | ★★★★☆   |
-| **Kimi K2.6**      | Go            | **~1,150**             | ★☆☆☆☆           | ★★★★★   |
+| **Kimi K2.6**      | Go            | **1,850**              | ★★☆☆☆           | ★★★★★   |
 | **Kimi K2.7 Code** | Go            | **1,350**              | ★☆☆☆☆           | ★★★★★   |
 | **Kimi K3**        | Go            | **$3/$15 per 1M**      | ☆☆☆☆☆           | ★★★★★   |
 | **GLM-5**          | Go            | **1,150**              | ★☆☆☆☆           | ★★★★☆   |
