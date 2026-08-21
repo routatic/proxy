@@ -400,10 +400,14 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 	}
 
 	// Default: OpenCode Go
-	if models.IsAnthropicModel(modelID) {
+	switch {
+	case models.IsAnthropicModel(modelID):
 		return endpointConfig{BaseURL: cfg.OpenCodeGo.AnthropicBaseURL, APIKey: apiKey}
+	case models.IsResponsesModel(modelID) && cfg.OpenCodeGo.ResponsesBaseURL != "":
+		return endpointConfig{BaseURL: cfg.OpenCodeGo.ResponsesBaseURL, APIKey: apiKey}
+	default:
+		return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
 	}
-	return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
 }
 
 // endpointConfig holds configuration for a specific API endpoint.

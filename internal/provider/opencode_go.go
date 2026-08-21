@@ -64,6 +64,25 @@ func (p *OpenCodeGoProvider) WireFormat(modelID string) core.WireFormat {
 	return core.WireFormatOpenAIChat
 }
 
+// wireFormatFor resolves the effective wire format for a model, giving the
+// user-provided `wire_format` override (in model_overrides) precedence over
+// the built-in classification. Values: "auto" (default), "openai",
+// "anthropic", "responses", "gemini".
+func (p *OpenCodeGoProvider) wireFormatFor(model config.ModelConfig) core.WireFormat {
+	switch model.WireFormat {
+	case "openai", "chat", "chat_completions":
+		return core.WireFormatOpenAIChat
+	case "anthropic", "messages":
+		return core.WireFormatAnthropic
+	case "responses":
+		return core.WireFormatOpenAIResponses
+	case "gemini":
+		return core.WireFormatGemini
+	default: // "auto" or empty
+		return p.WireFormat(model.ModelID)
+	}
+}
+
 func isAnthropicNativeGo(modelID string) bool {
 	switch modelID {
 	case "minimax-m2.5", "minimax-m2.7", "minimax-m3",
@@ -95,9 +114,11 @@ func (p *OpenCodeGoProvider) StreamIdleTimeout(model config.ModelConfig) time.Du
 
 // Execute sends a non-streaming request and returns the response.
 func (p *OpenCodeGoProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.wireFormatFor(model) {
 	case core.WireFormatAnthropic:
 		return p.executeAnthropic(ctx, req, model)
+	case core.WireFormatOpenAIResponses:
+		return p.executeResponses(ctx, req, model)
 	default:
 		return p.executeOpenAI(ctx, req, model)
 	}
@@ -105,12 +126,73 @@ func (p *OpenCodeGoProvider) Execute(ctx context.Context, req *core.NormalizedRe
 
 // Stream sends a streaming request and returns an io.ReadCloser for SSE events.
 func (p *OpenCodeGoProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.wireFormatFor(model) {
 	case core.WireFormatAnthropic:
 		return p.streamAnthropic(ctx, req, model)
+	case core.WireFormatOpenAIResponses:
+		return p.streamResponses(ctx, req, model)
 	default:
 		return p.streamOpenAI(ctx, req, model)
 	}
+}
+
+// ── OpenAI Responses ──────────────────────────────────────────────────
+
+// executeResponses sends a non-streaming request to the OpenAI Responses endpoint.
+func (p *OpenCodeGoProvider) executeResponses(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
+	cfg := p.atomic.Get()
+	endpoint := cfg.OpenCodeGo.ResponsesBaseURL
+	apiKey := p.nextAPIKey(cfg.EffectiveAPIKeys())
+
+	responsesReq := transformer.NormalizedToResponses(req, model)
+	responsesReq.Stream = false
+
+	start := time.Now()
+	resp, err := p.doRequest(ctx, endpoint, apiKey, responsesReq, false)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var responsesResp types.ResponsesResponse
+	if err := json.Unmarshal(body, &responsesResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	normResp := transformer.ResponsesToNormalized(&responsesResp, model.ModelID)
+	anthropicResp := core.DenormalizeResponse(normResp)
+	resultBody, err := json.Marshal(anthropicResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	return &core.ExecuteResult{
+		Body:    resultBody,
+		ModelID: model.ModelID,
+		Latency: time.Since(start),
+	}, nil
+}
+
+// streamResponses sends a streaming request to the OpenAI Responses endpoint.
+func (p *OpenCodeGoProvider) streamResponses(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
+	cfg := p.atomic.Get()
+	endpoint := cfg.OpenCodeGo.ResponsesBaseURL
+	apiKey := p.nextAPIKey(cfg.EffectiveAPIKeys())
+
+	responsesReq := transformer.NormalizedToResponses(req, model)
+	responsesReq.Stream = true
+
+	resp, err := p.doRequest(ctx, endpoint, apiKey, responsesReq, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Body, nil
 }
 
 // ── OpenAI Chat Completions ────────────────────────────────────────────

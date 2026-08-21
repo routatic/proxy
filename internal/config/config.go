@@ -127,6 +127,7 @@ func (c *AWSBedrockConfig) EffectiveAPIKeys() []string {
 type OpenCodeGoConfig struct {
 	BaseURL            string   `json:"base_url"`
 	AnthropicBaseURL   string   `json:"anthropic_base_url"`
+	ResponsesBaseURL   string   `json:"responses_base_url,omitempty"`
 	APIKey             string   `json:"api_key,omitempty"`
 	APIKeys            []string `json:"api_keys,omitempty"`
 	TimeoutMs          int      `json:"timeout_ms"`
