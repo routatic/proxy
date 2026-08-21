@@ -112,11 +112,41 @@ WORKDIR="$(mktemp -d)"
 trap "rm -rf '$WORKDIR'" EXIT
 
 RPM_ABS="$(cd "$(dirname "$RPM_FILE")" && pwd)/$(basename "$RPM_FILE")"
-# --no-absolute-filenames is required, not cosmetic: RPM payload members are
-# absolute paths, and whether cpio strips the leading "/" by default differs
-# between distributions. Without it, extraction targets the real /usr and /etc
-# and fails on permissions (or, running as root, would overwrite the host).
-(cd "$WORKDIR" && rpm2cpio "$RPM_ABS" | cpio -idm --quiet --no-absolute-filenames)
+
+# Two portability traps here, both found by running this on Fedora and Ubuntu:
+#
+#  1. --no-absolute-filenames: RPM payload members are absolute paths, and
+#     whether cpio strips the leading "/" by default differs between
+#     distributions. Without it, extraction targets the real /usr and /etc and
+#     fails on permissions (or, as root, would overwrite the host).
+#  2. Ubuntu's rpm2cpio exits 1 even on a fully successful extraction, while
+#     Fedora's exits 0. Under `set -o pipefail` that sinks the whole pipeline,
+#     so we judge cpio's status instead of the pipeline's — and then prove the
+#     payload really is complete by comparing the extracted binary against the
+#     size RPM recorded for it, rather than trusting either exit code.
+# With pipefail off, the subshell's exit status is cpio's — the last command in
+# the pipeline — which is the one whose success we actually care about.
+CPIO_STATUS=0
+set +o pipefail
+(cd "$WORKDIR" && rpm2cpio "$RPM_ABS" | cpio -idm --quiet --no-absolute-filenames) ||
+  CPIO_STATUS=$?
+set -o pipefail
+
+if [ "$CPIO_STATUS" -ne 0 ]; then
+  fail "cpio failed to extract the RPM payload (exit $CPIO_STATUS)"
+fi
+
+EXPECTED_SIZE="$(rpm -qp --qf '[%{FILENAMES} %{FILESIZES}\n]' "$RPM_FILE" 2>/dev/null |
+  awk '$1 == "/usr/bin/routatic-proxy" { print $2 }')"
+ACTUAL_SIZE="$([ -f "${WORKDIR}/usr/bin/routatic-proxy" ] &&
+  wc -c < "${WORKDIR}/usr/bin/routatic-proxy" | tr -d ' ' || echo 0)"
+if [ -z "$EXPECTED_SIZE" ]; then
+  fail "RPM header records no size for /usr/bin/routatic-proxy"
+elif [ "$ACTUAL_SIZE" != "$EXPECTED_SIZE" ]; then
+  fail "Extracted binary is truncated: got ${ACTUAL_SIZE} bytes, header says ${EXPECTED_SIZE}"
+else
+  echo "payload: extracted binary is complete (${ACTUAL_SIZE} bytes)"
+fi
 
 BIN="${WORKDIR}/usr/bin/routatic-proxy"
 if [ ! -f "$BIN" ]; then
