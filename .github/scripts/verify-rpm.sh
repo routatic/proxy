@@ -112,7 +112,11 @@ WORKDIR="$(mktemp -d)"
 trap "rm -rf '$WORKDIR'" EXIT
 
 RPM_ABS="$(cd "$(dirname "$RPM_FILE")" && pwd)/$(basename "$RPM_FILE")"
-(cd "$WORKDIR" && rpm2cpio "$RPM_ABS" | cpio -idm --quiet)
+# --no-absolute-filenames is required, not cosmetic: RPM payload members are
+# absolute paths, and whether cpio strips the leading "/" by default differs
+# between distributions. Without it, extraction targets the real /usr and /etc
+# and fails on permissions (or, running as root, would overwrite the host).
+(cd "$WORKDIR" && rpm2cpio "$RPM_ABS" | cpio -idm --quiet --no-absolute-filenames)
 
 BIN="${WORKDIR}/usr/bin/routatic-proxy"
 if [ ! -f "$BIN" ]; then
