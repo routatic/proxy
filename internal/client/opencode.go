@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -48,12 +47,17 @@ func (t *teeReadCloser) Read(p []byte) (n int, err error) {
 // These are used throughout the codebase for endpoint selection, timeout
 // configuration, and provider-specific error handling (e.g., auth error
 // short-circuit logic).
+// The canonical names live in the config package, which is the lowest layer
+// that knows every provider; these are aliases so call sites keep using
+// client.Provider*.
 const (
-	ProviderOpenCodeGo  = "opencode-go"
-	ProviderOpenCodeZen = "opencode-zen"
-	ProviderAWSBedrock  = "aws-bedrock"
-	ProviderOpenRouter  = "openrouter"
+	ProviderOpenCodeGo  = config.ProviderOpenCodeGo
+	ProviderOpenCodeZen = config.ProviderOpenCodeZen
+	ProviderAWSBedrock  = config.ProviderAWSBedrock
+	ProviderOpenRouter  = config.ProviderOpenRouter
+)
 
+const (
 	routaticUserAgent    = "routatic-proxy"
 	openRouterReferer    = "https://github.com/routatic/proxy"
 	openRouterTitle      = "routatic-proxy"
@@ -322,18 +326,7 @@ func isZenAnthropicModel(modelID string) bool {
 // Normalizes underscores to hyphens so that both "aws_bedrock" and "aws-bedrock"
 // resolve to the same canonical form. Defaults to ProviderOpenCodeGo if empty.
 func Provider(model config.ModelConfig) string {
-	p := model.Provider
-	if p == "" {
-		return ProviderOpenCodeGo
-	}
-	// Normalize underscores to hyphens for consistent matching.
-	for i := range p {
-		if p[i] == '_' {
-			// strings.ReplaceAll would allocate; do an in-place scan + build only when needed.
-			return strings.ReplaceAll(p, "_", "-")
-		}
-	}
-	return p
+	return config.NormalizeProvider(model.Provider)
 }
 
 // IsZen returns true if the model uses the OpenCode Zen provider.

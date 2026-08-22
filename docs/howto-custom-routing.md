@@ -117,7 +117,16 @@ Now switching model in Claude Code (Opus / Sonnet / Haiku) switches the upstream
 3. `respect_requested_model` (if enabled)
 4. scenario routing
 
-When both an exact override and a family match apply to the same request, the exact override wins. Fallbacks resolve from `fallbacks[<family>]`, then `fallbacks["default"]`. Each entry requires a non-empty `model_id` and a provider of `opencode-go` or `opencode-zen`.
+When both an exact override and a family match apply to the same request, the exact override wins. Fallbacks resolve from `fallbacks[<family>]`, then `fallbacks["default"]`. Each entry requires a non-empty `model_id` and a provider of `opencode-go`, `opencode-zen`, `aws-bedrock` or `openrouter` — the same set `models` and `fallbacks` accept. Omitting `provider` defaults to `opencode-go`.
+
+```json
+{
+  "model_family_overrides": {
+    "sonnet": { "provider": "openrouter",  "model_id": "anthropic/claude-sonnet-4" },
+    "haiku":  { "provider": "aws-bedrock", "model_id": "amazon.nova-lite-v1:0" }
+  }
+}
+```
 
 ## Customize Fallback Chains
 

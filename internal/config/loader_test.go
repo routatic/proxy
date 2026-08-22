@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -714,10 +715,49 @@ func TestValidateModelOverrides_AllValidProviders(t *testing.T) {
 			"a": {Provider: "opencode-go", ModelID: "m1"},
 			"b": {Provider: "opencode-zen", ModelID: "m2"},
 			"c": {ModelID: "m3"},
+			"d": {Provider: "aws-bedrock", ModelID: "m4"},
+			"e": {Provider: "openrouter", ModelID: "m5"},
+			"f": {Provider: "aws_bedrock", ModelID: "m6"},
 		},
 	}
 	if err := validate(cfg); err != nil {
 		t.Errorf("expected no validation error, got %v", err)
+	}
+}
+
+// Overrides must accept every provider that `models` and `fallbacks` accept —
+// see https://github.com/routatic/proxy/issues/134.
+func TestValidateOverrides_AcceptsEveryKnownProvider(t *testing.T) {
+	for _, provider := range KnownProviders {
+		t.Run(provider, func(t *testing.T) {
+			cfg := &Config{
+				APIKey:               "test",
+				ModelOverrides:       map[string]ModelConfig{"exact": {Provider: provider, ModelID: "m"}},
+				ModelFamilyOverrides: map[string]ModelConfig{"sonnet": {Provider: provider, ModelID: "m"}},
+			}
+			if err := validate(cfg); err != nil {
+				t.Errorf("provider %q rejected: %v", provider, err)
+			}
+		})
+	}
+}
+
+func TestValidateModelFamilyOverrides_InvalidProvider(t *testing.T) {
+	cfg := &Config{
+		APIKey: "test",
+		ModelFamilyOverrides: map[string]ModelConfig{
+			"sonnet": {Provider: "not-a-provider", ModelID: "some-model"},
+		},
+	}
+	err := validate(cfg)
+	if err == nil {
+		t.Fatal("expected validation error for unknown provider, got nil")
+	}
+	// The message must list every accepted provider, not just the OpenCode pair.
+	for _, provider := range KnownProviders {
+		if !strings.Contains(err.Error(), provider) {
+			t.Errorf("error %q does not mention provider %q", err, provider)
+		}
 	}
 }
 

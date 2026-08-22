@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Accept `openrouter` and `aws-bedrock` in `model_overrides` and `model_family_overrides`, matching the providers `models` and `fallbacks` already allow (#134)
+- `routatic-proxy update` now fails before downloading, with an actionable message, when the install directory is not writable (e.g. root-owned `/usr/local/bin`)
+- `routatic-proxy update` stages the download in the install directory, fixing cross-filesystem rename failures when the temp dir is a separate mount
+- `routatic-proxy update` resolves symlinks so a symlinked install is replaced at its real path
+- Beta channel resolves releases again — the tag match looked for `-beta-` and never matched real `v{VERSION}-beta.{N}` tags
+- `routatic-proxy update` compares versions semantically instead of lexically, which reported `v0.6.10` as older than `v0.6.9`
+
+### Documentation
+- Document the beta channel end to end: opting in, Docker `beta` tag, installing a specific prerelease, and returning to stable
+- Correct the documented `update` command surface — the `--check`/`--yes`/`--force` flags and checksum verification it described do not exist
+
 ## [v0.5.0] - 2026-07-11
 
 ### Fixed
