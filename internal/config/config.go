@@ -78,6 +78,11 @@ type DebugConfig struct {
 }
 
 // ModelConfig defines routing rules for a specific model.
+//
+// WireFormat support is per-provider: opencode-go honours "openai",
+// "anthropic" and "responses" (not "gemini" — it has no Gemini endpoint),
+// while opencode-zen and aws-bedrock classify by model ID and ignore the
+// override. Unrecognised values fall back to the provider's classification.
 type ModelConfig struct {
 	Provider               string          `json:"provider"`
 	ModelID                string          `json:"model_id"`
@@ -127,6 +132,7 @@ func (c *AWSBedrockConfig) EffectiveAPIKeys() []string {
 type OpenCodeGoConfig struct {
 	BaseURL            string   `json:"base_url"`
 	AnthropicBaseURL   string   `json:"anthropic_base_url"`
+	ResponsesBaseURL   string   `json:"responses_base_url,omitempty"`
 	APIKey             string   `json:"api_key,omitempty"`
 	APIKeys            []string `json:"api_keys,omitempty"`
 	TimeoutMs          int      `json:"timeout_ms"`

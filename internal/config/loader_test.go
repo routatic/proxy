@@ -583,6 +583,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.OpenCodeGo.AnthropicBaseURL != defaultAnthropicBaseURL {
 		t.Errorf("OpenCodeGo.AnthropicBaseURL = %q, want %q", cfg.OpenCodeGo.AnthropicBaseURL, defaultAnthropicBaseURL)
 	}
+	if cfg.OpenCodeGo.ResponsesBaseURL != defaultResponsesBaseURL {
+		t.Errorf("OpenCodeGo.ResponsesBaseURL = %q, want %q", cfg.OpenCodeGo.ResponsesBaseURL, defaultResponsesBaseURL)
+	}
 	if cfg.OpenCodeGo.TimeoutMs != defaultTimeoutMs {
 		t.Errorf("OpenCodeGo.TimeoutMs = %d, want %d", cfg.OpenCodeGo.TimeoutMs, defaultTimeoutMs)
 	}

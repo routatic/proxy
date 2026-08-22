@@ -18,6 +18,7 @@ const (
 	defaultPort             = 3456
 	defaultBaseURL          = "https://opencode.ai/zen/go/v1/chat/completions"
 	defaultAnthropicBaseURL = "https://opencode.ai/zen/go/v1/messages"
+	defaultResponsesBaseURL = "https://opencode.ai/zen/go/v1/responses"
 	defaultTimeoutMs        = 300000
 	defaultLogLevel         = "info"
 	defaultAnthropicAPIURL  = "https://api.anthropic.com"
@@ -253,6 +254,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.OpenCodeGo.AnthropicBaseURL == "" {
 		cfg.OpenCodeGo.AnthropicBaseURL = defaultAnthropicBaseURL
+	}
+	if cfg.OpenCodeGo.ResponsesBaseURL == "" {
+		cfg.OpenCodeGo.ResponsesBaseURL = defaultResponsesBaseURL
 	}
 	if cfg.OpenCodeGo.TimeoutMs == 0 {
 		cfg.OpenCodeGo.TimeoutMs = defaultTimeoutMs
