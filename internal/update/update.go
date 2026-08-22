@@ -28,16 +28,18 @@ type GitHubRelease struct {
 
 // GetLatestRelease fetches the latest release for the specified channel ("stable" or "beta")
 func GetLatestRelease(channel string) (*GitHubRelease, error) {
-	var url string
-
+	url := "https://api.github.com/repos/routatic/proxy/releases/latest"
 	if channel == "beta" {
-		// For beta, get all releases and find the latest prerelease with -beta- in tag
+		// The /latest endpoint skips prereleases, so betas need the full list.
 		url = "https://api.github.com/repos/routatic/proxy/releases?per_page=20"
-	} else {
-		// For stable, use the /latest endpoint
-		url = "https://api.github.com/repos/routatic/proxy/releases/latest"
 	}
+	return getLatestReleaseFrom(url, channel)
+}
 
+// getLatestReleaseFrom fetches and decodes a release listing from an explicit
+// URL. The response shape depends on the channel: a single object for stable,
+// an array for beta.
+func getLatestReleaseFrom(url, channel string) (*GitHubRelease, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -56,11 +58,8 @@ func GetLatestRelease(channel string) (*GitHubRelease, error) {
 			return nil, fmt.Errorf("failed to parse releases: %w", err)
 		}
 
-		// Find the latest beta release (first prerelease with -beta- in tag)
-		for _, release := range releases {
-			if release.Prerelease && strings.Contains(release.TagName, "-beta-") {
-				return &release, nil
-			}
+		if latest := LatestBeta(releases); latest != nil {
+			return latest, nil
 		}
 		return nil, fmt.Errorf("no beta releases found")
 	}
@@ -72,6 +71,31 @@ func GetLatestRelease(channel string) (*GitHubRelease, error) {
 	}
 
 	return &release, nil
+}
+
+// isBetaTag reports whether a tag names a beta build. Beta tags are
+// `v{VERSION}-beta.{N}` (e.g. v0.6.4-beta.5), so the marker is "-beta"
+// followed by a separator — matching on "-beta-" misses every real tag.
+func isBetaTag(tag string) bool {
+	return strings.Contains(tag, "-beta.") || strings.Contains(tag, "-beta-")
+}
+
+// LatestBeta returns the highest-versioned beta prerelease, or nil when the
+// list contains none. Selection is by semantic version rather than by the
+// order GitHub returns, so a re-published or back-dated release cannot make an
+// older beta look like the newest one.
+func LatestBeta(releases []GitHubRelease) *GitHubRelease {
+	var latest *GitHubRelease
+	for i := range releases {
+		r := &releases[i]
+		if !r.Prerelease || !isBetaTag(r.TagName) {
+			continue
+		}
+		if latest == nil || IsNewerVersion(latest.TagName, r.TagName) {
+			latest = r
+		}
+	}
+	return latest
 }
 
 // GetAssetURL finds the download URL for the current platform

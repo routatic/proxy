@@ -50,6 +50,24 @@ echo $ANTHROPIC_BASE_URL  # 应该是 http://127.0.0.1:3456
 2. 检查是否有代理或防火墙正在缓冲连接
 3. 先尝试非流式请求以验证模型是否工作
 
+## `routatic-proxy update` 失败
+
+**"install directory ... is not writable by the current user"**
+
+更新程序需要替换二进制所在目录中的文件，而该目录属于其他用户——`/usr/local/bin` 通常属于 root。此时没有下载任何内容，现有二进制也未被修改。请使用 `sudo`（Unix）或在管理员终端中重新运行（Windows），或改用安装时的包管理器（`brew upgrade`、`scoop update`、`sudo dnf upgrade routatic-proxy`）。
+
+**"no beta releases found"**
+
+已选择 beta 通道但未能解析到预发布版本。用 `routatic-proxy update-channel` 确认当前通道，并在[发布页面](https://github.com/routatic/proxy/releases)确认存在预发布版本。v0.6.4 之前的版本无法匹配 `v{版本}-beta.{N}` 标签格式，因此总是报这个错——请手动安装一个新版本，见[手动安装指定的 beta 版本](INSTALLATION.md#手动安装指定的-beta-版本)。
+
+**切回 stable 后提示 "You are already on the latest version"**
+
+这是预期行为：beta 比当前稳定版更新，因此没有可更新的目标。切换通道不会降级。请显式重新安装稳定版，见[切回稳定版](INSTALLATION.md#切回稳定版)。
+
+**"GitHub API returned status 403"**
+
+未认证的 GitHub API 请求按 IP 限流。请稍后重试，或直接从[发布页面](https://github.com/routatic/proxy/releases)下载资源。
+
 ## 调试模式
 
 要获得最大日志记录，使用调试级别运行：

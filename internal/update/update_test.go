@@ -206,3 +206,76 @@ func TestIsNewerVersion(t *testing.T) {
 		}
 	}
 }
+
+// Real beta tags are v{VERSION}-beta.{N}; the old "-beta-" match found none of
+// them, so the beta channel always reported "no beta releases found".
+func TestLatestBeta_MatchesDottedBetaTags(t *testing.T) {
+	releases := []GitHubRelease{
+		{TagName: "v0.6.4-beta.1", Prerelease: true},
+		{TagName: "v0.6.4-beta.5", Prerelease: true},
+		{TagName: "v0.6.4-beta.2", Prerelease: true},
+		{TagName: "v0.6.3", Prerelease: false},
+	}
+	latest := LatestBeta(releases)
+	if latest == nil {
+		t.Fatal("LatestBeta() = nil, want the newest beta release")
+	}
+	if latest.TagName != "v0.6.4-beta.5" {
+		t.Errorf("LatestBeta() = %q, want %q", latest.TagName, "v0.6.4-beta.5")
+	}
+}
+
+// GitHub orders by publish date; a re-published older beta must not win.
+func TestLatestBeta_PicksBySemverNotListOrder(t *testing.T) {
+	releases := []GitHubRelease{
+		{TagName: "v0.6.4-beta.2", Prerelease: true},
+		{TagName: "v0.6.4-beta.10", Prerelease: true},
+	}
+	if got := LatestBeta(releases); got == nil || got.TagName != "v0.6.4-beta.10" {
+		t.Errorf("LatestBeta() = %v, want v0.6.4-beta.10", got)
+	}
+}
+
+func TestLatestBeta_IgnoresStableAndNonBetaPrereleases(t *testing.T) {
+	releases := []GitHubRelease{
+		{TagName: "v0.6.4", Prerelease: false},
+		{TagName: "v0.7.0-rc.1", Prerelease: true},
+	}
+	if got := LatestBeta(releases); got != nil {
+		t.Errorf("LatestBeta() = %v, want nil", got)
+	}
+}
+
+func TestGetLatestRelease_BetaChannel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"tag_name":"v0.6.4-beta.5","prerelease":true,"assets":[]},
+			{"tag_name":"v0.6.4-beta.1","prerelease":true,"assets":[]},
+			{"tag_name":"v0.6.3","prerelease":false,"assets":[]}
+		]`))
+	}))
+	defer srv.Close()
+
+	release, err := getLatestReleaseFrom(srv.URL, "beta")
+	if err != nil {
+		t.Fatalf("getLatestReleaseFrom() error = %v", err)
+	}
+	if release.TagName != "v0.6.4-beta.5" {
+		t.Errorf("tag = %q, want %q", release.TagName, "v0.6.4-beta.5")
+	}
+}
+
+func TestGetLatestRelease_StableChannel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v0.6.3","prerelease":false,"assets":[]}`))
+	}))
+	defer srv.Close()
+
+	release, err := getLatestReleaseFrom(srv.URL, "stable")
+	if err != nil {
+		t.Fatalf("getLatestReleaseFrom() error = %v", err)
+	}
+	if release.TagName != "v0.6.3" {
+		t.Errorf("tag = %q, want %q", release.TagName, "v0.6.3")
+	}
+}
