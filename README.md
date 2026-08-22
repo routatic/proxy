@@ -96,6 +96,10 @@ export ANTHROPIC_AUTH_TOKEN=unused
 claude
 ```
 
+**Fedora / RHEL:** each release ships `x86_64` and `aarch64` RPMs —
+`sudo dnf install https://github.com/routatic/proxy/releases/download/vX.Y.Z/routatic-proxy-X.Y.Z-1.x86_64.rpm`.
+See [docs/fedora-setup.md](docs/fedora-setup.md) for package contents and the systemd user service.
+
 See [INSTALLATION.md](INSTALLATION.md) for Homebrew, Scoop, Docker, and build-from-source options.
 
 Prefer a GUI for switching providers? routatic-proxy works with [CC-Switch](https://github.com/farion1231/cc-switch) — see [Using with CC-Switch](CONFIGURATION.md#using-with-cc-switch).
@@ -120,10 +124,9 @@ routatic-proxy --version          Show version
 
 | Document | Description |
 |----------|-------------|
-| [docs/models.md](docs/models.md) | Model reference across all providers |
+| [MODELS.md](MODELS.md) | Model reference across all providers — capabilities, costs, endpoints, routing recommendations |
 | [docs/openrouter.md](docs/openrouter.md) | OpenRouter provider setup and configuration |
 | [CONFIGURATION.md](CONFIGURATION.md) | Config file reference, env vars, model routing, fallback chains |
-| [MODELS.md](MODELS.md) | Complete model capabilities, costs, and routing recommendations |
 | [INSTALLATION.md](INSTALLATION.md) | Homebrew, Scoop, build from source, Docker |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, architecture |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and debug mode |

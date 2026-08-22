@@ -35,10 +35,85 @@ jobs:
       - name: Build (sanity check)
         run: go build -o /dev/null ./cmd/routatic-proxy
 
-  # ── Stage 2: Build & Release (macOS runner for DMG support) ──────
+  # ── Stage 2: Package & Verify RPMs (Linux runner) ─────────────────
+  # RPMs are built here rather than in the release job because rpm(8) — and so
+  # any real introspection of what we are about to publish — only exists on
+  # Linux. The finished .rpm files travel to the release job as a workflow
+  # artifact so every asset still goes into one atomic `gh release create`
+  # (this repo publishes immutable releases, which reject later uploads).
+  rpm:
+    name: Package & Verify RPMs
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Determine version
+        id: version
+        run: |
+          # Same derivation as the release job so the version baked into the
+          # packaged binary matches the published raw binaries exactly.
+          TAG="${{ github.event.inputs.version }}"
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Error: Version must follow semantic versioning with 'v' prefix (e.g., v1.2.3)"
+            exit 1
+          fi
+
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Packaging as $TAG"
+
+      - name: Ensure rpm tooling
+        run: |
+          set -euo pipefail
+          # ubuntu-latest ships rpm/rpm2cpio/cpio today; install rather than
+          # assume, so a runner image change turns into a slower job and not a
+          # silently skipped verification.
+          MISSING=""
+          for TOOL in rpm rpm2cpio cpio; do
+            command -v "$TOOL" >/dev/null 2>&1 || MISSING="$MISSING $TOOL"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "Installing missing tooling:$MISSING"
+            sudo apt-get update
+            sudo apt-get install -y rpm cpio
+          fi
+          rpm --version
+
+      - name: Build RPM packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash .github/scripts/build-rpms.sh
+
+      - name: Verify RPM packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # nfpm's semver schema rewrites 0.6.4-beta.1 -> 0.6.4~beta.1.
+          RPM_VERSION="$(printf '%s' "$VERSION" | tr '-' '~')"
+          bash .github/scripts/verify-rpm.sh \
+            "dist/routatic-proxy-${RPM_VERSION}-1.x86_64.rpm" "$VERSION" x86_64 3e00
+          bash .github/scripts/verify-rpm.sh \
+            "dist/routatic-proxy-${RPM_VERSION}-1.aarch64.rpm" "$VERSION" aarch64 b700
+
+      - name: Upload RPM packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rpm-packages
+          path: dist/*.rpm
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── Stage 3: Build & Release (macOS runner for DMG support) ──────
   release:
     name: Build & Release
-    needs: validate
+    needs: [validate, rpm]
     runs-on: macos-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
@@ -129,6 +204,58 @@ jobs:
           echo "Built binaries:"
           ls -lh dist/
 
+      # Guards the raw linux-amd64/linux-arm64 binaries that this job publishes
+      # directly as release assets. The RPM job verifies its own copies; this
+      # check is independent, because a bad cross-compile here would ship to
+      # users via the plain downloads and the Homebrew formula.
+      - name: Verify Linux binaries
+        run: |
+          set -euo pipefail
+
+          # Read the ELF header directly instead of grepping `file` output:
+          # macOS and Linux word it differently, and a guard that silently
+          # always passes is worse than no guard.
+          #   bytes 0-3  magic  7f 45 4c 46
+          #   byte  4    class  02 = 64-bit
+          #   byte  5    data   01 = little-endian
+          #   bytes 18-19 e_machine (LE): 3e00 = x86-64, b700 = AArch64
+          check() {
+            BIN="dist/routatic-proxy_linux-$1"
+            EXPECT_MACHINE="$2"
+
+            if [ ! -f "$BIN" ]; then
+              echo "::error::Missing $BIN — the cross-compile step did not produce it"
+              exit 1
+            fi
+            if [ ! -x "$BIN" ]; then
+              echo "::error::$BIN is not executable"
+              exit 1
+            fi
+
+            HEADER=$(dd if="$BIN" bs=1 count=20 2>/dev/null | od -An -tx1 | tr -d ' \n')
+            MAGIC="${HEADER:0:8}"
+            CLASS="${HEADER:8:2}"
+            MACHINE="${HEADER:36:4}"
+
+            if [ "$MAGIC" != "7f454c46" ]; then
+              echo "::error::$BIN is not an ELF binary (magic=$MAGIC)"
+              exit 1
+            fi
+            if [ "$CLASS" != "02" ]; then
+              echo "::error::$BIN is not 64-bit ELF (class=$CLASS)"
+              exit 1
+            fi
+            if [ "$MACHINE" != "$EXPECT_MACHINE" ]; then
+              echo "::error::$BIN has wrong ELF machine: got $MACHINE, want $EXPECT_MACHINE"
+              exit 1
+            fi
+
+            echo "$1: ok (ELF64, e_machine=$MACHINE)"
+          }
+
+          check amd64 3e00
+          check arm64 b700
+
       - name: Stage Windows binaries for signing
         if: ${{ steps.signing.outputs.enabled == 'true' }}
         run: |
@@ -165,10 +292,33 @@ jobs:
           cp signed/routatic-proxy_windows-arm64.exe dist/routatic-proxy_windows-arm64.exe
           rm -rf signing signed
 
+      # The RPMs were built and introspected on Linux (see the rpm job). Passing
+      # them through an artifact is safe: the executable bit lives inside the
+      # RPM payload, not on the .rpm file itself.
+      - name: Download RPM packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rpm-packages
+          path: dist
+
+      - name: Verify RPM packages arrived
+        run: |
+          set -euo pipefail
+          COUNT=$(find dist -maxdepth 1 -name 'routatic-proxy-*.rpm' | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne 2 ]; then
+            echo "::error::Expected 2 RPMs from the rpm job artifact, found ${COUNT}"
+            ls -la dist
+            exit 1
+          fi
+          ls -lh dist/*.rpm
+
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum routatic-proxy_* > checksums.txt
+          # Covers the raw binaries (routatic-proxy_*) and the RPMs
+          # (routatic-proxy-<version>-<rel>.<arch>.rpm) in one pass. Neither
+          # glob can match checksums.txt itself.
+          sha256sum routatic-proxy_* routatic-proxy-*.rpm > checksums.txt
           cat checksums.txt
 
       - name: Build CGO-enabled binary (for DMG)
@@ -289,6 +439,7 @@ jobs:
             --title "Release ${{ steps.version.outputs.tag }}" \
             --notes-file changelog.md \
             dist/routatic-proxy_* \
+            dist/routatic-proxy-*.rpm \
             dist/checksums.txt \
             bin/RoutaticProxy.dmg
 

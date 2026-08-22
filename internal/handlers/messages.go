@@ -481,6 +481,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		"model", routeResult.Primary.ModelID,
 		"provider", routeResult.Primary.Provider,
 		"tokens", tokenCount,
+		"reason", routeResult.Reason,
 	)
 
 	normalizedReq := core.NormalizeRequest(&anthropicReq)

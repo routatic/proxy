@@ -28,13 +28,20 @@ Debug logs show:
 
 ## Check Scenario Detection
 
-The log line `INFO routing request` shows the selected scenario and model:
+The log line `INFO routing request` shows the selected scenario, the model, and a `reason` explaining both:
 
 ```
-INFO routing request scenario=complex model=glm-5.1 provider=opencode-go tokens=1500
+INFO routing request scenario=complex model=glm-5.2 provider=opencode-go tokens=1500 reason="scenario=complex (complex or tool-based operation keywords in latest user message) -> resolved model glm-5.2"
 ```
 
-If the scenario is wrong, check the keyword patterns in `internal/router/scenarios.go`.
+Read `reason` as two halves:
+
+- Before the `->`: **why** this scenario matched (which threshold was crossed, which keyword pattern fired, or which override key hit). It never names a model, because scenario detection runs before a model is resolved.
+- After the `->`: the model actually resolved for that scenario, read from your config or the catalog. It always matches the `model=` field, so it cannot go stale.
+
+The reason also notes when resolution did something non-obvious, e.g. `cheapest catalog model` (cost-based routing picked from the catalog) or `scenario not configured so using "default" model`.
+
+If the scenario is wrong, check the keyword patterns in `internal/router/scenarios.go`. If the scenario is right but the model is not what you expected, the model for that scenario key is wrong in your config.
 
 ## Check Circuit Breakers
 

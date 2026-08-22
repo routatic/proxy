@@ -1,4 +1,4 @@
-.PHONY: build build-ui run test clean install dist lint vet docker-up docker-stop
+.PHONY: build build-ui run test clean install dist rpm lint lint-strict vet docker-up docker-stop
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -41,6 +41,19 @@ lint:
 	@echo "Running go vet..."
 	CGO_ENABLED=0 go vet ./...
 	@echo "Lint checks passed!"
+
+# Full lint pass with .golangci.yml — same command the pre-push hook runs.
+GOLANGCI_LINT_VERSION = v2.13.1
+
+lint-strict:
+	@command -v golangci-lint >/dev/null || { \
+		echo "golangci-lint not found. Install with:"; \
+		echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)"; \
+		echo "  (or: brew install golangci-lint / dnf install golangci-lint)"; \
+		exit 1; \
+	}
+	@echo "Running golangci-lint..."
+	golangci-lint run --timeout 5m ./...
 
 clean:
 	rm -rf bin/ dist/
@@ -111,3 +124,29 @@ dist: clean
 	@echo ""
 	@echo "Built binaries:"
 	@ls -lh dist/
+
+# ── RPM Packaging (Fedora / RHEL) ──────────────────────────────────
+# Mirrors the CI job. Requires nfpm:
+#   go install github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION)
+NFPM_VERSION = v2.47.0
+RPM_VERSION ?= $(patsubst v%,%,$(VERSION))
+
+rpm:
+	@command -v nfpm >/dev/null || { \
+		echo "nfpm not found. Install with:"; \
+		echo "  go install github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION)"; \
+		exit 1; \
+	}
+	@mkdir -p dist
+	@for arch in amd64 arm64; do \
+		echo "  → linux/$$arch"; \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch \
+			go build -ldflags "$(RELEASE_LDFLAGS)" \
+				-o "dist/$(BINARY)_linux-$$arch" $(CMD); \
+		NFPM_VERSION="$(RPM_VERSION)" \
+		NFPM_ARCH="$$arch" \
+		NFPM_BINARY="dist/$(BINARY)_linux-$$arch" \
+			nfpm package --config packaging/nfpm.yaml --packager rpm --target dist/; \
+	done
+	@echo ""
+	@ls -lh dist/*.rpm

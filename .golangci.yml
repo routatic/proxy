@@ -1,0 +1,76 @@
+# golangci-lint configuration (schema v2, golangci-lint >= 2.0).
+#
+# Rule of thumb for this repo: every linter enabled here must pass on a clean
+# tree with zero issues. A config that fails out of the box gets ignored, and
+# an ignored lint config is worse than no lint config. If you want to add a
+# linter, run it first and either fix what it finds or leave it out.
+#
+# Formatting is deliberately NOT handled here — `make lint` owns the gofmt
+# check so the fast path stays fast and the two never disagree.
+version: "2"
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose # unclosed HTTP response bodies — we make a lot of upstream calls
+    - copyloopvar # leftover loop-variable copies (unneeded since Go 1.22)
+    - misspell # typos in comments and strings
+    - nolintlint # //nolint must be specific and explained
+    - revive # curated correctness/clarity rules, see settings below
+    - whitespace # stray leading/trailing newlines inside blocks
+
+  # Considered and deliberately left out, because each one currently reports
+  # findings that would mean a large mechanical diff rather than a real fix:
+  #   gosec       — 25+ findings, nearly all inherent to a local CLI that writes
+  #                 config files and spawns processes (G301/G302/G304/G306/G204).
+  #                 Silencing all of them would leave gosec meaningless; run it
+  #                 ad hoc instead: golangci-lint run --enable-only gosec ./...
+  #   errorlint   — sentinel comparisons via == that predate errors.Is
+  #   gocritic    — if-else/switch rewrites, pure style
+  #   prealloc, unparam, unconvert, usestdlibvars — a handful of micro-findings
+  # Revisit any of these as a standalone cleanup PR, not as a lint config change.
+
+  settings:
+    revive:
+      # Explicit rule list. The revive default set includes exported-comment and
+      # unused-parameter, which together flag ~50 sites across the tree; those are
+      # a documentation/signature cleanup, not something to gate pushes on.
+      rules:
+        - name: constant-logical-expr
+        - name: datarace
+        - name: defer
+        - name: dot-imports
+        - name: duplicated-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: identical-branches
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: modifies-parameter
+        - name: modifies-value-receiver
+        - name: range
+        - name: receiver-naming
+        - name: superfluous-else
+        - name: time-equal
+        - name: time-naming
+        - name: unreachable-code
+        - name: useless-break
+        - name: var-declaration
+        - name: waitgroup-by-value
+
+  exclusions:
+    rules:
+      # Tests routinely ignore errors on teardown and don't drain response
+      # bodies they only inspect status codes for. Conventional relaxation.
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - errcheck
+
+issues:
+  # Report everything, not just the first few per linter.
+  max-issues-per-linter: 0
+  max-same-issues: 0

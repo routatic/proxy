@@ -53,6 +53,43 @@ Move-Item -Path "routatic-proxy.exe" -Destination "$env:LOCALAPPDATA\Microsoft\W
 
 Homebrew and Scoop installs also provide `oc-go-cc` as an alias for `routatic-proxy`.
 
+## Fedora / RHEL (RPM)
+
+Every release publishes RPMs for `x86_64` and `aarch64`, so `dnf` handles
+upgrades and removal for you:
+
+```bash
+VERSION=0.6.3                       # pick a version from the Releases page
+ARCH=$(uname -m)                    # x86_64 or aarch64
+sudo dnf install "https://github.com/routatic/proxy/releases/download/v${VERSION}/routatic-proxy-${VERSION}-1.${ARCH}.rpm"
+```
+
+The package installs the binary to `/usr/bin/routatic-proxy`, a config template
+to `/etc/routatic-proxy/config.json` (marked `noreplace`, so upgrades never
+overwrite your edits), and an optional systemd **user** unit you can opt into
+with `systemctl --user enable --now routatic-proxy`. The RPMs are not GPG-signed
+yet — verify against `checksums.txt` on the release page. Note that
+`routatic-proxy update` is for standalone binaries; on an RPM install, upgrade
+through `dnf` instead.
+
+See [docs/fedora-setup.md](docs/fedora-setup.md) for the full Fedora guide,
+including the systemd and troubleshooting details.
+
+## macOS GUI (DMG)
+
+macOS users can install the app bundle instead of the CLI:
+
+1. Open the [Releases page](https://github.com/routatic/proxy/releases)
+2. Download `RoutaticProxy.dmg` from the latest release
+3. Open it and drag the app into your Applications folder
+4. Launch routatic-proxy from Launchpad or Applications
+
+The app runs as a menu bar item rather than a window. Its menu shows the proxy's
+current status and offers **Open Console...** for the dashboard, **Start Proxy** /
+**Stop Proxy**, and a **Start on Boot** toggle. The same functionality is
+available from the CLI via `routatic-proxy start`, `stop`, `status`, and
+`autostart enable`.
+
 ## Docker
 
 ### Pull the prebuilt image

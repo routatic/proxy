@@ -1,7 +1,9 @@
 {
   "api_key": "${ROUTATIC_PROXY_API_KEY}",
+  "api_keys": [],
   "host": "127.0.0.1",
   "port": 3456,
+  "update_channel": "stable",
   "hot_reload": false,
   "enable_streaming_scenario_routing": false,
   "respect_requested_model": false,
@@ -356,6 +358,33 @@
     "api_keys": [],
     "timeout_ms": 300000,
     "streaming_timeout_ms": 600000
+  },
+
+  "openrouter": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key": "",
+    "api_keys": [],
+    "timeout_ms": 300000,
+    "stream_timeout_ms": 60000,
+    "streaming_timeout_ms": 600000
+  },
+
+  "catalog": {
+    "enabled": true,
+    "max_age_hours": 24,
+    "source_url": "https://models.dev/catalog.json"
+  },
+
+  "storage": {
+    "database_path": "~/.local/share/routatic-proxy/data.db",
+    "retention_days": 7,
+    "vacuum_on_startup": false,
+    "wal_enabled": true
+  },
+
+  "debug": {
+    "capture_enabled": false,
+    "capture_dir": "~/.config/routatic-proxy/debug/"
   },
 
   "opencode_zen": {

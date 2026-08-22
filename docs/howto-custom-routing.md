@@ -8,13 +8,45 @@ Each request is classified into a scenario, which maps to a model:
 
 | Scenario | Trigger | Default Model |
 |----------|---------|---------------|
-| `default` | No special patterns detected | Kimi K2.6 |
-| `complex` | Architectural keywords, tool operations | GLM-5.1 |
-| `think` | Reasoning keywords in system prompt | GLM-5 |
-| `background` | Simple read-only ops (ls, cat, "what is") | Qwen3.5 Plus |
-| `long_context` | Token count > threshold (default 100K) | MiniMax M2.5 |
-| `vision` | Request contains images | (must configure) |
-| `fast` | Streaming requests (when scenario routing disabled) | Qwen3.6 Plus |
+| `default` | No special patterns detected | `deepseek-v4-pro` |
+| `complex` | Architectural keywords, tool operations | `deepseek-v4-pro` |
+| `think` | Reasoning keywords in system prompt | `glm-5.2` |
+| `background` | Simple read-only ops (ls, cat, "what is") | `deepseek-v4-flash` |
+| `long_context` | Token count > threshold (default 100K) | `minimax-m3` |
+| `vision` | Latest user message contains an image, simple intent | (must configure) |
+| `vision_complex` | Image request whose text also shows complex intent | (must configure) |
+| `vision_long_context` | Image request above the long-context threshold | (must configure) |
+| `fast` | Streaming requests (when scenario routing disabled) | `deepseek-v4-flash` |
+
+"Default Model" is what `routatic-proxy init` writes
+(`cmd/routatic-proxy/templates/default_config.json`). The three `vision*`
+scenarios have no entry in the shipped config, so image requests fall through to
+the ordinary scenario models until you add them:
+
+```json
+{
+  "models": {
+    "vision": {
+      "provider": "opencode-go",
+      "model_id": "qwen3.7-plus",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "vision_complex": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k3",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "vision_long_context": {
+      "provider": "opencode-go",
+      "model_id": "kimi-k3",
+      "temperature": 0.7,
+      "max_tokens": 16384
+    }
+  }
+}
+```
 
 ## Override Scenario Models
 

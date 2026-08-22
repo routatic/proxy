@@ -18,6 +18,10 @@
   "host": "127.0.0.1",
   "port": 3456,
   "hot_reload": false,
+  "anthropic_first": {
+    "enabled": false,
+    "base_url": "https://api.anthropic.com"
+  },
 
   "enable_cost_based_routing": false,
   "cost_routing": {
@@ -32,38 +36,42 @@
   "models": {
     "default": {
       "provider": "opencode-go",
-      "model_id": "kimi-k2.6",
+      "model_id": "deepseek-v4-pro",
       "temperature": 0.7,
-      "max_tokens": 4096
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
     },
     "background": {
       "provider": "opencode-go",
-      "model_id": "qwen3.5-plus",
+      "model_id": "deepseek-v4-flash",
       "temperature": 0.5,
       "max_tokens": 2048
     },
     "think": {
       "provider": "opencode-go",
-      "model_id": "glm-5.1",
+      "model_id": "glm-5.2",
       "temperature": 0.7,
       "max_tokens": 8192
     },
     "complex": {
       "provider": "opencode-go",
-      "model_id": "glm-5.1",
+      "model_id": "deepseek-v4-pro",
       "temperature": 0.7,
-      "max_tokens": 4096
+      "max_tokens": 8192,
+      "reasoning_effort": "max",
+      "thinking": { "type": "enabled" }
     },
     "long_context": {
       "provider": "opencode-go",
-      "model_id": "minimax-m2.7",
+      "model_id": "minimax-m3",
       "temperature": 0.7,
       "max_tokens": 16384,
       "context_threshold": 80000
     },
     "fast": {
       "provider": "opencode-go",
-      "model_id": "qwen3.6-plus",
+      "model_id": "deepseek-v4-flash",
       "temperature": 0.7,
       "max_tokens": 4096
     }
@@ -71,13 +79,16 @@
 
   "fallbacks": {
     "default": [
-      { "provider": "opencode-go", "model_id": "glm-5" },
-      { "provider": "opencode-go", "model_id": "qwen3.6-plus" }
+      { "provider": "opencode-go", "model_id": "qwen3.7-plus" },
+      { "provider": "opencode-go", "model_id": "qwen3.7-max" },
+      { "provider": "opencode-zen", "model_id": "nemotron-3-ultra-free" },
+      { "provider": "opencode-zen", "model_id": "mimo-v2.5-free" },
+      { "provider": "opencode-zen", "model_id": "deepseek-v4-flash-free" }
     ],
-    "think": [{ "provider": "opencode-go", "model_id": "glm-5" }],
-    "complex": [{ "provider": "opencode-go", "model_id": "glm-5" }],
-    "long_context": [{ "provider": "opencode-go", "model_id": "minimax-m2.5" }],
-    "fast": [{ "provider": "opencode-go", "model_id": "qwen3.5-plus" }]
+    "think": [{ "provider": "opencode-go", "model_id": "qwen3.7-plus" }],
+    "complex": [{ "provider": "opencode-go", "model_id": "qwen3.7-plus" }],
+    "long_context": [{ "provider": "opencode-go", "model_id": "qwen3.7-plus" }],
+    "fast": [{ "provider": "opencode-go", "model_id": "qwen3.7-plus" }]
   },
 
   "model_overrides": {
@@ -202,6 +213,218 @@ routatic-proxy 支持三个提供商进行上游 API 调用：
 
 对于需要原始 Anthropic Messages 格式的模型（如 Bedrock 上的 Claude），设置 `wire_format: "anthropic"`。需要配置 `anthropic_base_url`。
 
+### OpenRouter (`openrouter`)
+
+- 统一 API，可访问来自多个提供商（OpenAI、Anthropic、Google、Meta、Mistral 等）的 200+ 模型
+- 使用 OpenAI Chat Completions API 格式
+- 按使用量付费，费率有竞争力
+- 在模型配置中设置 `"provider": "openrouter"` 使用 OpenRouter
+
+#### 配置结构
+
+```json
+{
+  "openrouter": {
+    "name": "openrouter",
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key": "${OPENROUTER_API_KEY}",
+    "api_keys": ["${OPENROUTER_KEY_1}", "${OPENROUTER_KEY_2}"],
+    "enabled": true,
+    "timeout_ms": 300000,
+    "stream_timeout_ms": 60000
+  }
+}
+```
+
+| 字段 | 类型 | 必需 | 描述 |
+|------|------|------|------|
+| `name` | `string` | 否 | 提供商显示名称（默认为 "openrouter"） |
+| `base_url` | `string` | 否 | API 端点基础 URL。默认值：`https://openrouter.ai/api/v1` |
+| `api_key` | `string` | 是* | 用于认证的单个 API key。若未设置 `api_keys` 则必需 |
+| `api_keys` | `string[]` | 是* | 用于轮询轮换的多个 API key。若未设置 `api_key` 则必需 |
+| `enabled` | `bool` | 否 | 此提供商是否启用。默认值：`true` |
+| `timeout_ms` | `int` | 否 | 请求超时（毫秒）。默认值：`300000`（5 分钟） |
+| `stream_timeout_ms` | `int` | 否 | 流式传输期间的分块超时。默认值：`60000`（1 分钟） |
+
+*`api_key` 和 `api_keys` 中至少要配置一个。
+
+#### 环境变量覆盖
+
+| 变量 | 描述 | 优先级 |
+|------|------|--------|
+| `ROUTATIC_PROXY_OPENROUTER_API_KEY` | 单个 API key 覆盖 | 最高 |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEYS` | 用于轮询的逗号分隔密钥 | 最高 |
+| `ROUTATIC_PROXY_OPENROUTER_BASE_URL` | 自定义 base URL 覆盖 | 最高 |
+
+环境变量优先于配置文件值。配置值支持 `${VAR}` 插值。
+
+优先级顺序：`*_API_KEYS` → `*_API_KEY` → 配置文件 `api_keys` → 配置文件 `api_key`
+
+#### 配置示例
+
+**单密钥设置：**
+
+```json
+{
+  "openrouter": {
+    "api_key": "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+**多密钥轮询以实现负载均衡：**
+
+```json
+{
+  "openrouter": {
+    "api_keys": [
+      "sk-or-v1-key-1",
+      "sk-or-v1-key-2",
+      "sk-or-v1-key-3"
+    ]
+  }
+}
+```
+
+**自定义 base URL（用于企业/自托管）：**
+
+```json
+{
+  "openrouter": {
+    "base_url": "https://openrouter.mycompany.com/api/v1",
+    "api_key": "${OPENROUTER_API_KEY}",
+    "enabled": true
+  }
+}
+```
+
+#### 与基于成本的路由集成
+
+OpenRouter 可与 `cost_routing` 无缝配合。使用 `penalty_per_provider` 调整有效成本：
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["openrouter", "opencode-go"],
+    "max_context_window": 1000000,
+    "penalty_per_provider": {
+      "openrouter": 0.02,
+      "opencode-go": 0.0,
+      "aws-bedrock": 0.05
+    }
+  }
+}
+```
+
+惩罚值累加到原始模型成本上。例如：OpenRouter 上成本为 $0.10/1M tokens 的模型，加上 0.02 的惩罚后有效成本为 $0.12/1M tokens。用它在不完全排除提供商的情况下调整路由偏好。
+
+#### 通过目录解析模型
+
+模型使用 `provider/model-name` 模式引用。OpenRouter 模型使用 `openrouter/` 前缀：
+
+```json
+{
+  "model_overrides": {
+    "claude-opus-4": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "vision": true
+    },
+    "gpt-4o": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "gemini-2.5-pro": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-2.5-pro-preview-07-11",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  }
+}
+```
+
+**发现模型：**
+
+1. 访问 [openrouter.ai/models](https://openrouter.ai/models) 查看完整模型列表
+2. 使用 `routatic-proxy models` 命令查看已缓存的目录条目
+3. 查阅 [OpenRouter API 文档](https://openrouter.ai/docs) 了解定价和上下文限制
+
+配置中的 `model_id` 必须与 OpenRouter 的模型标识符完全一致（例如 `anthropic/claude-opus-4`、`openai/gpt-4o`、`google/gemini-2.5-pro-preview-07-11`）。
+
+#### 使用场景
+
+**访问特定模型：** 当你需要其他提供商上没有的模型时使用 OpenRouter：
+
+```json
+{
+  "models": {
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-opus-4",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "reasoning_effort": "max"
+    }
+  }
+}
+```
+
+**降级链：** 在主要提供商失败时把 OpenRouter 作为降级项：
+
+```json
+{
+  "fallbacks": {
+    "default": [
+      { "provider": "opencode-go", "model_id": "deepseek-v4-pro" },
+      { "provider": "openrouter", "model_id": "anthropic/claude-sonnet-4.8" },
+      { "provider": "openrouter", "model_id": "openai/gpt-4.1" }
+    ]
+  }
+}
+```
+
+**成本优化：** 结合 `cost_routing` 和提供商惩罚，自动选择可用的最便宜模型：
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["openrouter"],
+    "penalty_per_provider": {
+      "openrouter": -0.01
+    }
+  }
+}
+```
+
+**专用模型：** 为特定任务访问小众模型：
+
+```json
+{
+  "models": {
+    "think": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-r1-free",
+      "temperature": 0.6,
+      "max_tokens": 8192
+    },
+    "long_context": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-1.5-pro",
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "context_threshold": 80000
+    }
+  }
+}
+```
+
 ## 环境变量
 
 环境变量覆盖配置文件值。配置值也支持 `${VAR}` 插值。
@@ -214,6 +437,8 @@ routatic-proxy 支持三个提供商进行上游 API 调用：
 | `ROUTATIC_PROXY_PORT` | 代理监听端口 | `3456` |
 | `ROUTATIC_PROXY_OPENCODE_URL` | OpenCode Go API 端点 | `https://opencode.ai/zen/go/v1/chat/completions` |
 | `ROUTATIC_PROXY_OPENCODE_ZEN_URL` | OpenCode Zen API 端点 | `https://opencode.ai/zen/v1/chat/completions` |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEY` | OpenRouter 单个 API key | — |
+| `ROUTATIC_PROXY_OPENROUTER_API_KEYS` | OpenRouter 密钥池（逗号分隔） | — |
 | `ROUTATIC_PROXY_LOG_LEVEL` | 日志级别：`debug`、`info`、`warn`、`error` | `info` |
 
 旧版等效变量如 `OC_GO_CC_API_KEY`、`OC_GO_CC_CONFIG` 和 `OC_GO_CC_PORT` 继续工作。当两者都设置时，`ROUTATIC_PROXY_*` 值优先。
@@ -238,13 +463,14 @@ kill -HUP <PID>
 
 代理自动检测请求类型，并根据上下文大小和内容分析路由到适当的模型：
 
-| 场景 | 触发条件 | 模型 | 原因 |
-|------|----------|------|------|
-| **长上下文** | >80K tokens（可配置） | MiniMax M2.7 | 1M 上下文窗口 vs 其他 128-256K |
-| **复杂** | 系统提示包含 "architect"、"refactor"、"complex" | GLM-5.1 | 最佳推理和架构理解 |
-| **思考** | 系统提示包含 "think"、"plan"、"reason" | GLM-5 | 良好的推理，比 GLM-5.1 便宜 |
-| **后台** | "read file"、"grep"、"list directory" | Qwen3.5 Plus | 最便宜（~10K 请求/5小时），适合简单操作 |
-| **默认** | 其他所有 | Kimi K2.6 | 质量与成本的最佳平衡（~1.8K 请求/5小时） |
+| 场景 | 触发条件 | 默认模型 | 原因 |
+|------|----------|----------|------|
+| **长上下文** | >100K tokens（可配置） | `minimax-m3` | 1M 上下文窗口 |
+| **视觉** | 最新的用户消息包含图像 | （未预先配置） | 拆分为 `vision` / `vision_complex` |
+| **复杂** | 系统提示包含 "architect"、"refactor"、"complex" | `deepseek-v4-pro` | 最佳推理和架构理解 |
+| **思考** | 系统提示包含 "think"、"plan"、"reason" | `glm-5.2` | 以较低成本获得强推理能力 |
+| **后台** | "read file"、"grep"、"list directory" | `deepseek-v4-flash` | 便宜，适合简单操作 |
+| **默认** | 其他所有 | `deepseek-v4-pro` | 质量与成本的最佳平衡 |
 
 **详细模型能力、成本和路由建议请参见 [MODELS.md](MODELS.md)。**
 
@@ -254,12 +480,14 @@ DeepSeek V4 用户可以将任何场景模型设置为 `deepseek-v4-pro` 或 `de
 
 | 场景 | 触发条件 | 配置键 | 默认模型 |
 |------|----------|--------|----------|
-| **默认** | 标准聊天 | `models.default` | `kimi-k2.6` |
-| **思考** | 系统提示包含 "think"、"plan"、"reason"；或思考内容块 | `models.think` | `glm-5.1` |
-| **长上下文** | Token 数超过 `context_threshold` | `models.long_context` | `minimax-m2.7` |
-| **后台** | 文件读取、目录列表、grep 模式 | `models.background` | `qwen3.5-plus` |
+| **默认** | 标准聊天 | `models.default` | `deepseek-v4-pro` |
+| **复杂** | 架构相关关键词或工具密集型操作 | `models.complex` | `deepseek-v4-pro` |
+| **思考** | 系统提示包含 "think"、"plan"、"reason"；或思考内容块 | `models.think` | `glm-5.2` |
+| **长上下文** | Token 数超过 `context_threshold`（默认 100K） | `models.long_context` | `minimax-m3` |
+| **视觉** | 最新的用户消息包含图像 | `models.vision` | （未预先配置） |
+| **后台** | 文件读取、目录列表、grep 模式 | `models.background` | `deepseek-v4-flash` |
 
-路由优先级：**长上下文** > **思考** > **后台** > **默认**
+路由优先级：**长上下文** > **视觉** > **复杂** > **思考** > **后台** > **默认**
 
 ## 基于成本的路由
 
@@ -284,6 +512,21 @@ DeepSeek V4 用户可以将任何场景模型设置为 `deepseek-v4-pro` 或 `de
 | `prefer_providers` | `string[]` | 全局限制候选提供商。设置后，仅考虑这些提供商上的模型。与每场景 `preferred_providers` 交集处理。 |
 | `max_context_window` | `int64` | 候选模型上下文窗口的硬上限。超过此大小的模型将被排除。`0`（默认）表示无上限。 |
 | `penalty_per_provider` | `map[string]float64` | 按提供商的成本惩罚，在选择时加到有效成本上。用于在不完全移除提供商的情况下使其吸引力降低。 |
+
+启用后，`SelectCheapest` 会解析匹配场景下所有符合条件的提供商/模型组合，应用最大上下文窗口上限，按首选提供商集合过滤，并按有效成本（原始成本 + 惩罚）排序。最便宜的候选者胜出。这会取代静态的 `models.<scenario>` 主模型。
+
+```json
+{
+  "cost_routing": {
+    "penalty_per_provider": {
+      "opencode-go": 0.1,
+      "openrouter": 0.05
+    }
+  }
+}
+```
+
+惩罚值累加到原始成本上。`opencode-go` 上基础成本为 2.0 的模型加上 0.1 的惩罚后，有效成本为 2.1。
 
 ## 降级链
 
@@ -384,3 +627,87 @@ Claude Code 审查工作流推荐配置：
 ```
 
 将 `fast` 场景用于短/简单请求。将 `complex` 或 `long_context` 用于代码审查、多代理派发、大型差异、许多工具或长上下文 Claude Code 会话。
+
+## Claude Code 模型选择器
+
+你可以通过两种方式从 Claude Code 的 `/model` 选择器中选择代理模型。
+
+### 直接输入任意模型名称（始终可用）
+
+Claude Code 的 `/model` 选择器也接受自由格式的模型名称。输入任何代理能理解的值——场景别名（`default`、`fast`、`complex` 等）、`model_overrides` 键，或像 `opencode-go/kimi-k2.6` 这样的目录规范名称——代理都会完成路由。无需额外配置；无论 Claude Code 版本如何，此方式均有效。
+
+### 网关模型发现（可选启用，会向选择器添加条目）
+
+较新版本的 Claude Code 可以通过查询代理的 [`GET /v1/models`](../reference-api.md#get-v1models) 端点自动填充选择器。启用后，发现的模型会与内置条目（Sonnet、Opus 等）一起出现在 `/model` 中，并标记为 **"From gateway"**。
+
+在设置 `ANTHROPIC_BASE_URL` 的同时按如下方式启用：
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+export ANTHROPIC_AUTH_TOKEN=unused
+export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1
+```
+
+只有在以下条件全部满足时才会运行发现：已设置 `ANTHROPIC_BASE_URL`、`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`、未设置任何 `CLAUDE_CODE_USE_*` 提供商变量、base URL 不是 `api.anthropic.com`，以及 Claude Code 版本支持该功能（≥ 2.1.129）。结果会缓存到 `~/.claude/cache/gateway-models.json`。
+
+> **重要 —— Claude Code 会过滤发现到的模型 ID。** Claude Code 只显示 `id` 以 **`claude`** 或 **`anthropic`** 开头的发现模型。因此代理的场景别名（`default`、`fast` 等）和目录名称（`opencode-go/kimi-k2.6`）会**被选择器过滤掉**。要让某个代理模型通过发现出现，请给它一个 `claude-*` 名称——最自然的做法是使用 [`model_overrides`](#模型覆盖model_overrides) 键：
+>
+> ```json
+> {
+>   "model_overrides": {
+>     "claude-glm-5.2": { "provider": "opencode-go", "model_id": "glm-5.2" }
+>   }
+> }
+> ```
+>
+> 之后 `claude-glm-5.2` 就会出现在选择器中（标记为 "From gateway"），选中它会路由到 GLM-5.2。ID 不以 `claude`/`anthropic` 开头的模型仍然完全可用——只需直接在 `/model` 中输入即可。
+
+## 配合 CC-Switch 使用
+
+[CC-Switch](https://github.com/farion1231/cc-switch) 是一个用于管理和热切换 Claude Code 提供商的桌面应用。routatic-proxy 开箱即可与它配合——代理讲的正是 Claude Code（因而也是 CC-Switch）本来就期待的 Anthropic API，所以你可以像添加任何其他自定义提供商一样添加它。
+
+### 将 routatic-proxy 添加为自定义提供商
+
+1. 启动代理：`routatic-proxy serve`（默认监听地址 `http://127.0.0.1:3456`）。
+2. 在 CC-Switch 中，点击 **Add Provider → Custom** 并填写：
+
+   | CC-Switch 字段 | 值 |
+   |----------------|-----|
+   | **Name** | `routatic-proxy`（任意标签） |
+   | **Endpoint URL** | `http://127.0.0.1:3456` |
+   | **API Key** | 任意非空值（例如 `unused`）—— 见下方说明 |
+
+   CC-Switch 会把这些写入 Claude Code 的配置：
+
+   ```json
+   {
+     "env": {
+       "ANTHROPIC_BASE_URL": "http://127.0.0.1:3456",
+       "ANTHROPIC_AUTH_TOKEN": "unused"
+     }
+   }
+   ```
+
+   这正是代理所依赖的那两个环境变量——与 [README](../../README-zh.md) 中手动快速上手部分使用的相同。
+3. **启用** 该提供商。Claude Code 会热重载它，因此无需重启。
+
+> **关于 API Key 字段：** `ANTHROPIC_AUTH_TOKEN` 中的令牌是 Claude Code 发送给*代理*的内容，而不是代理向上游发送的内容。你真正的上游密钥存放在代理自己的配置（`opencode_go.api_key`、`openrouter.api_key` 等）或环境变量（`ROUTATIC_PROXY_*`）中。如果你在代理配置中设置了 `api_key` / `api_keys`，该值必须与 CC-Switch 发送的一致；如果你没有设置代理端认证，则任意非空令牌均可。
+
+### 配置特定模型
+
+你有两种方式控制经由 CC-Switch 选择的请求运行在哪个模型上：
+
+- **让 Claude Code 选择并予以尊重** —— 当 `respect_requested_model: true`（默认值）时，代理会使用 Claude Code 发送的任何模型字符串，并对照你的 `models` 配置和目录进行解析。设为 `false` 可强制使用场景路由，忽略请求的模型。
+- **固定一个模型别名** —— 使用 [`model_overrides`](#模型覆盖model_overrides) 把客户端可见的模型名称映射到固定的上游模型。例如，请求 `claude-sonnet-4.5` 可以路由到你选择的任意提供商/模型。
+
+### CC-Switch 的 "Fetch Models" 按钮
+
+CC-Switch 的自定义提供商表单有一个 **Fetch Models** 按钮，它调用 OpenAI 风格的 `GET /v1/models` 端点来填充模型下拉列表。代理实现了此端点：它返回你可以请求的每一个模型标识符——配置中的 `models` 别名、`model_overrides` 键，以及目录规范名称（`provider/model`）。参见 [docs/reference-api.md](../reference-api.md#get-v1models)。
+
+如果下拉列表看起来很短，通常意味着模型目录尚未同步到本地存储；场景别名（`default`、`fast`、`complex` 等）和任何 `model_overrides` 键始终会出现。
+
+### 故障排查
+
+- **CC-Switch 报告提供商不可达** —— 确认代理正在运行（`routatic-proxy status`），且端点 URL/端口与代理配置中的 `host`/`port` 一致。
+- **代理返回 401 / 认证错误** —— CC-Switch 发送的令牌必须满足代理的 `api_key` / `api_keys`（或这些项未设置）。这是代理端的认证，与你的上游提供商密钥无关。
+- **运行了错误的模型** —— 检查路由优先级：`model_overrides` 优先，然后是 `respect_requested_model`，最后是场景路由。参见 [路由优先级](#路由优先级)。

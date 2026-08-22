@@ -9,6 +9,8 @@ oc-go-cc
 /routatic-hosted
 .trunk
 dist/
+dist-rpm/
+*.rpm
 brag-output-**
 .DS_Store
 .kimchi

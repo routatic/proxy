@@ -129,6 +129,27 @@ Returns compact status for TUI integration (statusline, tmux bar).
 }
 ```
 
+### Analytics endpoints (SQLite only)
+
+These three routes are registered **only when SQLite storage is available** — that
+is, when the `storage` block is configured and the database opens successfully
+(`internal/server/server.go`). Without storage they are absent and return `404`.
+
+All three accept an optional `days` query parameter (positive integer, default
+`30`; invalid values fall back to `30`).
+
+| Route | Returns |
+|-------|---------|
+| `GET /api/analytics/summary` | `summary` (token KPIs), `models` (per-model breakdown), `providers` (per-provider breakdown), `generated_at` |
+| `GET /api/analytics/tokens/trend` | `days` plus `trend` — daily token totals |
+| `GET /api/analytics/latency` | `days` plus `stats` — per-model latency statistics |
+
+**Example:**
+
+```bash
+curl 'http://127.0.0.1:3456/api/analytics/summary?days=7'
+```
+
 ## Error Responses
 
 Errors follow Anthropic's error format:
@@ -183,7 +204,3 @@ data: {"type":"message_stop"}
 ## Rate Limiting
 
 The proxy applies per-IP rate limiting (default: 100 requests/minute). Rate-limited requests receive HTTP 429.
-
-## Request Deduplication
-
-Optional request deduplication (`request_dedup` in config) prevents processing identical concurrent requests. Deduplicated requests receive HTTP 200 with no body.

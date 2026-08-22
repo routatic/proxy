@@ -10,6 +10,9 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 
 > 💰 **注重成本的路由很重要！** Qwen3.5 Plus 让你用 $12 获得 10,200 次请求，而 GLM-5.1 只有 880 次 —— 同样的预算少了 **11.6 倍** 的请求。
 
+> **注意：** 下表中的“每 $12 请求数”为近似估算，仅用于横向比较：它并非来自机器可读的价目表，
+> 模型目录中也不包含费率数据。相对排序有意义，绝对数值仅供参考。制定预算前请查询提供商的最新定价。
+
 | 模型 | 提供商 | 每 $12 请求数 (5小时) | 成本效率 | 质量 |
 |------|--------|------------------------|----------|------|
 | **Qwen3.5 Plus** | Go | **10,200** | ★★★★★ | ★★☆☆☆ |
@@ -21,7 +24,7 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 | **MiMo-V2.5** | Go | **2,150** | ★★★☆☆ | ★★★☆☆ |
 | **MiMo-V2.5-Pro** | Go | **1,290** | ★★☆☆☆ | ★★★★☆ |
 | **Kimi K2.5** | Go | **1,850** | ★★☆☆☆ | ★★★★☆ |
-| **Kimi K2.6** | Go | **~1,150** | ★☆☆☆☆ | ★★★★★ |
+| **Kimi K2.6** | Go | **1,850** | ★★☆☆☆ | ★★★★★ |
 | **Kimi K2.7 Code** | Go | **1,350** | ★☆☆☆☆ | ★★★★★ |
 | **Kimi K3** | Go | **$3/$15 每 1M** | ☆☆☆☆☆ | ★★★★★ |
 | **GLM-5** | Go | **1,150** | ★☆☆☆☆ | ★★★★☆ |
@@ -50,6 +53,290 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 - 为 Claude 和其他 Anthropic 原生模型设置 `wire_format: "anthropic"`
 - 最适合：部署在自己 AWS 基础设施上的模型
 
+## OpenRouter 模型
+
+OpenRouter 通过单一 API 端点提供**对 100+ 个模型的统一访问**，这些模型来自多个提供商。你不需要为每个提供商分别管理 API 密钥和端点，只需一次集成即可访问 OpenAI、Anthropic、Google、Meta、Mistral 等众多提供商的模型。
+
+### 主要优势
+
+| 优势 | 说明 |
+|------|------|
+| **统一 API** | 所有模型共用一个与 OpenAI 兼容的 Chat Completions 端点 |
+| **100+ 个模型** | 访问 20+ 个提供商的模型，无需分别集成 |
+| **动态目录** | 目录更新后，新模型自动可用 |
+| **按量付费** | 按 token 计价，无需订阅 |
+| **智能路由** | 模型不可用时自动降级到其他提供商 |
+| **成本优化** | 路由到最便宜或最快的可用提供商 |
+
+### 模型命名约定
+
+OpenRouter 使用 `provider/model-name` 格式，同时标识原始提供商和具体模型：
+
+| 格式 | 示例 | 说明 |
+|------|------|------|
+| `openai/gpt-4o` | `openai/gpt-4o` | 通过 OpenAI 提供的 GPT-4o |
+| `openai/gpt-4o-mini` | `openai/gpt-4o-mini` | 通过 OpenAI 提供的 GPT-4o Mini |
+| `anthropic/claude-3.5-sonnet` | `anthropic/claude-3.5-sonnet` | 通过 Anthropic 提供的 Claude 3.5 Sonnet |
+| `anthropic/claude-3-opus` | `anthropic/claude-3-opus` | 通过 Anthropic 提供的 Claude 3 Opus |
+| `google/gemini-2.5-pro` | `google/gemini-2.5-pro` | 通过 Google 提供的 Gemini 2.5 Pro |
+| `google/gemini-2.0-flash` | `google/gemini-2.0-flash` | 通过 Google 提供的 Gemini 2.0 Flash |
+| `meta-llama/llama-3.3-70b` | `meta-llama/llama-3.3-70b` | 通过 Meta 提供的 Llama 3.3 70B |
+| `mistral/mistral-large` | `mistral/mistral-large` | 通过 Mistral AI 提供的 Mistral Large |
+| `x-ai/grok-2` | `x-ai/grok-2` | 通过 xAI 提供的 Grok 2 |
+| `deepseek/deepseek-chat` | `deepseek/deepseek-chat` | 通过 DeepSeek 提供的 DeepSeek V3 |
+
+### 热门 OpenRouter 模型
+
+| 模型 | 提供商 | 上下文窗口 | 输入成本（$/M） | 输出成本（$/M） | 最适合 |
+|------|--------|------------|-----------------|-----------------|--------|
+| **Claude 3.5 Sonnet** | Anthropic | 200K | $3.00 | $15.00 | 复杂推理、编码、分析 |
+| **Claude 3 Opus** | Anthropic | 200K | $15.00 | $75.00 | 最高质量、困难任务 |
+| **GPT-4o** | OpenAI | 128K | $2.50 | $10.00 | 通用用途、视觉任务 |
+| **GPT-4o Mini** | OpenAI | 128K | $0.15 | $0.60 | 经济高效、大批量 |
+| **Gemini 2.5 Pro** | Google | 1M | $1.25 | $10.00 | 长上下文、编码、推理 |
+| **Gemini 2.0 Flash** | Google | 1M | $0.10 | $0.40 | 快速响应、成本效率 |
+| **Llama 3.3 70B** | Meta | 128K | $0.12 | $0.30 | 开源、可定制 |
+| **Llama 3.1 405B** | Meta | 128K | $0.80 | $1.60 | 开源、高质量 |
+| **Mistral Large** | Mistral | 128K | $2.00 | $6.00 | 欧洲提供商、符合 GDPR |
+| **Grok 2** | xAI | 128K | $2.00 | $10.00 | 实时知识、幽默 |
+| **DeepSeek V3** | DeepSeek | 64K | $0.07 | $1.10 | 成本效率、编码 |
+| **DeepSeek R1** | DeepSeek | 64K | $0.55 | $2.19 | 推理、思维链 |
+
+### 发现可用模型
+
+在此浏览完整模型目录：**https://openrouter.ai/models**
+
+目录包含每个模型的详细信息：
+- **价格**：每百万 token 的输入和输出成本
+- **上下文窗口**：模型可处理的最大 token 数
+- **工具调用**：模型是否支持函数调用
+- **视觉**：模型是否支持图像输入
+- **提供商路由**：每个模型的可用提供商
+
+你也可以通过 OpenRouter API 以编程方式获取可用模型：
+
+```bash
+curl https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+```
+
+### 配置 OpenRouter 模型
+
+将 OpenRouter 模型添加到你的 routatic-proxy 配置中：
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet",
+      "temperature": 0.7,
+      "max_tokens": 4096
+    },
+    "background": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o-mini",
+      "temperature": 0.5,
+      "max_tokens": 2048
+    },
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3-opus",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    },
+    "long_context": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-2.5-pro",
+      "temperature": 0.7,
+      "max_tokens": 8192
+    }
+  }
+}
+```
+
+### 与基于成本的路由集成
+
+设置 `cost_routing.enabled` 后，选择器会自动按成本对模型排序，并应用你的路由偏好：
+
+```json
+{
+  "cost_routing": {
+    "enabled": true,
+    "prefer_providers": ["opencode-go", "openrouter"],
+    "penalty_per_provider": {
+      "openrouter": 0.05
+    },
+    "max_context_window": 200000
+  }
+}
+```
+
+**成本路由与 OpenRouter 的配合方式：**
+- 模型按输入 + 输出费率之和排序
+- 提供商惩罚会调整实际成本（例如 `openrouter: 0.05` 增加 5%）
+- `max_context_window` 会过滤掉无法处理你请求规模的模型
+- `prefer_providers` 与场景偏好取交集，得出最终选择
+
+### 可用的模型类别
+
+| 类别 | 提供商 | 示例模型 |
+|------|--------|----------|
+| **OpenAI** | OpenAI、Azure | GPT-4o、GPT-4o Mini、GPT-4 Turbo |
+| **Anthropic** | Anthropic、AWS | Claude 3 Opus、Claude 3.5 Sonnet、Claude 3 Haiku |
+| **Google** | Google | Gemini 2.5 Pro、Gemini 2.0 Flash、Gemini 1.5 Pro |
+| **Meta** | Meta、Together、Fireworks | Llama 3.3 70B、Llama 3.1 405B、Llama 3.1 70B |
+| **Mistral** | Mistral AI | Mistral Large、Mistral Medium、Mistral Small |
+| **xAI** | xAI | Grok 2、Grok Beta |
+| **DeepSeek** | DeepSeek | DeepSeek V3、DeepSeek R1 |
+| **专用** | 多家 | Qwen、Command R+、Perplexity 等许多模型 |
+
+### 配置示例
+
+#### 注重预算的方案
+大多数任务使用较便宜的模型，仅在必要时使用昂贵模型：
+
+```json
+{
+  "models": {
+    "background": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o-mini"
+    },
+    "default": {
+      "provider": "openrouter",
+      "model_id": "deepseek/deepseek-chat"
+    },
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet"
+    }
+  }
+}
+```
+
+#### 质量优先的方案
+为关键任务优先保证质量：
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet"
+    },
+    "complex": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3-opus"
+    },
+    "long_context": {
+      "provider": "openrouter",
+      "model_id": "google/gemini-2.5-pro"
+    }
+  }
+}
+```
+
+#### 多提供商降级
+将请求分散到多个提供商以提高可靠性：
+
+```json
+{
+  "models": {
+    "default": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4o"
+    },
+    "fallback": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet"
+    }
+  },
+  "fallbacks": {
+    "default": [
+      { "model_id": "openai/gpt-4o" },
+      { "model_id": "anthropic/claude-3.5-sonnet" },
+      { "model_id": "google/gemini-2.5-pro" }
+    ]
+  }
+}
+```
+
+### OpenRouter 专有特性
+
+#### 提供商路由偏好
+指定特定提供商或启用自动降级：
+
+```json
+{
+  "model_overrides": {
+    "claude-sonnet": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3.5-sonnet",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "extra_body": {
+        "provider": {
+          "order": ["Anthropic", "AWS"],
+          "allow_fallbacks": true
+        }
+      }
+    }
+  }
+}
+```
+
+**路由选项：**
+- `order`：要尝试的提供商优先级列表
+- `allow_fallbacks`：主提供商不可用时是否尝试其他提供商
+- `ignore`：从路由中排除的提供商
+
+#### OpenRouter 模型目录的工作方式
+
+OpenRouter 模型通过目录系统动态解析：
+
+1. **目录位置：** `~/.config/routatic-proxy/catalog/catalog.json`
+2. **解析方式：** 模型以 `provider/model-name` 作为键（例如 `openai/gpt-4o`、`anthropic/claude-3.5-sonnet`）
+3. **动态加载：** 目录更新后新模型自动可用 —— 无需修改代码
+
+#### 从目录解析模型
+
+目录系统从键前缀中提取提供商：
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "enabled": true
+    }
+  },
+  "models": {
+    "openrouter/anthropic/claude-3.5-sonnet": {
+      "id": "openrouter/anthropic/claude-3.5-sonnet",
+      "name": "Claude 3.5 Sonnet",
+      "limit": { "context": 200000 },
+      "rates": { "input": 3.0, "output": 15.0 },
+      "tool_call": true,
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "reasoning": false
+    }
+  }
+}
+```
+
+- `ResolvedModel.ModelID`：不含提供商前缀的模型名称（`anthropic/claude-3.5-sonnet`）
+- `ResolvedModel.CanonicalName`：完整键（`openrouter/anthropic/claude-3.5-sonnet`）
+
+### 优势总结
+
+1. **访问 100+ 个模型：** 一个 API 密钥即可使用 OpenAI、Anthropic、Google、Meta、Mistral 等
+2. **统一 API：** 所有模型都使用与 OpenAI 兼容的 Chat Completions 格式
+3. **自动降级：** 模型不可用时内置降级到其他提供商
+4. **成本优化：** 按 token 计价，并可通过路由偏好提升成本效率
+5. **无供应商锁定：** 只需更改模型 ID 即可切换提供商
+
 ## 重要：API 端点
 
 ⚠️ **关键：** 不是所有模型都使用相同的 API 端点！routatic-proxy 自动处理这个问题，但你应该了解：
@@ -65,10 +352,10 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 
 | 模型 | 端点 | 格式 |
 |------|------|------|
-| MiniMax, GLM, Kimi, DeepSeek, 免费层模型 | `https://opencode.ai/zen/v1/chat/completions` | OpenAI 兼容 |
-| **Claude 模型**, **Qwen 模型** | `https://opencode.ai/zen/v1/messages` | **Anthropic 兼容** |
-| **GPT 模型** | `https://opencode.ai/zen/v1/responses` | **OpenAI Responses** |
-| **Gemini 模型** | `https://opencode.ai/zen/v1/models/{id}` | **Google Gemini** |
+| MiniMax M2.5, MiniMax M2.7, MiniMax M3, GLM-5, GLM-5.1, GLM-5.2, Kimi K2.5, Kimi K2.6, Kimi K2.7 Code, Kimi K3, DeepSeek V4 Pro, DeepSeek V4 Flash, DeepSeek V4 Flash Free, Grok Build 0.1, Big Pickle, MiMo-V2.5 Free, North Mini Code Free, Nemotron 3 Ultra Free | `https://opencode.ai/zen/v1/chat/completions` | OpenAI 兼容 |
+| **Claude 模型**（claude-fable-5, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-opus-4-5, claude-opus-4-1, claude-sonnet-4-6, claude-sonnet-4-5, claude-sonnet-4, claude-haiku-4-5, claude-3-5-haiku），**Qwen 模型**（qwen3.5-plus, qwen3.6-plus, qwen3.7-plus, qwen3.7-max） | `https://opencode.ai/zen/v1/messages` | **Anthropic 兼容** |
+| **GPT 模型**（gpt-5.5, gpt-5.5-pro, gpt-5.5-mini, gpt-5.5-nano, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.3-codex, gpt-5.3-codex-spark, gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini, gpt-5, gpt-5-codex, gpt-5-nano） | `https://opencode.ai/zen/v1/responses` | **OpenAI Responses** |
+| **Gemini 模型**（gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash） | `https://opencode.ai/zen/v1/models/{id}` | **Google Gemini** |
 
 **为什么这很重要：** 在 Go 提供商上，MiniMax 和 Qwen 模型原生使用 Anthropic 格式。在 Zen 上，只有 Claude 和 Qwen 使用 Anthropic 端点 —— MiniMax 使用 chat completions。routatic-proxy 自动处理所有路由。
 
@@ -94,9 +381,9 @@ OpenCode Go 和 Zen 模型的综合指南，包括能力、成本和路由建议
 所有 OpenCode Go 模型也可在 Zen 上使用。Zen 还额外提供：
 
 - **Claude 模型（Anthropic 端点）：** claude-fable-5, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-opus-4-5, claude-opus-4-1, claude-sonnet-4-6, claude-sonnet-4-5, claude-sonnet-4, claude-haiku-4-5, claude-3-5-haiku
-- **GPT 模型（Responses 端点）：** gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.3-codex 等
+- **GPT 模型（Responses 端点）：** gpt-5.5, gpt-5.5-pro, gpt-5.5-mini, gpt-5.5-nano, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.3-codex, gpt-5.3-codex-spark, gpt-5.2, gpt-5.2-codex, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.1-codex-mini, gpt-5, gpt-5-codex, gpt-5-nano
 - **Gemini 模型（Gemini 端点）：** gemini-3.5-flash, gemini-3.1-pro, gemini-3-flash
-- **免费层（chat completions）：** deepseek-v4-pro, deepseek-v4-flash-free, grok-build-0.1, big-pickle, mimo-v2.5-free, north-mini-code-free, nemotron-3-ultra-free
+- **免费层（chat completions）：** deepseek-v4-flash-free, big-pickle, mimo-v2.5-free, north-mini-code-free, nemotron-3-ultra-free
 
 #### 已弃用的 Zen 模型
 
@@ -181,9 +468,9 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
       "max_tokens": 4096
     },
     "long_context": {
-      // 仅大文件
-      "model_id": "minimax-m2.5",
-      "context_threshold": 80000
+      // 仅大文件 —— 需要 1M 上下文的模型
+      "model_id": "minimax-m3",
+      "context_threshold": 100000
     },
     "think": {
       // 推理任务
@@ -207,8 +494,8 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
 ### 决策树
 
 ```
-上下文是否 > 80K tokens？
-├── 是 → 使用 MiniMax M2.5（1M 上下文，6,300 请求/$12）
+上下文是否 > 100K tokens？（默认阈值，可通过 context_threshold 配置）
+├── 是 → 使用 MiniMax M3（1M 上下文，3,200 请求/$12）
 │
 是否是复杂任务（架构、重构、工具操作）？
 ├── 是 → 使用 GLM-5.1（880 请求/$12）
@@ -230,8 +517,9 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
 
 - **模型 ID：** `qwen3.5-plus`
 - **成本：** **每 $12 10,200 次请求**（最佳性价比！）
-- **上下文：** ~128K tokens
+- **上下文：** **~1M tokens**
 - **质量：** ★★☆☆☆（适合简单任务）
+- **模态：** 文本和图像输入
 - **最适合：**
   - 文件读取操作
   - 目录列表
@@ -241,31 +529,35 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
   - 后台任务
 - **何时使用：** 当你需要大量操作且成本低廉时
 
-#### MiniMax M2.5 —— 预算长上下文
+#### MiniMax M2.5 —— 最便宜的 200K 级模型
 
 - **模型 ID：** `minimax-m2.5`
 - **端点：** **Anthropic 兼容**（Go 上 `/v1/messages`），**OpenAI 兼容**（Zen 上 `/chat/completions`）
 - **成本：** **每 $12 6,300 次请求**
-- **上下文：** **~1M tokens**（100 万！）
+- **上下文：** ~200K tokens
+- **最大输出：** 4K tokens
 - **质量：** ★★☆☆☆（可接受）
 - **速度：** 快
 - **最适合：**
-  - 超大文件
-  - 长对话
+  - 仍能放入 200K 的大文件
+  - 预算紧张时的长对话
   - 多文件上下文
-- **何时使用：** 当你需要 1M 上下文但想最小化成本时
+- **何时使用：** 当 200K 上下文足够且成本优先时。真正的长上下文（>100K，最高 1M）请改用 MiniMax M3。
+- **注意：** 在 Go 上使用 Anthropic 端点，但在 Zen 上使用 chat completions —— routatic-proxy 会自动处理
 
 #### MiniMax M3 —— 最新 MiniMax，1M 上下文
 
 - **模型 ID：** `minimax-m3`
 - **端点：** **Anthropic 兼容**（Go 上 `/v1/messages`），**OpenAI 兼容**（Zen 上 `/chat/completions`）
+- **成本：** **每 $12 3,200 次请求**
 - **上下文：** **~1M tokens**
+- **最大输出：** 128K tokens
 - **质量：** ★★★☆☆
 - **最适合：**
-  - 需要比 M2.5 更好质量的长上下文任务
+  - 长上下文任务（推荐的 `long_context` 模型）
   - 大型代码库分析
   - 文档处理
-- **何时使用：** 当你需要 1M 上下文且想要比 M2.5 更好的质量时
+- **何时使用：** 只要请求超过长上下文阈值就用它 —— M2.5 上限为 200K，M3 可达 1M
 
 ### 平衡模型（质量 + 成本）
 
@@ -343,8 +635,9 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
 - **模型 ID：** `qwen3.6-plus`
 - **端点：** **Anthropic 兼容**（`/v1/messages` —— Go），**Anthropic 兼容**（`/v1/messages` —— Zen）
 - **成本：** **每 $12 3,300 次请求**（比 GLM-5.1 多 3.8 倍！）
-- **上下文：** ~128K tokens
+- **上下文：** **~1M tokens**
 - **质量：** ★★★☆☆（对大多数任务足够好）
+- **模态：** 文本和图像输入
 - **速度：** 快
 - **最适合：**
   - 通用编码（默认选择）
@@ -353,52 +646,15 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
   - 重构
 - **何时使用：** 注重成本用户的默认选择
 
-#### Qwen3.7 Plus —— 升级版通用编码
-
-- **模型 ID：** `qwen3.7-plus`
-- **端点：** **Anthropic 兼容**（`/v1/messages`）
-- **成本：** **每 $12 4,300 次请求**
-- **上下文：** ~128K tokens
-- **质量：** ★★★★☆
-- **速度：** 快
-- **最适合：**
-  - 比 Qwen3.6 质量更好的通用编码
-  - 功能实现
-  - Bug 修复
-- **何时使用：** 当你想要比 Qwen3.6 更好的质量且速度相近时
-
-#### Qwen3.7 Max —— 最大质量 Qwen
-
-- **模型 ID：** `qwen3.7-max`
-- **端点：** **Anthropic 兼容**（`/v1/messages`）
-- **成本：** **每 $12 950 次请求**
-- **上下文：** ~128K tokens
-- **质量：** ★★★★☆
-- **最适合：**
-  - 复杂编码任务
-  - 当 Qwen3.7 Plus 不够时
-- **何时使用：** 当你需要 Qwen 的最佳质量时
-
-#### Kimi K2.5 —— 质量 + 合理成本（前代）
-
-- **模型 ID：** `kimi-k2.5`
-- **成本：** **每 $12 1,850 次请求**
-- **上下文：** ~256K tokens（是大多数模型的两倍）
-- **质量：** ★★★★☆（优秀）
-- **速度：** 快
-- **最适合：**
-  - 复杂编码任务
-  - 代码审查
-  - 架构讨论
-  - 当你需要比预算模型更好的质量时
-- **何时使用：** 当质量比最大成本节省更重要时
+**Qwen3.7 Plus / Max** —— 见下方“高级模型”章节。
 
 #### Kimi K2.6 —— 平衡成本下的最佳质量
 
 - **模型 ID：** `kimi-k2.6`
 - **成本：** **每 $12 ~1,850 次请求**
-- **上下文：** ~256K tokens
-- **质量：** ★★★★★（优秀）
+- **上下文：** ~256K tokens（K2.5 的后继版本，有多项改进）
+- **质量：** ★★★★★（优秀 —— 后继版本的改进）
+- **模态：** 文本和图像输入
 - **速度：** 快
 - **最适合：**
   - 复杂编码任务
@@ -406,6 +662,21 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
   - 架构讨论
   - 通用默认（最佳质量成本比）
 - **何时使用：** 默认选择 —— 比 K2.5 更好的质量，成本相近
+
+#### Kimi K2.5 —— 质量 + 合理成本（前代）
+
+- **模型 ID：** `kimi-k2.5`
+- **成本：** **每 $12 1,850 次请求**
+- **上下文：** ~256K tokens（是大多数模型的两倍）
+- **质量：** ★★★★☆（优秀）
+- **模态：** 文本和图像输入
+- **速度：** 快
+- **最适合：**
+  - 复杂编码任务
+  - 代码审查
+  - 架构讨论
+  - 当你需要比预算模型更好的质量时
+- **何时使用：** 当质量比最大成本节省更重要时
 
 ### 高级模型（谨慎使用！）
 
@@ -450,6 +721,23 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
   - 生产代码审查
 - **何时使用：** 使用此模型替代 GLM-5.1 以获得最新改进
 
+#### Kimi K3 —— 最新 Kimi 旗舰
+
+- **模型 ID：** `kimi-k3`
+- **提供商：** OpenCode Go（上游为 Moonshot AI）
+- **端点：** OpenAI 兼容（`/v1/chat/completions`）
+- **上下文：** 1M tokens
+- **质量：** ★★★★★
+- **最大输出：** 131K tokens
+- **模态：** 文本、图像和视频输入
+- **成本：** 每 1M 输入 tokens $3.00 · 每 1M 输出 tokens $15.00
+- **发布时间：** 2026 年 7 月
+- **最适合：**
+  - 最新一代代码生成和代理式工具调用
+  - 长上下文工作（1M 窗口）和超长输出
+  - 多模态任务（图像/视频输入）
+- **何时使用：** 当你想使用最新一代 Kimi 时；降级顺序为 Kimi K2.7 Code，然后 Kimi K2.6
+
 #### Kimi K2.7 Code —— 代码专家
 
 - **模型 ID：** `kimi-k2.7-code`
@@ -457,12 +745,42 @@ DeepSeek V4 Pro 和 Flash 在 Go 和 Zen 提供商上都是 OpenAI 兼容的。D
 - **上下文：** ~256K tokens
 - **质量：** ★★★★★（代码任务优秀）
 - **最大输出：** 32K tokens（最高可用！）
+- **模态：** 文本和图像输入
 - **速度：** 快
 - **最适合：**
   - 大型代码生成任务
   - 需要长输出的复杂重构
   - 详细反馈的代码审查
+  - 当你需要最高输出 token 上限时
 - **何时使用：** 当你需要高质量和超长输出（最多 32K）时
+
+#### Qwen3.7 Plus —— 升级版通用编码
+
+- **模型 ID：** `qwen3.7-plus`
+- **端点：** **Anthropic 兼容**（`/v1/messages`）
+- **成本：** **每 $12 4,300 次请求**
+- **上下文：** **~1M tokens**
+- **质量：** ★★★★☆
+- **模态：** 文本和图像输入
+- **速度：** 快
+- **最适合：**
+  - 比 Qwen3.6 质量更好的通用编码
+  - 功能实现
+  - Bug 修复
+- **何时使用：** 当你想要比 Qwen3.6 更好的质量且速度相近时
+
+#### Qwen3.7 Max —— 最大质量 Qwen
+
+- **模型 ID：** `qwen3.7-max`
+- **端点：** **Anthropic 兼容**（`/v1/messages`）
+- **成本：** **每 $12 950 次请求**
+- **上下文：** **~1M tokens**
+- **质量：** ★★★★☆
+- **模态：** 文本和图像输入
+- **最适合：**
+  - 复杂编码任务
+  - 当 Qwen3.7 Plus 不够时
+- **何时使用：** 当你需要 Qwen 的最佳质量时
 
 ## 使用限制
 
@@ -515,7 +833,13 @@ OpenCode Go 限制：
       { "model_id": "qwen3.6-plus" },
       { "model_id": "minimax-m2.5" }
     ],
-    "long_context": [{ "model_id": "minimax-m2.7" }],
+    "long_context": [
+      { "provider": "opencode-go", "model_id": "qwen3.7-plus" },
+      { "provider": "opencode-go", "model_id": "qwen3.7-max" },
+      { "provider": "opencode-zen", "model_id": "nemotron-3-ultra-free" },
+      { "provider": "opencode-zen", "model_id": "mimo-v2.5-free" },
+      { "provider": "opencode-zen", "model_id": "deepseek-v4-flash-free" }
+    ],
     "default": [{ "model_id": "mimo-v2.5-pro" }, { "model_id": "qwen3.6-plus" }],
     "think": [{ "model_id": "kimi-k2.6" }],
     "complex": [{ "model_id": "glm-5" }],
@@ -533,7 +857,7 @@ OpenCode Go 限制：
 | 读文件、ls、grep | Qwen3.5 Plus | 10,200 | Qwen3.6 Plus |
 | 通用编码 | Qwen3.7 Plus | 4,300 | Qwen3.6 Plus |
 | 复杂功能 | Kimi K2.6 | 1,850 | MiMo-V2.5-Pro |
-| 长上下文（>80K）| MiniMax M2.5 | 6,300 | MiniMax M2.7 |
+| 长上下文（>100K）| MiniMax M3 | 3,200 | Qwen3.7 Plus |
 | 推理/规划 | GLM-5 | 1,150 | Kimi K2.6 |
 | 关键架构 | GLM-5.2 | 880 | GLM-5.1 |
 | 代码专家 | Kimi K2.7 Code | 1,350 | Kimi K2.6 |
@@ -544,12 +868,12 @@ OpenCode Go 限制：
 1. **将 Qwen3.6 Plus 作为默认** — 3,300 请求/$12 对大多数任务足够
 2. **仅在关键任务使用 GLM-5.1** — 880 请求/$12 快速消耗预算
 3. **简单操作使用 Qwen3.5 Plus** — 10,200 请求/$12 无敌
-4. **长上下文使用 MiniMax M2.5** — 6,300 请求/$12 加 1M 上下文性价比惊人
-5. **非关键任务使用 Zen 免费层模型** — deepseek-v4-pro、grok-build-0.1、big-pickle 等 $0
+4. **长上下文使用 MiniMax M3** — 3,200 请求/$12 加 1M 窗口；只要能放进 200K 窗口，MiniMax M2.5 仍是每 $12 6,300 次请求的预算之选
+5. **非关键任务使用 Zen 免费层模型** — Nemotron 3 Ultra Free、MiMo V2.5 Free、DeepSeek V4 Flash Free、Big Pickle 等模型在促销有效期内成本为 $0
 6. **在 [OpenCode 控制台](https://opencode.ai/auth) 监控使用量**
 
 ## 另请参阅
 
 - [OpenCode Go 文档](https://opencode.ai/docs/go/)
-- [routatic-proxy 配置](../configs/config.example.json)
-- [README.md](../README.md) 获取设置说明
+- [routatic-proxy 配置](../../configs/config.example.json)
+- [README.md](../../README.md) 获取设置说明

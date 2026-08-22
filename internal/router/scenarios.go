@@ -24,6 +24,13 @@ const (
 )
 
 // ScenarioResult contains the detected scenario and token count.
+//
+// Reason explains *why* the scenario matched (which threshold was crossed,
+// which pattern fired). It deliberately never names a model: scenario
+// detection happens before the model for that scenario is resolved from
+// config, so any model name here would be a guess that drifts as soon as the
+// config changes. The model actually used is appended later by the router —
+// see RouteResult.Reason in model_router.go.
 type ScenarioResult struct {
 	Scenario   Scenario
 	TokenCount int
@@ -74,7 +81,7 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 		return ScenarioResult{
 			Scenario:   ScenarioLongContext,
 			TokenCount: tokenCount,
-			Reason:     fmt.Sprintf("token count %d exceeds threshold %d (use MiniMax for 1M context)", tokenCount, threshold),
+			Reason:     fmt.Sprintf("token count %d exceeds long-context threshold %d", tokenCount, threshold),
 		}
 	}
 
@@ -99,7 +106,7 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 		return ScenarioResult{
 			Scenario:   ScenarioComplex,
 			TokenCount: tokenCount,
-			Reason:     "complex or tool-based operation detected (use GLM-5.1)",
+			Reason:     "complex or tool-based operation keywords in latest user message",
 		}
 	}
 
@@ -108,7 +115,7 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 		return ScenarioResult{
 			Scenario:   ScenarioThink,
 			TokenCount: tokenCount,
-			Reason:     "thinking/reasoning pattern detected (use GLM-5)",
+			Reason:     "thinking/reasoning keywords in latest user message",
 		}
 	}
 
@@ -117,7 +124,7 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 		return ScenarioResult{
 			Scenario:   ScenarioBackground,
 			TokenCount: tokenCount,
-			Reason:     "simple background task detected (use Qwen3.5 Plus)",
+			Reason:     "simple read-only request with no tool keywords",
 		}
 	}
 
@@ -125,7 +132,7 @@ func DetectScenario(messages []MessageContent, tokenCount int, cfg *config.Confi
 	return ScenarioResult{
 		Scenario:   ScenarioDefault,
 		TokenCount: tokenCount,
-		Reason:     "default scenario (use Kimi K2.6)",
+		Reason:     "no scenario pattern matched, using default scenario",
 	}
 }
 
@@ -303,8 +310,8 @@ func getLongContextThreshold(cfg *config.Config) int {
 // This may return a less capable model but one that streams faster.
 func RouteForStreaming(messages []MessageContent, tokenCount int, cfg *config.Config) ScenarioResult {
 	facts := AnalyzeRequestFacts(messages)
-	// For streaming, use simpler models that have better TTFT
-	// Complex models (GLM, Kimi) are too slow for streaming with many tools
+	// For streaming, prefer the scenarios whose configured models have better
+	// TTFT; the most capable models are too slow to stream with many tools.
 
 	threshold := getLongContextThreshold(cfg)
 	if tokenCount > threshold {
@@ -315,16 +322,10 @@ func RouteForStreaming(messages []MessageContent, tokenCount int, cfg *config.Co
 				Reason:     fmt.Sprintf("high token count image request (%d > %d)", tokenCount, threshold),
 			}
 		}
-		model := "long_context"
-		if cfg != nil {
-			if lc, ok := cfg.Models["long_context"]; ok && lc.ModelID != "" {
-				model = lc.ModelID
-			}
-		}
 		return ScenarioResult{
 			Scenario:   ScenarioLongContext,
 			TokenCount: tokenCount,
-			Reason:     fmt.Sprintf("high token count streaming (%d > %d) - use %s for acceptable TTFT", tokenCount, threshold, model),
+			Reason:     fmt.Sprintf("streaming token count %d exceeds long-context threshold %d", tokenCount, threshold),
 		}
 	}
 
@@ -345,12 +346,13 @@ func RouteForStreaming(messages []MessageContent, tokenCount int, cfg *config.Co
 
 	latestUser := latestUserMessages(messages)
 	if hasComplexPattern(latestUser) || hasThinkingPattern(latestUser) {
-		// Complex request but streaming - downgrade to faster model
-		// GLM-5 and Kimi are too slow for streaming with complex prompts
+		// Complex request but streaming - downgrade to the fast scenario, whose
+		// model is resolved from config, because the most capable models are
+		// too slow for streaming with complex prompts.
 		return ScenarioResult{
 			Scenario:   ScenarioFast,
 			TokenCount: tokenCount,
-			Reason:     "complex request but streaming - use fast model (qwen3.6-plus) for better TTFT",
+			Reason:     "complex/thinking pattern but streaming, downgraded to fast scenario for better TTFT",
 		}
 	}
 
@@ -358,6 +360,6 @@ func RouteForStreaming(messages []MessageContent, tokenCount int, cfg *config.Co
 	return ScenarioResult{
 		Scenario:   ScenarioFast,
 		TokenCount: tokenCount,
-		Reason:     "streaming request - use fast model (qwen3.6-plus)",
+		Reason:     "streaming request with no complex pattern, using fast scenario",
 	}
 }
