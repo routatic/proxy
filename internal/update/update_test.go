@@ -236,10 +236,13 @@ func TestLatestBeta_PicksBySemverNotListOrder(t *testing.T) {
 	}
 }
 
+// Only the format get-versions.sh produces counts: stable releases, other
+// prerelease kinds, and hyphenated spellings that the generator cannot emit.
 func TestLatestBeta_IgnoresStableAndNonBetaPrereleases(t *testing.T) {
 	releases := []GitHubRelease{
 		{TagName: "v0.6.4", Prerelease: false},
 		{TagName: "v0.7.0-rc.1", Prerelease: true},
+		{TagName: "v0.7.0-beta-1", Prerelease: true},
 	}
 	if got := LatestBeta(releases); got != nil {
 		t.Errorf("LatestBeta() = %v, want nil", got)

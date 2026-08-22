@@ -73,11 +73,13 @@ func getLatestReleaseFrom(url, channel string) (*GitHubRelease, error) {
 	return &release, nil
 }
 
-// isBetaTag reports whether a tag names a beta build. Beta tags are
-// `v{VERSION}-beta.{N}` (e.g. v0.6.4-beta.5), so the marker is "-beta"
-// followed by a separator — matching on "-beta-" misses every real tag.
+// isBetaTag reports whether a tag names a beta build.
+//
+// `.github/scripts/get-versions.sh` is the only producer of beta tags and emits
+// exactly `v{VERSION}-beta.{N}` (e.g. v0.6.4-beta.5). Match that literally: the
+// dot is what a previous "-beta-" check got wrong, and it matched no real tag.
 func isBetaTag(tag string) bool {
-	return strings.Contains(tag, "-beta.") || strings.Contains(tag, "-beta-")
+	return strings.Contains(tag, "-beta.")
 }
 
 // LatestBeta returns the highest-versioned beta prerelease, or nil when the
