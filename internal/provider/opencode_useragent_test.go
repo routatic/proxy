@@ -61,7 +61,7 @@ func TestOpenCodeZenProvider_Execute_OpencodeUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{Model: "deepseek-v4-flash-free", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
 	model := config.ModelConfig{ModelID: "deepseek-v4-flash-free"}
-	if got := p.WireFormat(model.ModelID); got != core.WireFormatOpenAIChat {
+	if got := p.WireFormat(model); got != core.WireFormatOpenAIChat {
 		t.Fatalf("WireFormat(%q) = %v, want OpenAIChat", model.ModelID, got)
 	}
 	if _, err := p.Execute(context.Background(), req, model); err != nil {
@@ -111,7 +111,7 @@ func TestOpenCodeZenProvider_ExecuteAnthropic_OpencodeUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{Model: "claude-sonnet-4.5", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
 	model := config.ModelConfig{ModelID: "claude-sonnet-4.5"}
-	if got := p.WireFormat(model.ModelID); got != core.WireFormatAnthropic {
+	if got := p.WireFormat(model); got != core.WireFormatAnthropic {
 		t.Fatalf("WireFormat(%q) = %v, want Anthropic", model.ModelID, got)
 	}
 	if _, err := p.Execute(context.Background(), req, model); err != nil {
@@ -163,7 +163,7 @@ func TestOpenCodeZenProvider_ExecuteResponses_OpencodeUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{Model: "gpt-5.4", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
 	model := config.ModelConfig{ModelID: "gpt-5.4"}
-	if got := p.WireFormat(model.ModelID); got != core.WireFormatOpenAIResponses {
+	if got := p.WireFormat(model); got != core.WireFormatOpenAIResponses {
 		t.Fatalf("WireFormat(%q) = %v, want OpenAIResponses", model.ModelID, got)
 	}
 	if _, err := p.Execute(context.Background(), req, model); err != nil {
@@ -181,7 +181,7 @@ func TestOpenCodeGoProvider_Execute_OpencodeUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{Model: "deepseek-v4-pro", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
 	model := config.ModelConfig{ModelID: "deepseek-v4-pro"}
-	if got := p.WireFormat(model.ModelID); got != core.WireFormatOpenAIChat {
+	if got := p.WireFormat(model); got != core.WireFormatOpenAIChat {
 		t.Fatalf("WireFormat(%q) = %v, want OpenAIChat", model.ModelID, got)
 	}
 	if _, err := p.Execute(context.Background(), req, model); err != nil {
@@ -228,7 +228,7 @@ func TestOpenCodeGoProvider_ExecuteAnthropic_OpencodeUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{Model: "qwen3.5-plus", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
 	model := config.ModelConfig{ModelID: "qwen3.5-plus"}
-	if got := p.WireFormat(model.ModelID); got != core.WireFormatAnthropic {
+	if got := p.WireFormat(model); got != core.WireFormatAnthropic {
 		t.Fatalf("WireFormat(%q) = %v, want Anthropic", model.ModelID, got)
 	}
 	if _, err := p.Execute(context.Background(), req, model); err != nil {

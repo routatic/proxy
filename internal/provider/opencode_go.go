@@ -57,40 +57,10 @@ func (p *OpenCodeGoProvider) ModelCapabilities(modelID string) (core.ProviderCap
 }
 
 // WireFormat returns the wire format for the given model on the Go provider.
-func (p *OpenCodeGoProvider) WireFormat(modelID string) core.WireFormat {
-	if isAnthropicNativeGo(modelID) {
-		return core.WireFormatAnthropic
-	}
-	return core.WireFormatOpenAIChat
-}
-
-// wireFormatFor resolves the effective wire format for a model, giving the
-// user-provided `wire_format` override (in model_overrides) precedence over
-// the built-in classification. Values: "auto" (default), "openai",
-// "anthropic", "responses", "gemini".
-func (p *OpenCodeGoProvider) wireFormatFor(model config.ModelConfig) core.WireFormat {
-	switch model.WireFormat {
-	case "openai", "chat", "chat_completions":
-		return core.WireFormatOpenAIChat
-	case "anthropic", "messages":
-		return core.WireFormatAnthropic
-	case "responses":
-		return core.WireFormatOpenAIResponses
-	case "gemini":
-		return core.WireFormatGemini
-	default: // "auto" or empty
-		return p.WireFormat(model.ModelID)
-	}
-}
-
-func isAnthropicNativeGo(modelID string) bool {
-	switch modelID {
-	case "minimax-m2.5", "minimax-m2.7", "minimax-m3",
-		"qwen3.5-plus", "qwen3.6-plus", "qwen3.7-plus", "qwen3.7-max":
-		return true
-	default:
-		return false
-	}
+// The user-provided `wire_format` override (in model_overrides) takes
+// precedence over the built-in classification.
+func (p *OpenCodeGoProvider) WireFormat(model config.ModelConfig) core.WireFormat {
+	return client.GoWireFormatFor(model)
 }
 
 // RoundTripName returns the model ID to use in the upstream request.
@@ -114,7 +84,7 @@ func (p *OpenCodeGoProvider) StreamIdleTimeout(model config.ModelConfig) time.Du
 
 // Execute sends a non-streaming request and returns the response.
 func (p *OpenCodeGoProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
-	switch p.wireFormatFor(model) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.executeAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -126,7 +96,7 @@ func (p *OpenCodeGoProvider) Execute(ctx context.Context, req *core.NormalizedRe
 
 // Stream sends a streaming request and returns an io.ReadCloser for SSE events.
 func (p *OpenCodeGoProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
-	switch p.wireFormatFor(model) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.streamAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -142,6 +112,9 @@ func (p *OpenCodeGoProvider) Stream(ctx context.Context, req *core.NormalizedReq
 func (p *OpenCodeGoProvider) executeResponses(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
 	cfg := p.atomic.Get()
 	endpoint := cfg.OpenCodeGo.ResponsesBaseURL
+	if endpoint == "" {
+		return nil, fmt.Errorf("responses_base_url not configured for opencode-go provider")
+	}
 	apiKey := p.nextAPIKey(cfg.EffectiveAPIKeys())
 
 	responsesReq := transformer.NormalizedToResponses(req, model)
@@ -182,6 +155,9 @@ func (p *OpenCodeGoProvider) executeResponses(ctx context.Context, req *core.Nor
 func (p *OpenCodeGoProvider) streamResponses(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
 	cfg := p.atomic.Get()
 	endpoint := cfg.OpenCodeGo.ResponsesBaseURL
+	if endpoint == "" {
+		return nil, fmt.Errorf("responses_base_url not configured for opencode-go provider")
+	}
 	apiKey := p.nextAPIKey(cfg.EffectiveAPIKeys())
 
 	responsesReq := transformer.NormalizedToResponses(req, model)

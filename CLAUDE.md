@@ -51,6 +51,10 @@ Which models take the Anthropic endpoint depends on the provider:
 - **Go provider** — `IsAnthropicModel` (classifier.go) returns true for `minimax-m2.5`, `minimax-m2.7`, `minimax-m3` **and** `qwen3.5-plus`, `qwen3.6-plus`, `qwen3.7-plus`, `qwen3.7-max`. Everything else goes through the Chat Completions transform.
 - **Zen provider** — `ClassifyEndpoint` is Zen-specific. `IsZenAnthropicModel` routes any `claude-*` or `qwen*` model to Anthropic; MiniMax on Zen uses Chat Completions (unlike MiniMax on the Go provider).
 
+**Wire format overrides.** A model config's `wire_format` field overrides the built-in classification on the **Go provider only** — `"openai"` (aliases `chat`, `chat_completions`), `"anthropic"` (alias `messages`), or `"responses"`. This is how a Go model reaches the OpenAI Responses endpoint (`opencode_go.responses_base_url`), since Go classification never selects Responses on its own. `"gemini"`, `"auto"`, empty, and unrecognised values all fall back to classification — the Go provider has no Gemini path. Zen and Bedrock ignore the per-model override and classify by model ID.
+
+`core.ParseWireFormat` is the only place `wire_format` strings are interpreted, and `Provider.WireFormat(config.ModelConfig)` is the only place a model's format is resolved. `Execute`, `Stream`, and the streaming handler in `internal/handlers/messages.go` all dispatch on that one method so the endpoint a request is sent to and the SSE parser used to read the reply cannot disagree. Do not re-derive the format at a call site.
+
 **Available models:** the built-in capability registry is `modelMetadata` in `internal/config/model_registry.go`. It supplies context window, max output tokens, and vision support whenever the runtime config omits them (`ResolveModelConfig`). Every entry has `SupportsTools: true`.
 
 | Model ID | Typical provider | Context | Max output | Vision | Best For |

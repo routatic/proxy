@@ -754,7 +754,7 @@ func (h *MessagesHandler) handleStreaming(
 				// Bind body read to attemptCtx so streaming_timeout_ms aborts mid-stream.
 				streamReader := transformer.NewCtxReadCloser(attemptCtx, streamBody)
 
-				wireFormat := prov.WireFormat(model.ModelID)
+				wireFormat := prov.WireFormat(model)
 				if wireFormat == core.WireFormatAnthropic {
 					atomic.StoreInt32(&heartbeatPaused, 1)
 				}

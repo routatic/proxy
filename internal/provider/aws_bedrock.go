@@ -54,13 +54,13 @@ func (p *AWSBedrockProvider) ModelCapabilities(modelID string) (core.ProviderCap
 // "anthropic." use the Anthropic Messages endpoint, everything else uses
 // OpenAI Chat Completions. The global wire_format config acts as a fallback
 // only when no prefix match applies.
-func (p *AWSBedrockProvider) WireFormat(modelID string) core.WireFormat {
+func (p *AWSBedrockProvider) WireFormat(model config.ModelConfig) core.WireFormat {
 	switch {
-	case strings.HasPrefix(modelID, "anthropic."):
+	case strings.HasPrefix(model.ModelID, "anthropic."):
 		return core.WireFormatAnthropic
-	case strings.HasPrefix(modelID, "openai.gpt-"):
+	case strings.HasPrefix(model.ModelID, "openai.gpt-"):
 		return core.WireFormatOpenAIResponses
-	case strings.HasPrefix(modelID, "openai."):
+	case strings.HasPrefix(model.ModelID, "openai."):
 		return core.WireFormatOpenAIChat
 	default:
 		cfg := p.atomic.Get()
@@ -91,7 +91,7 @@ func (p *AWSBedrockProvider) StreamIdleTimeout(model config.ModelConfig) time.Du
 }
 
 func (p *AWSBedrockProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.executeAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -102,7 +102,7 @@ func (p *AWSBedrockProvider) Execute(ctx context.Context, req *core.NormalizedRe
 }
 
 func (p *AWSBedrockProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.streamAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:

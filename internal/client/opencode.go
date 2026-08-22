@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/models"
 	"github.com/routatic/proxy/pkg/types"
@@ -289,6 +290,29 @@ func IsAnthropicModel(modelID string) bool {
 	}
 }
 
+// GoWireFormat is the built-in wire-format classification for Go provider
+// models, used whenever no `wire_format` override is configured. The Go
+// provider only distinguishes Anthropic-native models from Chat Completions;
+// the Responses endpoint is opt-in via `wire_format: "responses"`.
+//
+// Both the provider dispatch and the legacy client resolve Go models through
+// this function so they always agree on the endpoint and the body format.
+func GoWireFormat(modelID string) core.WireFormat {
+	if IsAnthropicModel(modelID) {
+		return core.WireFormatAnthropic
+	}
+	return core.WireFormatOpenAIChat
+}
+
+// GoWireFormatFor resolves the effective wire format for a Go provider model,
+// giving the per-model `wire_format` override precedence over GoWireFormat.
+func GoWireFormatFor(modelConfig config.ModelConfig) core.WireFormat {
+	if wf, ok := core.ParseWireFormat(modelConfig.WireFormat); ok && wf != core.WireFormatGemini {
+		return wf
+	}
+	return GoWireFormat(modelConfig.ModelID)
+}
+
 // isZenAnthropicModel returns true for models on Zen that use the Anthropic endpoint.
 func isZenAnthropicModel(modelID string) bool {
 	return models.IsZenAnthropicModel(modelID)
@@ -399,12 +423,18 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 		return endpointConfig{BaseURL: cfg.OpenRouter.BaseURL, APIKey: apiKey}
 	}
 
-	// Default: OpenCode Go
+	// Default: OpenCode Go.
+	//
+	// Deliberately classifies by model ID only, ignoring modelConfig.WireFormat.
+	// getEndpoint is shared by ChatCompletion, ResponsesCompletion and
+	// GeminiCompletion, which each marshal a different body type, and it cannot
+	// tell which one is asking. The legacy path only ever calls the Responses
+	// handlers for Zen models, so honouring a "responses" override here would
+	// POST a Chat Completions body to /v1/responses. The Responses endpoint for
+	// Go models is served by the provider path (OpenCodeGoProvider.WireFormat).
 	switch {
 	case models.IsAnthropicModel(modelID):
 		return endpointConfig{BaseURL: cfg.OpenCodeGo.AnthropicBaseURL, APIKey: apiKey}
-	case models.IsResponsesModel(modelID) && cfg.OpenCodeGo.ResponsesBaseURL != "":
-		return endpointConfig{BaseURL: cfg.OpenCodeGo.ResponsesBaseURL, APIKey: apiKey}
 	default:
 		return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
 	}

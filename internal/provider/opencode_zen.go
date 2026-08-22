@@ -72,8 +72,8 @@ func (p *OpenCodeZenProvider) ModelCapabilities(modelID string) (core.ProviderCa
 
 // WireFormat returns the wire format for the given model on Zen.
 // This replaces the old client.ClassifyEndpoint function.
-func (p *OpenCodeZenProvider) WireFormat(modelID string) core.WireFormat {
-	switch models.ClassifyEndpoint(modelID) {
+func (p *OpenCodeZenProvider) WireFormat(model config.ModelConfig) core.WireFormat {
+	switch models.ClassifyEndpoint(model.ModelID) {
 	case models.EndpointAnthropic:
 		return core.WireFormatAnthropic
 	case models.EndpointGemini:
@@ -106,7 +106,7 @@ func (p *OpenCodeZenProvider) StreamIdleTimeout(model config.ModelConfig) time.D
 
 // Execute sends a non-streaming request and returns the response.
 func (p *OpenCodeZenProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.executeAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -120,7 +120,7 @@ func (p *OpenCodeZenProvider) Execute(ctx context.Context, req *core.NormalizedR
 
 // Stream sends a streaming request and returns an io.ReadCloser for SSE events.
 func (p *OpenCodeZenProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.streamAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
