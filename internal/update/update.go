@@ -2,10 +2,13 @@ package update
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -105,72 +108,111 @@ func GetAssetURL(release *GitHubRelease) (string, string, error) {
 	return "", "", fmt.Errorf("no matching asset found for %s-%s", goos, goarch)
 }
 
-// DownloadAndInstall downloads the binary and replaces the current executable
-func DownloadAndInstall(url, filename string) error {
+// InstallPath returns the path of the binary an update would replace. Symlinks
+// are resolved so that a symlinked install (e.g. a Homebrew shim in
+// /usr/local/bin pointing into the Cellar) is replaced at its real location
+// instead of clobbering the link.
+func InstallPath() (string, error) {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to get executable path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+		return resolved, nil
+	}
+	return execPath, nil
+}
+
+// permissionError turns an OS permission failure on the install directory into
+// an actionable message. The raw "rename ...: permission denied" tells the user
+// nothing about what to do next.
+func permissionError(dir string, err error) error {
+	if !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	hint := "re-run with elevated privileges (sudo routatic-proxy update)"
+	if runtime.GOOS == "windows" {
+		hint = "re-run from an Administrator terminal"
+	}
+	return fmt.Errorf("install directory %s is not writable by the current user: %s, or update through the package manager you installed with (e.g. brew upgrade routatic-proxy, scoop update routatic-proxy): %w", dir, hint, err)
+}
+
+// DownloadAndInstall downloads the binary and replaces the current executable.
+//
+// The download lands in the install directory rather than the system temp dir:
+// the final step must be a rename, and rename cannot cross filesystems, so a
+// /tmp staging file fails with EXDEV whenever /tmp is a separate mount (tmpfs
+// on most Linux systems). Staging in the target directory also surfaces a
+// read-only or root-owned install location before spending the download.
+func DownloadAndInstall(url string) error {
+	execPath, err := InstallPath()
+	if err != nil {
+		return err
+	}
+	return downloadAndInstallTo(url, execPath)
+}
+
+// downloadAndInstallTo performs the install against an explicit target path.
+func downloadAndInstallTo(url, execPath string) error {
+	installDir := filepath.Dir(execPath)
+
+	tmpFile, err := os.CreateTemp(installDir, ".routatic-proxy-update-*")
+	if err != nil {
+		return permissionError(installDir, fmt.Errorf("failed to stage update in %s: %w", installDir, err))
+	}
+	tmpPath := tmpFile.Name()
+	// Removing a path that was already renamed into place is a no-op error.
+	defer func() { _ = os.Remove(tmpPath) }()
+
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Get(url)
 	if err != nil {
+		_ = tmpFile.Close()
 		return fmt.Errorf("failed to download: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		_ = tmpFile.Close()
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	// Create temp file
-	tmpFile, err := os.CreateTemp("", "routatic-proxy-update-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-
-	// Copy downloaded content to temp file
 	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
 		_ = tmpFile.Close()
-		return fmt.Errorf("failed to write temp file: %w", err)
+		return fmt.Errorf("failed to write staged update: %w", err)
 	}
-	_ = tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close staged update: %w", err)
+	}
 
-	// Make executable on Unix
+	// Make executable on Unix. CreateTemp uses 0600, which would leave the
+	// installed binary unrunnable.
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(tmpPath, 0755); err != nil {
 			return fmt.Errorf("failed to make executable: %w", err)
 		}
 	}
 
-	// Get current executable path
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
-
-	// On Windows, we can't replace a running executable directly
-	// So we rename the old one and move the new one in place
+	// On Windows a running executable is locked and cannot be overwritten, so
+	// move it aside first. Unix allows replacing the inode under a running
+	// process, so the rename is enough.
 	if runtime.GOOS == "windows" {
 		oldPath := execPath + ".old"
-		// Remove any previous .old file
 		_ = os.Remove(oldPath)
-		// Rename current executable
 		if err := os.Rename(execPath, oldPath); err != nil {
-			return fmt.Errorf("failed to rename current executable: %w", err)
+			return permissionError(installDir, fmt.Errorf("failed to rename current executable: %w", err))
 		}
-		// Move new executable into place
 		if err := os.Rename(tmpPath, execPath); err != nil {
-			// Try to restore old executable
 			_ = os.Rename(oldPath, execPath)
-			return fmt.Errorf("failed to install new executable: %w", err)
+			return permissionError(installDir, fmt.Errorf("failed to install new executable: %w", err))
 		}
-		// Clean up old executable
 		_ = os.Remove(oldPath)
-	} else {
-		// On Unix, we can directly replace
-		if err := os.Rename(tmpPath, execPath); err != nil {
-			return fmt.Errorf("failed to replace executable: %w", err)
-		}
+		return nil
 	}
 
+	if err := os.Rename(tmpPath, execPath); err != nil {
+		return permissionError(installDir, fmt.Errorf("failed to replace executable: %w", err))
+	}
 	return nil
 }
 
