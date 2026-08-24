@@ -1,6 +1,6 @@
 # How to Add a New Model
 
-Adding a new model requires zero code changes. Everything is config-driven.
+Adding most new models requires only config changes. New model families that use non-default endpoints (Responses, Gemini, Messages) may require updating `internal/models/classifier.go`.
 
 ## Step 1: Identify the Provider and Endpoint
 
