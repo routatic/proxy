@@ -106,9 +106,9 @@ func resolvedModelMatches(model catalog.ResolvedModel, scen catalog.Scenario, co
 	if scen.RequiresReasoning != nil && *scen.RequiresReasoning && !model.Reasoning {
 		return false
 	}
-	return !(constraints.Tools && !model.Tools) &&
-		!(constraints.Vision && !model.Vision) &&
-		!(constraints.Reasoning && !model.Reasoning)
+	return (!constraints.Tools || model.Tools) &&
+		(!constraints.Vision || model.Vision) &&
+		(!constraints.Reasoning || model.Reasoning)
 }
 
 func (s *Selector) betterResolvedModel(a, b catalog.ResolvedModel) bool {
@@ -186,35 +186,6 @@ func (s *Selector) globalPreferProviders() []string {
 		return nil
 	}
 	return s.cfg.CostRouting.PreferProviders
-}
-
-func modelSupportsProvider(modelKey string, provider string) bool {
-	return catalog.ProviderFromModelKey(modelKey) == provider
-}
-
-func modelMatches(model catalog.Model, scen catalog.Scenario, constraints ScenarioConstraints, minContext int64) bool {
-	if model.ContextWindow() < minContext {
-		return false
-	}
-	if scen.RequiresTools != nil && *scen.RequiresTools && !model.SupportsTools() {
-		return false
-	}
-	if scen.RequiresVision != nil && *scen.RequiresVision && !model.SupportsVision() {
-		return false
-	}
-	if scen.RequiresReasoning != nil && *scen.RequiresReasoning && !model.Reasoning {
-		return false
-	}
-	if constraints.Tools && !model.SupportsTools() {
-		return false
-	}
-	if constraints.Vision && !model.SupportsVision() {
-		return false
-	}
-	if constraints.Reasoning && !model.Reasoning {
-		return false
-	}
-	return true
 }
 
 // enabledProviders returns the providers that have an effective API key in the
