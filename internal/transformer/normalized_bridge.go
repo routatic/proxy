@@ -282,12 +282,17 @@ func GeminiToNormalized(geminiResp *types.GeminiResponse, modelID string) *core.
 // pipeline.
 func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageRequest {
 	anthropicReq := &types.MessageRequest{
-		Model:     req.Model,
-		MaxTokens: req.MaxTokens,
+		Model:        req.Model,
+		MaxTokens:    req.MaxTokens,
+		CacheControl: req.CacheControl,
 	}
 
 	// Set system prompt.
-	if req.SystemPrompt != "" {
+	if len(req.SystemBlocks) > 0 {
+		if b, err := json.Marshal(normalizedBlocksToAnthropic(req.SystemBlocks)); err == nil {
+			anthropicReq.System = b
+		}
+	} else if req.SystemPrompt != "" {
 		if b, err := json.Marshal(req.SystemPrompt); err == nil {
 			anthropicReq.System = json.RawMessage(b)
 		}
@@ -319,51 +324,7 @@ func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageReque
 	for _, nm := range req.Messages {
 		msg := types.Message{Role: nm.Role}
 
-		var blocks []types.ContentBlock
-		if nm.Content != "" {
-			blocks = append(blocks, types.ContentBlock{Type: "text", Text: nm.Content})
-		}
-		// Reconstruct image blocks from the normalized representation so the
-		// downstream transformer can decide whether to convert them to
-		// image_url (vision-capable model) or to a [Image] text placeholder.
-		for _, img := range nm.Images {
-			blocks = append(blocks, types.ContentBlock{
-				Type: "image",
-				Source: &types.ImageSource{
-					Type:      "base64",
-					MediaType: img.MediaType,
-					Data:      img.Data,
-				},
-			})
-		}
-		if nm.Thinking != "" {
-			blocks = append(blocks, types.ContentBlock{Type: "thinking", Thinking: nm.Thinking})
-		}
-		for _, tc := range nm.ToolCalls {
-			blocks = append(blocks, types.ContentBlock{
-				Type:  "tool_use",
-				ID:    tc.ID,
-				Name:  tc.Name,
-				Input: []byte(tc.Arguments),
-			})
-		}
-		if len(nm.ToolResults) > 0 {
-			for _, tr := range nm.ToolResults {
-				content, _ := json.Marshal(tr.Content)
-				blocks = append(blocks, types.ContentBlock{
-					Type:      "tool_result",
-					ToolUseID: tr.ToolCallID,
-					Content:   content,
-				})
-			}
-		} else if nm.ToolCallID != "" {
-			content, _ := json.Marshal(nm.Content)
-			blocks = append(blocks, types.ContentBlock{
-				Type:      "tool_result",
-				ToolUseID: nm.ToolCallID,
-				Content:   content,
-			})
-		}
+		blocks := normalizedMessageBlocks(nm)
 
 		if len(blocks) > 0 {
 			b, _ := json.Marshal(blocks)
@@ -378,13 +339,72 @@ func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageReque
 	// Convert tools.
 	for _, nt := range req.Tools {
 		anthropicReq.Tools = append(anthropicReq.Tools, types.Tool{
-			Name:        nt.Name,
-			Description: nt.Description,
-			InputSchema: nt.InputSchema,
+			Name:         nt.Name,
+			Description:  nt.Description,
+			InputSchema:  nt.InputSchema,
+			CacheControl: nt.CacheControl,
 		})
 	}
 
 	return anthropicReq
+}
+
+func normalizedMessageBlocks(nm core.NormalizedMessage) []types.ContentBlock {
+	if len(nm.Blocks) > 0 {
+		return normalizedBlocksToAnthropic(nm.Blocks)
+	}
+
+	var blocks []types.ContentBlock
+	if nm.Content != "" {
+		blocks = append(blocks, types.ContentBlock{Type: "text", Text: nm.Content})
+	}
+	for _, img := range nm.Images {
+		blocks = append(blocks, types.ContentBlock{
+			Type:   "image",
+			Source: &types.ImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Data},
+		})
+	}
+	if nm.Thinking != "" {
+		blocks = append(blocks, types.ContentBlock{Type: "thinking", Thinking: nm.Thinking})
+	}
+	for _, tc := range nm.ToolCalls {
+		blocks = append(blocks, types.ContentBlock{
+			Type: "tool_use", ID: tc.ID, Name: tc.Name, Input: []byte(tc.Arguments),
+		})
+	}
+	if len(nm.ToolResults) > 0 {
+		for _, tr := range nm.ToolResults {
+			content, _ := json.Marshal(tr.Content)
+			blocks = append(blocks, types.ContentBlock{
+				Type: "tool_result", ToolUseID: tr.ToolCallID, Content: content,
+			})
+		}
+	} else if nm.ToolCallID != "" {
+		content, _ := json.Marshal(nm.Content)
+		blocks = append(blocks, types.ContentBlock{
+			Type: "tool_result", ToolUseID: nm.ToolCallID, Content: content,
+		})
+	}
+	return blocks
+}
+
+func normalizedBlocksToAnthropic(blocks []core.NormalizedContentBlock) []types.ContentBlock {
+	out := make([]types.ContentBlock, 0, len(blocks))
+	for _, block := range blocks {
+		converted := types.ContentBlock{
+			Type: block.Type, Text: block.Text, ID: block.ID, ToolUseID: block.ToolUseID,
+			Name: block.Name, Input: block.Input, Content: block.Content,
+			IsError: block.IsError, Thinking: block.Thinking, Signature: block.Signature,
+			CacheControl: block.CacheControl, Raw: block.Raw,
+		}
+		if block.Image != nil {
+			converted.Source = &types.ImageSource{
+				Type: "base64", MediaType: block.Image.MediaType, Data: block.Image.Data,
+			}
+		}
+		out = append(out, converted)
+	}
+	return out
 }
 
 func rawJSONString(s string) json.RawMessage {

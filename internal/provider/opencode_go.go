@@ -29,6 +29,12 @@ func NewOpenCodeGoProvider(atomic *config.AtomicConfig) *OpenCodeGoProvider {
 // Name returns the provider identifier.
 func (p *OpenCodeGoProvider) Name() string { return "opencode-go" }
 
+// ValidateRequest checks ordered content against this provider's capabilities
+// before any upstream request is attempted.
+func (p *OpenCodeGoProvider) ValidateRequest(req *core.NormalizedRequest, model config.ModelConfig) error {
+	return validateRequest(p, req, model)
+}
+
 // Capabilities returns provider-level capabilities.
 func (p *OpenCodeGoProvider) Capabilities() core.ProviderCapabilities {
 	return core.ProviderCapabilities{

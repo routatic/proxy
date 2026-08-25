@@ -73,6 +73,15 @@ func TestMetricsRecordsStageAndTTFT(t *testing.T) {
 	}
 }
 
+func TestModelKey(t *testing.T) {
+	if got := ModelKey("opencode-go", "model-a"); got != "opencode-go/model-a" {
+		t.Fatalf("ModelKey() = %q", got)
+	}
+	if got := ModelKey("", "model-a"); got != "model-a" {
+		t.Fatalf("ModelKey() without provider = %q", got)
+	}
+}
+
 func equalDurations(a, b []time.Duration) bool {
 	if len(a) != len(b) {
 		return false

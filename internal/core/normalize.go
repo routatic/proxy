@@ -17,13 +17,15 @@ type thinkingConfig struct {
 // This is a lossless extraction: all data from the Anthropic format survives.
 func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 	nr := &NormalizedRequest{
-		Model:     anthropicReq.Model,
-		MaxTokens: anthropicReq.MaxTokens,
-		Stream:    anthropicReq.Stream != nil && *anthropicReq.Stream,
+		Model:        anthropicReq.Model,
+		MaxTokens:    anthropicReq.MaxTokens,
+		Stream:       anthropicReq.Stream != nil && *anthropicReq.Stream,
+		CacheControl: anthropicReq.CacheControl,
 	}
 
 	// Extract system prompt (string or array of content blocks).
 	nr.SystemPrompt = anthropicReq.SystemText()
+	nr.SystemBlocks = normalizeSystemBlocks(anthropicReq.System)
 
 	// Set temperature if provided.
 	if anthropicReq.Temperature != nil {
@@ -47,6 +49,7 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 
 		blocks := msg.ContentBlocks()
 		for _, block := range blocks {
+			nm.Blocks = append(nm.Blocks, normalizeContentBlock(block))
 			switch block.Type {
 			case "text":
 				nm.Content += block.Text
@@ -84,14 +87,60 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 	// Convert tools.
 	for _, tool := range anthropicReq.Tools {
 		nt := NormalizedToolDef{
-			Name:        tool.Name,
-			Description: tool.Description,
-			InputSchema: tool.InputSchema,
+			Name:         tool.Name,
+			Description:  tool.Description,
+			InputSchema:  tool.InputSchema,
+			CacheControl: tool.CacheControl,
 		}
 		nr.Tools = append(nr.Tools, nt)
 	}
 
 	return nr
+}
+
+func normalizeSystemBlocks(raw json.RawMessage) []NormalizedContentBlock {
+	if len(raw) == 0 {
+		return nil
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return []NormalizedContentBlock{{Type: "text", Text: text}}
+	}
+	var blocks []types.ContentBlock
+	if json.Unmarshal(raw, &blocks) != nil {
+		return nil
+	}
+	out := make([]NormalizedContentBlock, 0, len(blocks))
+	for _, block := range blocks {
+		out = append(out, normalizeContentBlock(block))
+	}
+	return out
+}
+
+func normalizeContentBlock(block types.ContentBlock) NormalizedContentBlock {
+	return NormalizedContentBlock{
+		Type:      block.Type,
+		Text:      block.Text,
+		ID:        block.ID,
+		ToolUseID: block.ToolUseID,
+		Name:      block.Name,
+		Input:     append(json.RawMessage(nil), block.Input...),
+		Content:   append(json.RawMessage(nil), block.Content...),
+		IsError:   block.IsError,
+		Thinking:  block.Thinking,
+		Signature: block.Signature,
+		Image: func() *NormalizedImage {
+			if block.Source == nil {
+				return nil
+			}
+			return &NormalizedImage{
+				MediaType: block.Source.MediaType,
+				Data:      block.Source.Data,
+			}
+		}(),
+		CacheControl: block.CacheControl,
+		Raw:          append(json.RawMessage(nil), block.Raw...),
+	}
 }
 
 // DenormalizeResponse converts a NormalizedResponse to an Anthropic MessageResponse.

@@ -37,6 +37,12 @@ func NewOpenCodeZenProvider(atomic *config.AtomicConfig) *OpenCodeZenProvider {
 // Name returns the provider identifier.
 func (p *OpenCodeZenProvider) Name() string { return "opencode-zen" }
 
+// ValidateRequest checks ordered content against this provider's capabilities
+// before any upstream request is attempted.
+func (p *OpenCodeZenProvider) ValidateRequest(req *core.NormalizedRequest, model config.ModelConfig) error {
+	return validateRequest(p, req, model)
+}
+
 // Capabilities returns provider-level capabilities.
 func (p *OpenCodeZenProvider) Capabilities() core.ProviderCapabilities {
 	return core.ProviderCapabilities{

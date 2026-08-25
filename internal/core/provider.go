@@ -116,3 +116,10 @@ type Provider interface {
 	// stream before it is treated as stuck and aborted.
 	StreamIdleTimeout(model config.ModelConfig) time.Duration
 }
+
+// RequestValidator is optionally implemented by providers that can reject
+// normalized content before an upstream call. Compatibility failures are
+// client errors and must not affect circuit-breaker state.
+type RequestValidator interface {
+	ValidateRequest(req *NormalizedRequest, model config.ModelConfig) error
+}

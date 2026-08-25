@@ -149,17 +149,26 @@ func (w *responseWriter) extractUsageFromSSE(b []byte) {
 
 func (w *responseWriter) detectContentInSSE(b []byte) {
 	data := string(b)
-	if strings.Contains(data, `"content_block_start"`) ||
-		strings.Contains(data, `"content_block_delta"`) ||
-		strings.Contains(data, `"text_delta"`) ||
-		strings.Contains(data, `"content":"`) ||
-		strings.Contains(data, `"tool_use"`) ||
-		strings.Contains(data, `"thinking_delta"`) {
+	if nonEmptyJSONField(data, "text") ||
+		nonEmptyJSONField(data, "thinking") ||
+		nonEmptyJSONField(data, "content") ||
+		nonEmptyJSONField(data, "partial_json") ||
+		(nonEmptyJSONField(data, "name") && strings.Contains(data, `"tool_use"`)) {
 		w.contentWritten = true
 		if w.firstContentAt.IsZero() {
 			w.firstContentAt = time.Now()
 		}
 	}
+}
+
+func nonEmptyJSONField(data, field string) bool {
+	prefix := `"` + field + `":"`
+	idx := strings.Index(data, prefix)
+	if idx < 0 {
+		return false
+	}
+	start := idx + len(prefix)
+	return start < len(data) && data[start] != '"'
 }
 
 func (w *responseWriter) hasContent() bool {
@@ -505,6 +514,11 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	normalizedReq := core.NormalizeRequest(&anthropicReq)
 	normalizedReq.Stream = isStreaming
 	h.metrics.RecordStage("normalization", time.Since(normalizeStart))
+	modelChain, err = h.filterCompatibleModels(modelChain, normalizedReq)
+	if err != nil {
+		h.sendError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
 
 	if h.captureLogger != nil && len(modelChain) > 0 {
 		provider := modelChain[0].Provider
@@ -517,6 +531,43 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	} else {
 		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	}
+}
+
+func (h *MessagesHandler) filterCompatibleModels(chain []config.ModelConfig, req *core.NormalizedRequest) ([]config.ModelConfig, error) {
+	if h.providerRegistry == nil {
+		return chain, nil
+	}
+	compatible := make([]config.ModelConfig, 0, len(chain))
+	var reasons []string
+	for _, model := range chain {
+		prov, ok := h.providerRegistry.Get(client.Provider(model))
+		if !ok {
+			compatible = append(compatible, model)
+			continue
+		}
+		validator, ok := prov.(core.RequestValidator)
+		if !ok {
+			compatible = append(compatible, model)
+			continue
+		}
+		if err := validator.ValidateRequest(req, model); err != nil {
+			var compatErr *core.CompatibilityError
+			if errors.As(err, &compatErr) {
+				reasons = append(reasons, compatErr.Error())
+				h.logger.Info("model skipped by request compatibility", "model", model.ModelID, "reason", compatErr.Reason)
+				continue
+			}
+			return nil, err
+		}
+		compatible = append(compatible, model)
+	}
+	if len(compatible) == 0 {
+		if len(reasons) > 0 {
+			return nil, fmt.Errorf("no compatible model found: %s", strings.Join(reasons, "; "))
+		}
+		return nil, fmt.Errorf("no compatible model found")
+	}
+	return compatible, nil
 }
 
 // buildModelChain resolves the request to a model chain (primary + fallbacks),
@@ -677,7 +728,8 @@ func (h *MessagesHandler) handleStreaming(
 		recordStreamSuccess := func(model config.ModelConfig) {
 			cancelAttempt()
 			latency := time.Since(streamStart)
-			h.metrics.RecordSuccess(model.ModelID, latency)
+			modelKey := metrics.ModelKey(model.Provider, model.ModelID)
+			h.metrics.RecordSuccess(modelKey, latency)
 			h.metrics.RecordStage("upstream", latency)
 			if firstContentAt := rw.firstContentTime(); !firstContentAt.IsZero() {
 				h.metrics.RecordTTFT(firstContentAt.Sub(requestStart))
@@ -708,12 +760,7 @@ func (h *MessagesHandler) handleStreaming(
 			}
 			if h.storage != nil {
 				storageStart := time.Now()
-				if err := h.storage.InsertRequest(rec); err != nil {
-					h.logger.Warn("failed to insert request into storage", "error", err)
-				}
-				if err := h.storage.InsertLatency(model.ModelID, latency); err != nil {
-					h.logger.Warn("failed to insert latency sample into storage", "error", err)
-				}
+				h.storage.RecordCompletion(rec)
 				h.metrics.RecordStage("storage_enqueue", time.Since(storageStart))
 			}
 		}
@@ -733,7 +780,7 @@ func (h *MessagesHandler) handleStreaming(
 					"model", model.ModelID, "idle_timeout", idleTimeout)
 				if rw.ssePayloadWritten {
 					h.sendStreamError(rw, "stream idle after SSE payload started")
-					h.metrics.RecordFailureForModel(model.ModelID)
+					h.metrics.RecordFailureForModel(metrics.ModelKey(model.Provider, model.ModelID))
 					return false // abort
 				}
 				return true // continue to next model
@@ -743,7 +790,7 @@ func (h *MessagesHandler) handleStreaming(
 					"model", model.ModelID)
 				if rw.ssePayloadWritten {
 					h.sendStreamError(rw, "empty stream after SSE payload started")
-					h.metrics.RecordFailureForModel(model.ModelID)
+					h.metrics.RecordFailureForModel(metrics.ModelKey(model.Provider, model.ModelID))
 					return false // abort
 				}
 				return true // continue to next model
@@ -751,7 +798,7 @@ func (h *MessagesHandler) handleStreaming(
 			h.logger.Warn(action+" streaming failed", "model", model.ModelID, "error", err)
 			if rw.ssePayloadWritten {
 				h.sendStreamError(rw, "all upstream models failed after SSE payload started")
-				h.metrics.RecordFailureForModel(model.ModelID)
+				h.metrics.RecordFailureForModel(metrics.ModelKey(model.Provider, model.ModelID))
 				return false // abort — cannot fallback after SSE payload started
 			}
 			return true // continue to next model
@@ -788,7 +835,9 @@ func (h *MessagesHandler) handleStreaming(
 				if wireFormat == core.WireFormatAnthropic {
 					atomic.StoreInt32(&heartbeatPaused, 1)
 				}
+				transformStart := time.Now()
 				errProxy := h.streamProxy.ProxyStream(rw, streamReader, wireFormat, model.ModelID, attemptCtx, idleTimeout, cancelAttempt)
+				h.metrics.RecordStage("response_transform", time.Since(transformStart))
 				if wireFormat == core.WireFormatAnthropic {
 					atomic.StoreInt32(&heartbeatPaused, 0)
 				}
@@ -920,7 +969,9 @@ func (h *MessagesHandler) handleStreaming(
 		// Bind body read to attemptCtx so streaming_timeout_ms aborts mid-stream.
 		streamReader := transformer.NewCtxReadCloser(attemptCtx, streamBody)
 
+		transformStart := time.Now()
 		if err := h.streamHandler.ProxyStream(rw, streamReader, model.ModelID, attemptCtx, idleTimeout, cancelAttempt); err != nil {
+			h.metrics.RecordStage("response_transform", time.Since(transformStart))
 			if err == transformer.ErrClientDisconnected {
 				if clientCtx.Err() != nil {
 					h.logger.Debug("client disconnected during stream")
@@ -933,6 +984,7 @@ func (h *MessagesHandler) handleStreaming(
 			}
 			continue
 		}
+		h.metrics.RecordStage("response_transform", time.Since(transformStart))
 
 		recordStreamSuccess(model)
 		return
@@ -1262,14 +1314,16 @@ func (h *MessagesHandler) handleNonStreaming(
 			h.logger.Info("request context canceled during non-streaming fallback", "error", err)
 			return
 		}
-		h.metrics.RecordFailureForModel(result.ModelID)
+		if result != nil {
+			h.metrics.RecordFailureForModel(modelMetricKey(modelChain, result.ModelID))
+		}
 		h.sendError(w, http.StatusBadGateway, "all models failed", err)
 		return
 	}
 	h.metrics.RecordStage("upstream", time.Since(upstreamStart))
 
 	latency := time.Since(startTime)
-	h.metrics.RecordSuccess(result.ModelID, latency)
+	h.metrics.RecordSuccess(modelMetricKey(modelChain, result.ModelID), latency)
 
 	h.logger.Info("request completed",
 		"model", result.ModelID,
@@ -1310,18 +1364,22 @@ func (h *MessagesHandler) handleNonStreaming(
 	}
 	if h.storage != nil {
 		storageStart := time.Now()
-		if err := h.storage.InsertRequest(rec); err != nil {
-			h.logger.Warn("failed to insert request into storage", "error", err)
-		}
-		if err := h.storage.InsertLatency(result.ModelID, latency); err != nil {
-			h.logger.Warn("failed to insert latency sample into storage", "error", err)
-		}
+		h.storage.RecordCompletion(rec)
 		h.metrics.RecordStage("storage_enqueue", time.Since(storageStart))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(responseBody)
+}
+
+func modelMetricKey(chain []config.ModelConfig, modelID string) string {
+	for _, model := range chain {
+		if model.ModelID == modelID {
+			return metrics.ModelKey(model.Provider, modelID)
+		}
+	}
+	return modelID
 }
 
 // executeAnthropicRequest executes a request to the Anthropic endpoint (for MiniMax models).

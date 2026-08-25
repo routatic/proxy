@@ -29,16 +29,18 @@ import (
 
 // Server represents the proxy server.
 type Server struct {
-	atomic    *config.AtomicConfig
-	httpSrv   *http.Server
-	mux       http.Handler
-	mu        sync.Mutex
-	logger    *slog.Logger
-	levelVar  *slog.LevelVar
-	History   *history.History // exported so the ui command can read it
-	metrics   *metrics.Metrics // stored for Metrics() getter
-	storage   *storage.Database
-	retention *storage.Retention
+	atomic        *config.AtomicConfig
+	httpSrv       *http.Server
+	mux           http.Handler
+	mu            sync.Mutex
+	logger        *slog.Logger
+	levelVar      *slog.LevelVar
+	History       *history.History // exported so the ui command can read it
+	metrics       *metrics.Metrics // stored for Metrics() getter
+	storage       *storage.Database
+	retention     *storage.Retention
+	storageWriter handlers.StorageWriter
+	modelRouter   *router.ModelRouter
 }
 
 // NewServer creates a new proxy server.
@@ -57,6 +59,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token counter: %w", err)
 	}
+	configureTokenCache(tokenCounter, cfg)
 
 	// Create metrics
 	metrics := metrics.New()
@@ -163,24 +166,38 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	}
 
 	srv := &Server{
-		atomic:    atomic,
-		httpSrv:   httpSrv,
-		mux:       mux,
-		logger:    logger,
-		levelVar:  levelVar,
-		History:   hist,
-		metrics:   metrics,
-		storage:   db,
-		retention: retention,
+		atomic:        atomic,
+		httpSrv:       httpSrv,
+		mux:           mux,
+		logger:        logger,
+		levelVar:      levelVar,
+		History:       hist,
+		metrics:       metrics,
+		storage:       db,
+		retention:     retention,
+		storageWriter: storageWriter,
+		modelRouter:   modelRouter,
 	}
 
 	// Register callback to update log level on config reload
 	atomic.OnReload(func(newCfg *config.Config) {
 		levelVar.Set(parseLogLevel(newCfg.Logging.Level))
+		configureTokenCache(tokenCounter, newCfg)
 		logger.Info("log level updated", "level", newCfg.Logging.Level)
 	})
 
 	return srv, nil
+}
+
+func configureTokenCache(counter *token.Counter, cfg *config.Config) {
+	if counter == nil || cfg == nil {
+		return
+	}
+	enabled := true
+	if cfg.Performance.TokenCountCacheEnabled != nil {
+		enabled = *cfg.Performance.TokenCountCacheEnabled
+	}
+	counter.ConfigureCache(enabled, cfg.Performance.TokenCountCacheCapacity)
 }
 
 // Metrics returns the in-process metrics collector.
@@ -216,21 +233,19 @@ func (s *Server) Start() error {
 	// Graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	s.modelRouter.StartCatalogRefresh(context.Background())
 
 	go func() {
 		<-ctx.Done()
 		s.logger.Info("shutting down server...")
 
+		s.modelRouter.StopCatalogRefresh()
+
 		if s.retention != nil {
 			s.retention.Stop()
 		}
 
-		if s.storage != nil {
-			_ = s.storage.Close()
-		}
-
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
 
 		s.mu.Lock()
 		srvToShutdown := s.httpSrv
@@ -240,6 +255,19 @@ func (s *Server) Start() error {
 			if err := srvToShutdown.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("server shutdown failed", "error", err)
 			}
+		}
+		cancel()
+
+		if s.storageWriter != nil {
+			drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := s.storageWriter.Shutdown(drainCtx); err != nil {
+				s.logger.Warn("storage completion drain did not finish", "error", err)
+			}
+			drainCancel()
+		}
+
+		if s.storage != nil {
+			_ = s.storage.Close()
 		}
 	}()
 
@@ -258,12 +286,23 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the proxy server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("programmatic shutdown requested")
+	s.modelRouter.StopCatalogRefresh()
 	s.mu.Lock()
 	srvToShutdown := s.httpSrv
 	s.mu.Unlock()
 
 	if srvToShutdown != nil {
-		return srvToShutdown.Shutdown(ctx)
+		if err := srvToShutdown.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if s.storageWriter != nil {
+		if err := s.storageWriter.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if s.storage != nil {
+		return s.storage.Close()
 	}
 	return nil
 }

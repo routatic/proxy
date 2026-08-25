@@ -4,10 +4,19 @@ package metrics
 import (
 	"math"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// ModelKey returns the canonical provider/model label used by metrics.
+func ModelKey(provider, model string) string {
+	if strings.TrimSpace(provider) == "" {
+		return model
+	}
+	return provider + "/" + model
+}
 
 // Metrics holds in-memory metrics for the proxy.
 type Metrics struct {
@@ -286,6 +295,7 @@ type ModelLatencyStats struct {
 	Avg   time.Duration
 	P50   time.Duration
 	P90   time.Duration
+	P95   time.Duration
 	P99   time.Duration
 	Min   time.Duration
 	Max   time.Duration
@@ -330,12 +340,16 @@ func calculateModelStats(model string, samples []time.Duration) ModelLatencyStat
 
 	p50Idx := int(math.Ceil(float64(count)*0.50)) - 1
 	p90Idx := int(math.Ceil(float64(count)*0.90)) - 1
+	p95Idx := int(math.Ceil(float64(count)*0.95)) - 1
 	p99Idx := int(math.Ceil(float64(count)*0.99)) - 1
 	if p50Idx < 0 {
 		p50Idx = 0
 	}
 	if p90Idx < 0 {
 		p90Idx = 0
+	}
+	if p95Idx < 0 {
+		p95Idx = 0
 	}
 	if p99Idx < 0 {
 		p99Idx = 0
@@ -345,6 +359,9 @@ func calculateModelStats(model string, samples []time.Duration) ModelLatencyStat
 	}
 	if p90Idx >= count {
 		p90Idx = count - 1
+	}
+	if p95Idx >= count {
+		p95Idx = count - 1
 	}
 	if p99Idx >= count {
 		p99Idx = count - 1
@@ -356,6 +373,7 @@ func calculateModelStats(model string, samples []time.Duration) ModelLatencyStat
 		Avg:   avg,
 		P50:   sorted[p50Idx],
 		P90:   sorted[p90Idx],
+		P95:   sorted[p95Idx],
 		P99:   sorted[p99Idx],
 		Min:   sorted[0],
 		Max:   sorted[count-1],

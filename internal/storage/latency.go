@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"math"
 	"sort"
 	"time"
@@ -37,6 +38,7 @@ type ModelLatencyStats struct {
 	Avg   time.Duration
 	P50   time.Duration
 	P90   time.Duration
+	P95   time.Duration
 	P99   time.Duration
 	Min   time.Duration
 	Max   time.Duration
@@ -48,9 +50,9 @@ func (l *Latency) GetStats(since time.Time) ([]ModelLatencyStats, error) {
 	defer cancel()
 
 	query := `
-		SELECT model, latency_ms
-		FROM latency_samples
-		WHERE recorded_at >= ?
+		SELECT model, duration_ms
+		FROM requests
+		WHERE start_time >= ? AND success = 1
 		ORDER BY model
 	`
 
@@ -63,11 +65,13 @@ func (l *Latency) GetStats(since time.Time) ([]ModelLatencyStats, error) {
 	samplesByModel := make(map[string][]int64)
 	for rows.Next() {
 		var model string
-		var latencyMs int64
+		var latencyMs sql.NullInt64
 		if err := rows.Scan(&model, &latencyMs); err != nil {
 			return nil, err
 		}
-		samplesByModel[model] = append(samplesByModel[model], latencyMs)
+		if latencyMs.Valid {
+			samplesByModel[model] = append(samplesByModel[model], latencyMs.Int64)
+		}
 	}
 
 	if err := rows.Err(); err != nil {
@@ -153,12 +157,16 @@ func calculateStats(model string, samples []int64) ModelLatencyStats {
 
 	p50Idx := int(float64(count)*0.50) - 1
 	p90Idx := int(math.Ceil(float64(count)*0.90)) - 1
+	p95Idx := int(math.Ceil(float64(count)*0.95)) - 1
 	p99Idx := int(math.Ceil(float64(count)*0.99)) - 1
 	if p50Idx < 0 {
 		p50Idx = 0
 	}
 	if p90Idx < 0 {
 		p90Idx = 0
+	}
+	if p95Idx < 0 {
+		p95Idx = 0
 	}
 	if p99Idx < 0 {
 		p99Idx = 0
@@ -168,6 +176,9 @@ func calculateStats(model string, samples []int64) ModelLatencyStats {
 	}
 	if p90Idx >= count {
 		p90Idx = count - 1
+	}
+	if p95Idx >= count {
+		p95Idx = count - 1
 	}
 	if p99Idx >= count {
 		p99Idx = count - 1
@@ -179,6 +190,7 @@ func calculateStats(model string, samples []int64) ModelLatencyStats {
 		Avg:   time.Duration(avg) * time.Millisecond,
 		P50:   time.Duration(sorted[p50Idx]) * time.Millisecond,
 		P90:   time.Duration(sorted[p90Idx]) * time.Millisecond,
+		P95:   time.Duration(sorted[p95Idx]) * time.Millisecond,
 		P99:   time.Duration(sorted[p99Idx]) * time.Millisecond,
 		Min:   time.Duration(sorted[0]) * time.Millisecond,
 		Max:   time.Duration(sorted[count-1]) * time.Millisecond,

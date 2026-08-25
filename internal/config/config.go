@@ -30,8 +30,15 @@ type Config struct {
 	Logging                        LoggingConfig            `json:"logging"`
 	Debug                          DebugConfig              `json:"debug"`
 	Catalog                        CatalogConfig            `json:"catalog"`
+	Performance                    PerformanceConfig        `json:"performance,omitempty"`
 	Storage                        *StorageConfig           `json:"storage,omitempty"`
 	UpdateChannel                  string                   `json:"update_channel,omitempty"`
+}
+
+// PerformanceConfig controls bounded in-process latency optimizations.
+type PerformanceConfig struct {
+	TokenCountCacheEnabled  *bool `json:"token_count_cache_enabled,omitempty"`
+	TokenCountCacheCapacity int   `json:"token_count_cache_capacity,omitempty"`
 }
 
 // CostRoutingConfig controls cost-aware model selection.
