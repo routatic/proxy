@@ -50,35 +50,6 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 		blocks := msg.ContentBlocks()
 		for _, block := range blocks {
 			nm.Blocks = append(nm.Blocks, normalizeContentBlock(block))
-			switch block.Type {
-			case "text":
-				nm.Content += block.Text
-			case "tool_use":
-				nm.ToolCalls = append(nm.ToolCalls, NormalizedToolCall{
-					ID:        block.ID,
-					Name:      block.Name,
-					Arguments: string(block.Input),
-				})
-			case "tool_result":
-				nm.ToolResults = append(nm.ToolResults, NormalizedToolResult{
-					ToolCallID: block.ToolUseID,
-					Content:    block.TextContent(),
-				})
-			case "thinking":
-				nm.Thinking += block.Thinking
-			case "image":
-				// Preserve image data so the downstream transformer can convert
-				// to image_url (or append a [Image] placeholder if the model
-				// does not support vision). Previously this was collapsed to
-				// the literal text "[Image]" which destroyed the image bytes
-				// before the transformer could inspect them.
-				if block.Source != nil && block.Source.Data != "" {
-					nm.Images = append(nm.Images, NormalizedImage{
-						MediaType: block.Source.MediaType,
-						Data:      block.Source.Data,
-					})
-				}
-			}
 		}
 
 		nr.Messages = append(nr.Messages, nm)
@@ -162,30 +133,14 @@ func DenormalizeResponse(nr *NormalizedResponse) *types.MessageResponse {
 		switch msg.Role {
 		case "assistant":
 			resp.Role = "assistant"
-
-			// Add thinking block if present.
-			if msg.Thinking != "" {
+			for _, block := range msg.Blocks {
 				resp.Content = append(resp.Content, types.ContentBlock{
-					Type:     "thinking",
-					Thinking: msg.Thinking,
-				})
-			}
-
-			// Add text block if present.
-			if msg.Content != "" {
-				resp.Content = append(resp.Content, types.ContentBlock{
-					Type: "text",
-					Text: msg.Content,
-				})
-			}
-
-			// Add tool_use blocks.
-			for _, tc := range msg.ToolCalls {
-				resp.Content = append(resp.Content, types.ContentBlock{
-					Type:  "tool_use",
-					ID:    tc.ID,
-					Name:  tc.Name,
-					Input: []byte(tc.Arguments),
+					Type: block.Type, Text: block.Text, ID: block.ID,
+					ToolUseID: block.ToolUseID, Name: block.Name,
+					Input: block.Input, Content: block.Content,
+					IsError: block.IsError, Thinking: block.Thinking,
+					Signature: block.Signature, CacheControl: block.CacheControl,
+					Raw: block.Raw,
 				})
 			}
 		}

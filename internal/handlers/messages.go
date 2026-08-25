@@ -440,7 +440,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		h.sendError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
-	h.metrics.RecordStage("request_parse", time.Since(parseStart))
+	h.metrics.RecordStage(metrics.StageRequestParse, time.Since(parseStart))
 
 	// Record metrics
 	isStreaming := anthropicReq.Stream != nil && *anthropicReq.Stream
@@ -483,7 +483,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		h.logger.Warn("failed to count tokens", "error", err)
 		tokenCount = 0
 	}
-	h.metrics.RecordStage("token_count", time.Since(tokenStart))
+	h.metrics.RecordStage(metrics.StageTokenCount, time.Since(tokenStart))
 
 	// Route to appropriate model and build fallback chain.
 	routeStart := time.Now()
@@ -500,7 +500,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		h.sendError(w, status, message, err)
 		return
 	}
-	h.metrics.RecordStage("routing", time.Since(routeStart))
+	h.metrics.RecordStage(metrics.StageRouting, time.Since(routeStart))
 
 	h.logger.Info("routing request",
 		"scenario", routeResult.Scenario,
@@ -513,7 +513,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	normalizeStart := time.Now()
 	normalizedReq := core.NormalizeRequest(&anthropicReq)
 	normalizedReq.Stream = isStreaming
-	h.metrics.RecordStage("normalization", time.Since(normalizeStart))
+	h.metrics.RecordStage(metrics.StageNormalization, time.Since(normalizeStart))
 	modelChain, err = h.filterCompatibleModels(modelChain, normalizedReq)
 	if err != nil {
 		h.sendError(w, http.StatusBadRequest, err.Error(), err)
@@ -730,7 +730,7 @@ func (h *MessagesHandler) handleStreaming(
 			latency := time.Since(streamStart)
 			modelKey := metrics.ModelKey(model.Provider, model.ModelID)
 			h.metrics.RecordSuccess(modelKey, latency)
-			h.metrics.RecordStage("upstream", latency)
+			h.metrics.RecordStage(metrics.StageUpstream, latency)
 			if firstContentAt := rw.firstContentTime(); !firstContentAt.IsZero() {
 				h.metrics.RecordTTFT(firstContentAt.Sub(requestStart))
 			}
@@ -761,7 +761,7 @@ func (h *MessagesHandler) handleStreaming(
 			if h.storage != nil {
 				storageStart := time.Now()
 				h.storage.RecordCompletion(rec)
-				h.metrics.RecordStage("storage_enqueue", time.Since(storageStart))
+				h.metrics.RecordStage(metrics.StageStorageEnqueue, time.Since(storageStart))
 			}
 		}
 
@@ -837,7 +837,7 @@ func (h *MessagesHandler) handleStreaming(
 				}
 				transformStart := time.Now()
 				errProxy := h.streamProxy.ProxyStream(rw, streamReader, wireFormat, model.ModelID, attemptCtx, idleTimeout, cancelAttempt)
-				h.metrics.RecordStage("response_transform", time.Since(transformStart))
+				h.metrics.RecordStage(metrics.StageResponseTransform, time.Since(transformStart))
 				if wireFormat == core.WireFormatAnthropic {
 					atomic.StoreInt32(&heartbeatPaused, 0)
 				}
@@ -971,7 +971,7 @@ func (h *MessagesHandler) handleStreaming(
 
 		transformStart := time.Now()
 		if err := h.streamHandler.ProxyStream(rw, streamReader, model.ModelID, attemptCtx, idleTimeout, cancelAttempt); err != nil {
-			h.metrics.RecordStage("response_transform", time.Since(transformStart))
+			h.metrics.RecordStage(metrics.StageResponseTransform, time.Since(transformStart))
 			if err == transformer.ErrClientDisconnected {
 				if clientCtx.Err() != nil {
 					h.logger.Debug("client disconnected during stream")
@@ -984,7 +984,7 @@ func (h *MessagesHandler) handleStreaming(
 			}
 			continue
 		}
-		h.metrics.RecordStage("response_transform", time.Since(transformStart))
+		h.metrics.RecordStage(metrics.StageResponseTransform, time.Since(transformStart))
 
 		recordStreamSuccess(model)
 		return
@@ -1320,7 +1320,7 @@ func (h *MessagesHandler) handleNonStreaming(
 		h.sendError(w, http.StatusBadGateway, "all models failed", err)
 		return
 	}
-	h.metrics.RecordStage("upstream", time.Since(upstreamStart))
+	h.metrics.RecordStage(metrics.StageUpstream, time.Since(upstreamStart))
 
 	latency := time.Since(startTime)
 	h.metrics.RecordSuccess(modelMetricKey(modelChain, result.ModelID), latency)
@@ -1365,7 +1365,7 @@ func (h *MessagesHandler) handleNonStreaming(
 	if h.storage != nil {
 		storageStart := time.Now()
 		h.storage.RecordCompletion(rec)
-		h.metrics.RecordStage("storage_enqueue", time.Since(storageStart))
+		h.metrics.RecordStage(metrics.StageStorageEnqueue, time.Since(storageStart))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

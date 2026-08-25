@@ -452,12 +452,12 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 	var messageCacheControl *types.CacheControl
 
 	for _, block := range blocks {
+		if messageCacheControl == nil {
+			messageCacheControl = block.CacheControl
+		}
 		switch block.Type {
 		case "text":
 			textParts = append(textParts, block.Text)
-			if messageCacheControl == nil {
-				messageCacheControl = block.CacheControl
-			}
 		case "tool_result":
 			// In OpenAI, tool results are separate messages with role "tool"
 			toolContent := block.TextContent()
@@ -537,12 +537,12 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 	var messageCacheControl *types.CacheControl
 
 	for _, block := range blocks {
+		if messageCacheControl == nil {
+			messageCacheControl = block.CacheControl
+		}
 		switch block.Type {
 		case "text":
 			textParts = append(textParts, block.Text)
-			if messageCacheControl == nil {
-				messageCacheControl = block.CacheControl
-			}
 		case "thinking":
 			// Preserve chain-of-thought so it can be forwarded back to providers
 			// that require reasoning_content to be preserved across turns.

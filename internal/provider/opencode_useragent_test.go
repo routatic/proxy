@@ -59,7 +59,7 @@ func TestOpenCodeZenProvider_Execute_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeZenProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "deepseek-v4-flash-free", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
+	req := &core.NormalizedRequest{Model: "deepseek-v4-flash-free", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
 	model := config.ModelConfig{ModelID: "deepseek-v4-flash-free"}
 	if got := p.WireFormat(model); got != core.WireFormatOpenAIChat {
 		t.Fatalf("WireFormat(%q) = %v, want OpenAIChat", model.ModelID, got)
@@ -77,7 +77,7 @@ func TestOpenCodeZenProvider_Stream_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeZenProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "deepseek-v4-flash-free", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}, Stream: true}
+	req := &core.NormalizedRequest{Model: "deepseek-v4-flash-free", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}, Stream: true}
 	model := config.ModelConfig{ModelID: "deepseek-v4-flash-free"}
 
 	body, err := p.Stream(context.Background(), req, model)
@@ -109,7 +109,7 @@ func TestOpenCodeZenProvider_ExecuteAnthropic_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeZenProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "claude-sonnet-4.5", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
+	req := &core.NormalizedRequest{Model: "claude-sonnet-4.5", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
 	model := config.ModelConfig{ModelID: "claude-sonnet-4.5"}
 	if got := p.WireFormat(model); got != core.WireFormatAnthropic {
 		t.Fatalf("WireFormat(%q) = %v, want Anthropic", model.ModelID, got)
@@ -131,7 +131,7 @@ func TestOpenCodeZenProvider_StreamAnthropic_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeZenProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "claude-sonnet-4.5", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}, Stream: true}
+	req := &core.NormalizedRequest{Model: "claude-sonnet-4.5", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}, Stream: true}
 	model := config.ModelConfig{ModelID: "claude-sonnet-4.5"}
 
 	body, err := p.Stream(context.Background(), req, model)
@@ -161,7 +161,7 @@ func TestOpenCodeZenProvider_ExecuteResponses_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeZenProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "gpt-5.4", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
+	req := &core.NormalizedRequest{Model: "gpt-5.4", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
 	model := config.ModelConfig{ModelID: "gpt-5.4"}
 	if got := p.WireFormat(model); got != core.WireFormatOpenAIResponses {
 		t.Fatalf("WireFormat(%q) = %v, want OpenAIResponses", model.ModelID, got)
@@ -179,7 +179,7 @@ func TestOpenCodeGoProvider_Execute_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeGoProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "deepseek-v4-pro", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
+	req := &core.NormalizedRequest{Model: "deepseek-v4-pro", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
 	model := config.ModelConfig{ModelID: "deepseek-v4-pro"}
 	if got := p.WireFormat(model); got != core.WireFormatOpenAIChat {
 		t.Fatalf("WireFormat(%q) = %v, want OpenAIChat", model.ModelID, got)
@@ -197,7 +197,7 @@ func TestOpenCodeGoProvider_Stream_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeGoProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "deepseek-v4-pro", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}, Stream: true}
+	req := &core.NormalizedRequest{Model: "deepseek-v4-pro", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}, Stream: true}
 	model := config.ModelConfig{ModelID: "deepseek-v4-pro"}
 
 	body, err := p.Stream(context.Background(), req, model)
@@ -226,7 +226,7 @@ func TestOpenCodeGoProvider_ExecuteAnthropic_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeGoProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "qwen3.5-plus", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}}
+	req := &core.NormalizedRequest{Model: "qwen3.5-plus", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
 	model := config.ModelConfig{ModelID: "qwen3.5-plus"}
 	if got := p.WireFormat(model); got != core.WireFormatAnthropic {
 		t.Fatalf("WireFormat(%q) = %v, want Anthropic", model.ModelID, got)
@@ -248,7 +248,7 @@ func TestOpenCodeGoProvider_StreamAnthropic_OpencodeUserAgent(t *testing.T) {
 	atomic := config.NewAtomicConfig(cfg, "")
 	p := NewOpenCodeGoProvider(atomic)
 
-	req := &core.NormalizedRequest{Model: "qwen3.5-plus", Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}}, Stream: true}
+	req := &core.NormalizedRequest{Model: "qwen3.5-plus", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}, Stream: true}
 	model := config.ModelConfig{ModelID: "qwen3.5-plus"}
 
 	body, err := p.Stream(context.Background(), req, model)

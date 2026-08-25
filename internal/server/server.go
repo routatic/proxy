@@ -114,7 +114,7 @@ func NewServer(atomic *config.AtomicConfig, captureLogger *debug.CaptureLogger) 
 	// Create handlers.
 	var storageWriter handlers.StorageWriter
 	if db != nil {
-		storageWriter = handlers.NewStorageAdapter(db)
+		storageWriter = handlers.NewStorageAdapter(db, metrics)
 	}
 
 	messagesHandler := handlers.NewMessagesHandler(

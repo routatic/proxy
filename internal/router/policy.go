@@ -158,7 +158,7 @@ func (p *ScenarioPolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelConfig,
 		messages = append(messages, MessageContent{Role: "system", Content: systemText})
 	}
 	for _, msg := range ctx.Request.Messages {
-		messages = append(messages, MessageContent{Role: msg.Role, Content: msg.Content})
+		messages = append(messages, MessageContent{Role: msg.Role, Content: msg.TextContent()})
 	}
 
 	isStreaming := ctx.Request.Stream

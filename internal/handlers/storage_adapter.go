@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/routatic/proxy/internal/history"
+	"github.com/routatic/proxy/internal/metrics"
 	"github.com/routatic/proxy/internal/storage"
 )
 
@@ -16,6 +17,7 @@ type StorageWriter interface {
 
 type StorageAdapter struct {
 	requests  *storage.Requests
+	metrics   *metrics.Metrics
 	queue     chan history.RequestRecord
 	stop      chan struct{}
 	stopOnce  sync.Once
@@ -25,9 +27,10 @@ type StorageAdapter struct {
 	wg        sync.WaitGroup
 }
 
-func NewStorageAdapter(db *storage.Database) *StorageAdapter {
+func NewStorageAdapter(db *storage.Database, metricSink *metrics.Metrics) *StorageAdapter {
 	s := &StorageAdapter{
 		requests: storage.NewRequests(db),
+		metrics:  metricSink,
 		queue:    make(chan history.RequestRecord, 1024),
 		stop:     make(chan struct{}),
 	}
@@ -48,6 +51,7 @@ func (s *StorageAdapter) run() {
 				slog.Warn("failed to persist request completion", "request_id", rec.ID, "error", err)
 			}
 		case <-s.stop:
+			s.drainBuffered()
 			return
 		}
 	}
@@ -64,7 +68,26 @@ func (s *StorageAdapter) RecordCompletion(rec history.RequestRecord) {
 	select {
 	case s.queue <- rec:
 	default:
+		if s.metrics != nil {
+			s.metrics.RecordStorageDrop()
+		}
 		slog.Warn("storage completion queue full; dropping newest record", "request_id", rec.ID)
+	}
+}
+
+func (s *StorageAdapter) drainBuffered() {
+	for {
+		select {
+		case rec, ok := <-s.queue:
+			if !ok {
+				return
+			}
+			if err := s.requests.Insert(rec); err != nil {
+				slog.Warn("failed to persist request completion", "request_id", rec.ID, "error", err)
+			}
+		default:
+			return
+		}
 	}
 }
 

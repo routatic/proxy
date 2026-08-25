@@ -28,6 +28,7 @@ type Metrics struct {
 	upstreamCalls    atomic.Int64
 	rateLimited      atomic.Int64
 	deduplicated     atomic.Int64
+	storageDropped   atomic.Int64
 
 	// Latency tracking
 	mu                sync.RWMutex
@@ -59,13 +60,13 @@ const (
 	defaultMaxLatencySamples  = 1000
 	defaultMaxPerModelSamples = 200
 	defaultMaxStageSamples    = 1000
-	stageParse                = "request_parse"
-	stageTokenCount           = "token_count"
-	stageRouting              = "routing"
-	stageNormalization        = "normalization"
-	stageUpstream             = "upstream"
-	stageResponseTransform    = "response_transform"
-	stageStorageEnqueue       = "storage_enqueue"
+	StageRequestParse         = "request_parse"
+	StageTokenCount           = "token_count"
+	StageRouting              = "routing"
+	StageNormalization        = "normalization"
+	StageUpstream             = "upstream"
+	StageResponseTransform    = "response_transform"
+	StageStorageEnqueue       = "storage_enqueue"
 )
 
 // durationRing stores a bounded rolling window of durations.
@@ -165,6 +166,12 @@ func (m *Metrics) RecordDeduplicated() {
 	m.deduplicated.Add(1)
 }
 
+// RecordStorageDrop records a completion record dropped from the bounded
+// asynchronous storage queue.
+func (m *Metrics) RecordStorageDrop() {
+	m.storageDropped.Add(1)
+}
+
 func (m *Metrics) recordLatency(latency time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -191,10 +198,9 @@ func (m *Metrics) RecordStage(stage string, duration time.Duration) {
 
 	ring, ok := m.stageLatencies[stage]
 	if !ok {
-		ring := newDurationRing(defaultMaxStageSamples)
+		ring = newDurationRing(defaultMaxStageSamples)
 		m.stageLatencies[stage] = ring
 	}
-	ring = m.stageLatencies[stage]
 	ring.Add(duration)
 	m.stageLatencies[stage] = ring
 }
@@ -262,6 +268,7 @@ func (m *Metrics) GetSnapshot() Snapshot {
 		UpstreamCalls:    m.upstreamCalls.Load(),
 		RateLimited:      m.rateLimited.Load(),
 		Deduplicated:     m.deduplicated.Load(),
+		StorageDropped:   m.storageDropped.Load(),
 		Latencies:        latencies,
 		ModelCounts:      modelCounts,
 		ModelSuccess:     modelSuccess,
@@ -280,6 +287,7 @@ type Snapshot struct {
 	UpstreamCalls    int64
 	RateLimited      int64
 	Deduplicated     int64
+	StorageDropped   int64
 	Latencies        []time.Duration
 	ModelCounts      map[string]int64
 	ModelSuccess     map[string]int64 // Per-model success counts

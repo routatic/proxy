@@ -15,6 +15,7 @@ import (
 // Counter handles token counting for text and message arrays.
 type Counter struct {
 	tiktoken *tiktoken.Tiktoken
+	encoding string
 	cacheMu  sync.Mutex
 	cache    *tokenCache
 }
@@ -106,6 +107,7 @@ func NewCounter() (*Counter, error) {
 	}
 	return &Counter{
 		tiktoken: enc,
+		encoding: "cl100k_base",
 		cache:    newTokenCache(true, defaultCacheCapacity),
 	}, nil
 }
@@ -131,7 +133,11 @@ func (c *Counter) CacheStats() (size, capacity int, enabled bool) {
 
 // CountTokens counts tokens in a string.
 func (c *Counter) CountTokens(text string) (int, error) {
-	key := sha256.Sum256(append([]byte("cl100k_base\x00"), []byte(text)...))
+	encoding := c.encoding
+	if encoding == "" {
+		encoding = "unknown"
+	}
+	key := sha256.Sum256(append([]byte(encoding+"\x00"), []byte(text)...))
 	c.cacheMu.Lock()
 	if c.cache != nil {
 		if count, ok := c.cache.get(key); ok {

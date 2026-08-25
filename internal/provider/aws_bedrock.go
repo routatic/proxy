@@ -236,7 +236,7 @@ func (p *AWSBedrockProvider) streamResponses(ctx context.Context, req *core.Norm
 func (p *AWSBedrockProvider) buildResponsesRequest(req *core.NormalizedRequest, model config.ModelConfig) *types.ResponsesRequest {
 	var inputs []types.ResponsesInput
 	for _, msg := range req.Messages {
-		contentBytes, _ := json.Marshal(msg.Content)
+		contentBytes, _ := json.Marshal(msg.TextContent())
 		inputs = append(inputs, types.ResponsesInput{
 			Role:    msg.Role,
 			Content: contentBytes,

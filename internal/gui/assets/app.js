@@ -6,6 +6,7 @@ const TRANSLATIONS = {
     'status.running': 'Running',
     'status.stopped': 'Stopped',
     'status.connected': 'Connected',
+    'warning.storageDrops': 'Warning: {count} completion record(s) were dropped before storage.',
     'tab.overview': 'Overview',
     'tab.history': 'History',
     'tab.performance': 'Performance',
@@ -125,6 +126,7 @@ const TRANSLATIONS = {
     'status.running': '运行中',
     'status.stopped': '已停止',
     'status.connected': '已连接',
+    'warning.storageDrops': '警告：有 {count} 条完成记录在写入存储前被丢弃。',
     'tab.overview': '概览',
     'tab.history': '历史请求',
     'tab.fallback': '降级策略',
@@ -430,6 +432,15 @@ async function refreshMetrics() {
     const r = await fetch('/api/metrics');
     if (!r.ok) return;
     const d = await r.json();
+
+    const storageWarning = document.getElementById('storage-warning');
+    const storageDropped = Number(d.storage_dropped || 0);
+    if (storageWarning) {
+      storageWarning.textContent = storageDropped > 0
+        ? t('warning.storageDrops').replace('{count}', fmt(storageDropped))
+        : '';
+      storageWarning.classList.toggle('hidden', storageDropped === 0);
+    }
 
     // status badge
     const running = d.proxy_running;
@@ -1919,4 +1930,3 @@ const AnalyticsModule = {
 setTimeout(() => {
   AnalyticsModule.init();
 }, 250);
-

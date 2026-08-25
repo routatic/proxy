@@ -61,7 +61,7 @@ func TestMetricsRecordsStageAndTTFT(t *testing.T) {
 	t.Parallel()
 
 	m := New()
-	m.RecordStage("token_count", 2*time.Millisecond)
+	m.RecordStage(StageTokenCount, 2*time.Millisecond)
 	m.RecordTTFT(12 * time.Millisecond)
 
 	snapshot := m.GetSnapshot()
@@ -70,6 +70,18 @@ func TestMetricsRecordsStageAndTTFT(t *testing.T) {
 	}
 	if got := snapshot.StageLatencies["token_count"]; len(got) != 1 || got[0] != 2*time.Millisecond {
 		t.Fatalf("token_count stage samples = %v", got)
+	}
+}
+
+func TestMetricsRecordsStorageDrops(t *testing.T) {
+	t.Parallel()
+
+	m := New()
+	m.RecordStorageDrop()
+	m.RecordStorageDrop()
+
+	if got, want := m.GetSnapshot().StorageDropped, int64(2); got != want {
+		t.Fatalf("StorageDropped = %d, want %d", got, want)
 	}
 }
 

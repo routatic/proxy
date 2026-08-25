@@ -91,7 +91,7 @@ func TestOpenCodeGoProvider_WireFormatOverride_MatchesEndpoint(t *testing.T) {
 	model := config.ModelConfig{ModelID: "deepseek-v4-pro", WireFormat: "responses"}
 	req := &core.NormalizedRequest{
 		Model:    model.ModelID,
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 	}
 
 	if got := p.WireFormat(model); got != core.WireFormatOpenAIResponses {
@@ -119,7 +119,7 @@ func TestOpenCodeGoProvider_Responses_MissingBaseURL(t *testing.T) {
 	model := config.ModelConfig{ModelID: "deepseek-v4-pro", WireFormat: "responses"}
 	req := &core.NormalizedRequest{
 		Model:    model.ModelID,
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 	}
 
 	// An unset responses_base_url must name the missing config key rather than
@@ -166,7 +166,7 @@ func TestOpenCodeGoProvider_ExecuteResponses_Override(t *testing.T) {
 	model := config.ModelConfig{ModelID: "muse-spark-1.2-contributor", WireFormat: "responses"}
 	req := &core.NormalizedRequest{
 		Model:    model.ModelID,
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 	}
 
 	result, err := p.Execute(context.Background(), req, model)

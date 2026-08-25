@@ -155,7 +155,7 @@ func TestAWSBedrockProvider_Execute(t *testing.T) {
 
 	req := &core.NormalizedRequest{
 		Model:    "moonshotai.kimi-k2.5",
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 	}
 	model := config.ModelConfig{ModelID: "moonshotai.kimi-k2.5"}
 
@@ -204,7 +204,7 @@ func TestAWSBedrockProvider_Stream(t *testing.T) {
 
 	req := &core.NormalizedRequest{
 		Model:    "moonshotai.kimi-k2.5",
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 		Stream:   true,
 	}
 	model := config.ModelConfig{ModelID: "moonshotai.kimi-k2.5"}
@@ -243,7 +243,7 @@ func TestAWSBedrockProvider_ExecuteAnthropic_UsesUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{
 		Model:    "anthropic.claude-sonnet-4",
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 	}
 	model := config.ModelConfig{ModelID: "anthropic.claude-sonnet-4"}
 
@@ -274,7 +274,7 @@ func TestAWSBedrockProvider_StreamAnthropic_UsesUserAgent(t *testing.T) {
 
 	req := &core.NormalizedRequest{
 		Model:    "anthropic.claude-sonnet-4",
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 		Stream:   true,
 	}
 	model := config.ModelConfig{ModelID: "anthropic.claude-sonnet-4"}
@@ -319,7 +319,7 @@ func TestAWSBedrockProvider_Execute_NoProjectID(t *testing.T) {
 
 	req := &core.NormalizedRequest{
 		Model:    "test-model",
-		Messages: []core.NormalizedMessage{{Role: "user", Content: "Hi"}},
+		Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}},
 	}
 	model := config.ModelConfig{ModelID: "test-model"}
 
