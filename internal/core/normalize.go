@@ -89,6 +89,11 @@ func normalizeSystemBlocks(raw json.RawMessage) []NormalizedContentBlock {
 }
 
 func normalizeContentBlock(block types.ContentBlock) NormalizedContentBlock {
+	content := block.Content
+	if len(content) == 0 && len(block.Output) > 0 {
+		content = block.Output
+	}
+
 	return NormalizedContentBlock{
 		Type:      block.Type,
 		Text:      block.Text,
@@ -96,7 +101,7 @@ func normalizeContentBlock(block types.ContentBlock) NormalizedContentBlock {
 		ToolUseID: block.ToolUseID,
 		Name:      block.Name,
 		Input:     append(json.RawMessage(nil), block.Input...),
-		Content:   append(json.RawMessage(nil), block.Content...),
+		Content:   append(json.RawMessage(nil), content...),
 		IsError:   block.IsError,
 		Thinking:  block.Thinking,
 		Signature: block.Signature,

@@ -41,3 +41,23 @@ func TestNormalizeRequestPreservesOrderedBlocksAndCacheDirectives(t *testing.T) 
 		t.Fatal("tool cache directive was lost")
 	}
 }
+
+func TestNormalizeRequestPreservesLegacyToolResultOutput(t *testing.T) {
+	req := &types.MessageRequest{
+		Model: "test",
+		Messages: []types.Message{{
+			Role: "tool",
+			Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"call_1","output":"legacy result"}
+			]`),
+		}},
+	}
+
+	normalized := NormalizeRequest(req)
+	if got, want := normalized.Messages[0].ToolResultsList()[0].Content, "legacy result"; got != want {
+		t.Fatalf("legacy tool result content = %q, want %q", got, want)
+	}
+	if got, want := string(normalized.Messages[0].Blocks[0].Content), `"legacy result"`; got != want {
+		t.Fatalf("normalized tool result content = %s, want %s", got, want)
+	}
+}
