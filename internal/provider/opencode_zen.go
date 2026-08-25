@@ -24,7 +24,8 @@ const upstreamUserAgent = "opencode/routatic-proxy"
 
 // OpenCodeZenProvider implements core.Provider for the OpenCode Zen backend.
 // Zen supports four wire formats determined by model ID: Anthropic (Claude,
-// Qwen), Responses (GPT), Gemini, and Chat Completions (everything else).
+// Qwen), Responses (GPT, Grok, Muse Spark), Gemini, and Chat Completions
+// (everything else).
 type OpenCodeZenProvider struct {
 	baseProvider
 }

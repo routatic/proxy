@@ -35,7 +35,7 @@ make dist    # Cross-compile for all platforms
 
 **Purpose:** routatic-proxy is a proxy server that sits between Claude Code and OpenCode Go. It intercepts Anthropic API requests, transforms them to OpenAI Chat Completions format, forwards them to OpenCode Go, and transforms responses back to Anthropic SSE.
 
-**Model routing is config-driven, not code-driven.** All models are defined in `~/.config/routatic-proxy/config.json` — adding a new model requires no code changes. Go provider models are transformed to OpenAI Chat Completions format automatically. Zen models use endpoint classification via `ClassifyEndpoint()`. The router in `internal/router/` selects models by matching request content against scenario patterns defined in `scenarios.go`.
+**Model routing is config-driven for existing model families.** All models are defined in `~/.config/routatic-proxy/config.json`. Adding a Go-provider model or a Zen model whose ID matches a recognized family prefix requires only config changes. A new Zen family that uses a non-default endpoint requires updating `ClassifyEndpoint()`. Go-provider wire-format differences remain configurable through `wire_format`. The router in `internal/router/` selects models by matching request content against scenario patterns defined in `scenarios.go`.
 
 If a model's upstream doesn't support Anthropic tool format (`type: "custom"` server-tool shorthands), set `"anthropic_tools_disabled": true` in the model config to force it through the Chat Completions transform path instead of the raw Anthropic endpoint.
 
@@ -43,8 +43,8 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 
 - `EndpointChatCompletions` — OpenAI-compatible `/v1/chat/completions`. The default, and what most models use.
 - `EndpointAnthropic` — Anthropic `/v1/messages`.
-- `EndpointResponses` — OpenAI native `/v1/responses`. Used by the GPT-5.x families (`IsResponsesModel`).
-- `EndpointGemini` — Google `/v1/models/{id}`. Used by `gemini-3.5-flash`, `gemini-3.1-pro`, `gemini-3-flash` (`IsGeminiModel`).
+- `EndpointResponses` — OpenAI native `/v1/responses`. Used by `gpt-*`, `grok-*`, and `muse-spark-*` models (`IsResponsesModel`).
+- `EndpointGemini` — Google `/v1/models/{id}`. Used by `gemini-*` models (`IsGeminiModel`).
 
 Which models take the Anthropic endpoint depends on the provider:
 
@@ -81,7 +81,7 @@ Which models take the Anthropic endpoint depends on the provider:
 | `qwen3.6-plus` | Go | 1M | 8192 | yes | Streaming fallback |
 | `qwen3.5-plus` | Go | 1M | 8192 | yes | Simple read-only ops |
 
-The "typical provider" column reflects how the shipped config wires each model; the registry itself is provider-agnostic, so any model can be pointed at any provider in `config.json`. Zen additionally exposes many models that are not in the registry (Claude, Gemini, GPT-5.x, other free-tier models) — those get their capabilities from the catalog rather than `modelMetadata`.
+The "typical provider" column reflects how the shipped config wires each model; the registry itself is provider-agnostic, so any model can be pointed at any provider in `config.json`. Zen additionally exposes many models that are not in the registry (Claude, Gemini, GPT, Grok, Muse Spark, and other free-tier models) — those get their capabilities from the catalog rather than `modelMetadata`.
 
 `internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `models.ClassifyEndpoint()` in `internal/models/classifier.go`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
 
