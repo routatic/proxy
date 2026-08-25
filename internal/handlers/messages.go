@@ -60,6 +60,7 @@ type responseWriter struct {
 	wroteHeader       bool
 	ssePayloadWritten bool
 	contentWritten    bool
+	firstContentAt    time.Time
 	usage             struct {
 		inputTokens              int
 		outputTokens             int
@@ -155,6 +156,9 @@ func (w *responseWriter) detectContentInSSE(b []byte) {
 		strings.Contains(data, `"tool_use"`) ||
 		strings.Contains(data, `"thinking_delta"`) {
 		w.contentWritten = true
+		if w.firstContentAt.IsZero() {
+			w.firstContentAt = time.Now()
+		}
 	}
 }
 
@@ -162,6 +166,12 @@ func (w *responseWriter) hasContent() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.contentWritten
+}
+
+func (w *responseWriter) firstContentTime() time.Time {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.firstContentAt
 }
 
 func (w *responseWriter) getOutputTokens() int {
@@ -358,6 +368,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	requestStart := time.Now()
 
 	// Generate or get request ID for correlation.
 	// Cap externally-provided IDs at 256 bytes to prevent header abuse.
@@ -382,6 +393,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	// Read the raw request body with a size limit to prevent memory exhaustion.
 	const maxBodySize = 104857600 // 100 MB
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+	parseStart := time.Now()
 	var rawBody json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawBody); err != nil {
 		var maxErr *http.MaxBytesError
@@ -419,6 +431,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		h.sendError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
+	h.metrics.RecordStage("request_parse", time.Since(parseStart))
 
 	// Record metrics
 	isStreaming := anthropicReq.Stream != nil && *anthropicReq.Stream
@@ -455,13 +468,16 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Count tokens.
+	tokenStart := time.Now()
 	tokenCount, err := h.tokenCounter.CountMessages(systemText, tokenMessages)
 	if err != nil {
 		h.logger.Warn("failed to count tokens", "error", err)
 		tokenCount = 0
 	}
+	h.metrics.RecordStage("token_count", time.Since(tokenStart))
 
 	// Route to appropriate model and build fallback chain.
+	routeStart := time.Now()
 	facts := router.AnalyzeRequestFacts(routerMessages)
 	needsTools := len(anthropicReq.Tools) > 0
 	modelChain, routeResult, err := h.buildModelChain(anthropicReq.Model, routerMessages, tokenCount, isStreaming, anthropicReq.MaxTokens, facts.NeedsVision, needsTools)
@@ -475,6 +491,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		h.sendError(w, status, message, err)
 		return
 	}
+	h.metrics.RecordStage("routing", time.Since(routeStart))
 
 	h.logger.Info("routing request",
 		"scenario", routeResult.Scenario,
@@ -484,8 +501,10 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		"reason", routeResult.Reason,
 	)
 
+	normalizeStart := time.Now()
 	normalizedReq := core.NormalizeRequest(&anthropicReq)
 	normalizedReq.Stream = isStreaming
+	h.metrics.RecordStage("normalization", time.Since(normalizeStart))
 
 	if h.captureLogger != nil && len(modelChain) > 0 {
 		provider := modelChain[0].Provider
@@ -494,7 +513,7 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	if isStreaming {
-		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
+		h.handleStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID, requestStart)
 	} else {
 		h.handleNonStreaming(w, r, &anthropicReq, normalizedReq, modelChain, rawBody, routeResult.Scenario, requestID)
 	}
@@ -606,8 +625,13 @@ func (h *MessagesHandler) handleStreaming(
 	rawBody json.RawMessage,
 	scenario router.Scenario,
 	requestID string,
+	requestStarts ...time.Time,
 ) {
 	clientCtx := r.Context()
+	requestStart := time.Now()
+	if len(requestStarts) > 0 {
+		requestStart = requestStarts[0]
+	}
 
 	rw := &responseWriter{ResponseWriter: w}
 
@@ -654,6 +678,10 @@ func (h *MessagesHandler) handleStreaming(
 			cancelAttempt()
 			latency := time.Since(streamStart)
 			h.metrics.RecordSuccess(model.ModelID, latency)
+			h.metrics.RecordStage("upstream", latency)
+			if firstContentAt := rw.firstContentTime(); !firstContentAt.IsZero() {
+				h.metrics.RecordTTFT(firstContentAt.Sub(requestStart))
+			}
 			h.logger.Info("streaming completed",
 				"model", model.ModelID,
 				"latency", latency,
@@ -679,12 +707,14 @@ func (h *MessagesHandler) handleStreaming(
 				h.history.Add(rec)
 			}
 			if h.storage != nil {
+				storageStart := time.Now()
 				if err := h.storage.InsertRequest(rec); err != nil {
 					h.logger.Warn("failed to insert request into storage", "error", err)
 				}
 				if err := h.storage.InsertLatency(model.ModelID, latency); err != nil {
 					h.logger.Warn("failed to insert latency sample into storage", "error", err)
 				}
+				h.metrics.RecordStage("storage_enqueue", time.Since(storageStart))
 			}
 		}
 
@@ -1176,6 +1206,7 @@ func (h *MessagesHandler) handleNonStreaming(
 ) {
 	ctx := r.Context()
 	startTime := time.Now()
+	upstreamStart := time.Now()
 
 	result, responseBody, err := h.fallbackHandler.ExecuteWithFallback(
 		ctx,
@@ -1235,6 +1266,7 @@ func (h *MessagesHandler) handleNonStreaming(
 		h.sendError(w, http.StatusBadGateway, "all models failed", err)
 		return
 	}
+	h.metrics.RecordStage("upstream", time.Since(upstreamStart))
 
 	latency := time.Since(startTime)
 	h.metrics.RecordSuccess(result.ModelID, latency)
@@ -1277,12 +1309,14 @@ func (h *MessagesHandler) handleNonStreaming(
 		h.history.Add(rec)
 	}
 	if h.storage != nil {
+		storageStart := time.Now()
 		if err := h.storage.InsertRequest(rec); err != nil {
 			h.logger.Warn("failed to insert request into storage", "error", err)
 		}
 		if err := h.storage.InsertLatency(result.ModelID, latency); err != nil {
 			h.logger.Warn("failed to insert latency sample into storage", "error", err)
 		}
+		h.metrics.RecordStage("storage_enqueue", time.Since(storageStart))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
