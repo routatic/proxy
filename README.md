@@ -67,11 +67,7 @@ This repository provides a cross-platform GUI for `routatic-proxy`:
 
 **Dashboard tabs:** Overview (real-time metrics & model distribution), History (last 1000 requests with filters), Settings (edit config with hot-reload).
 
-```bash
-routatic-proxy ui
-```
-
-On macOS, this opens a native window. On Linux, it opens your default browser.
+The dashboard is available at `http://127.0.0.1:3445` when using `start` (not `serve`).
 
 ## Quick Start
 
@@ -107,19 +103,20 @@ Prefer a GUI for switching providers? routatic-proxy works with [CC-Switch](http
 ## CLI Commands
 
 ```
-routatic-proxy serve              Start the proxy server
-routatic-proxy serve -b           Start in background (detached from terminal)
-routatic-proxy stop               Stop the running proxy server
-routatic-proxy status             Check if the proxy is running
-routatic-proxy init               Create default configuration file
-routatic-proxy validate           Validate configuration file
-routatic-proxy models             List all available models
-routatic-proxy ui                 Launch the GUI dashboard
-routatic-proxy autostart enable   Enable auto-start on login
-routatic-proxy update             Update to the latest release on your channel
-routatic-proxy update check       Check for a newer release without installing
-routatic-proxy update-channel     Show or switch release channel (stable|beta)
-routatic-proxy --version          Show version
+routatic-proxy start               Start proxy + dashboard (http://127.0.0.1:3445)
+routatic-proxy start -b            Start proxy + dashboard in background
+routatic-proxy serve               Start the proxy server only (headless, no dashboard)
+routatic-proxy serve -b            Start proxy only in background (detached from terminal)
+routatic-proxy stop                Stop the running proxy server
+routatic-proxy status              Check if the proxy is running
+routatic-proxy init                Create default configuration file
+routatic-proxy validate            Validate configuration file
+routatic-proxy models              List all available models
+routatic-proxy autostart enable    Enable auto-start on login
+routatic-proxy update              Update to the latest release on your channel
+routatic-proxy update check        Check for a newer release without installing
+routatic-proxy update-channel      Show or switch release channel (stable|beta)
+routatic-proxy --version           Show version
 ```
 
 ## Documentation
