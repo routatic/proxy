@@ -1498,6 +1498,40 @@ func TestProxyResponsesStream_ToolCall(t *testing.T) {
 	}
 }
 
+func TestProxyResponsesStream_OverlappingToolCallsUseDistinctIndices(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first"}}`,
+		`{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"second"}}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"a\":1}"}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_2","delta":"{\"b\":2}"}`,
+		`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first"}}`,
+		`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"second"}}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "gpt-5", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 9 {
+		t.Fatalf("expected 9 events, got %d: %+v", len(events), events)
+	}
+
+	wantIndices := []int{0, 1, 0, 1, 0, 1}
+	for i, want := range wantIndices {
+		event := events[i+1]
+		if event.Index == nil || *event.Index != want {
+			t.Errorf("event[%d] index = %v, want %d", i+1, event.Index, want)
+		}
+	}
+}
+
 // TestProxyResponsesStream_TextThenToolCall verifies that a text block followed
 // by a function_call produces contiguous indices (text=0, tool=1) and that both
 // blocks are closed before the terminal message_delta.

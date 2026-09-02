@@ -975,8 +975,8 @@ func (h *StreamHandler) processResponsesSSELine(
 	}
 
 	// A function_call output item becomes an Anthropic tool_use block. Close any
-	// open text block first so content block indices stay contiguous; when no
-	// text preceded the call, the tool block keeps the current index.
+	// open text block first, then reserve and advance a unique index for the
+	// tool block so subsequent and overlapping calls cannot reuse it.
 	if chunk.Type == "response.output_item.added" {
 		fc, ok := responsesOutputItem(chunk)
 		if !ok || fc.Type != "function_call" {
@@ -992,7 +992,8 @@ func (h *StreamHandler) processResponsesSSELine(
 		if closed {
 			*contentIndex++
 		}
-		startedToolCalls[fc.ID] = *contentIndex
+		blockIdx := *contentIndex
+		startedToolCalls[fc.ID] = blockIdx
 		*hasToolUse = true
 
 		toolID := fc.CallID
@@ -1001,7 +1002,7 @@ func (h *StreamHandler) processResponsesSSELine(
 		}
 		startEvent := types.MessageEvent{
 			Type:  "content_block_start",
-			Index: contentIndex,
+			Index: &blockIdx,
 			ContentBlock: &types.ContentBlock{
 				Type:  "tool_use",
 				ID:    toolID,
@@ -1012,6 +1013,7 @@ func (h *StreamHandler) processResponsesSSELine(
 		if err := writeSSEEvent(w, startEvent); err != nil {
 			return ErrClientDisconnected
 		}
+		*contentIndex++
 		flusher.Flush()
 	}
 

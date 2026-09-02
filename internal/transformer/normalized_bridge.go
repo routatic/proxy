@@ -58,40 +58,53 @@ func NormalizedToResponses(req *core.NormalizedRequest, model config.ModelConfig
 	// Convert messages. The Responses API rejects any input item that does not
 	// match a supported shape, so tool_use/tool_result blocks become typed
 	// items (function_call / function_call_output) instead of being folded
-	// into text. Text is emitted before tool items so an assistant message
-	// that leads with text keeps its natural ordering.
+	// into text. Walk the canonical block list directly to preserve chronology.
 	for _, msg := range req.Messages {
-		// Remaining text becomes a role-based item. The Responses API only
-		// knows user/assistant/developer roles; anything else maps to user.
-		if content := msg.TextContent(); content != "" {
-			role := msg.Role
-			if role != "user" && role != "assistant" && role != "developer" {
-				role = "user"
+		role := msg.Role
+		if role != "user" && role != "assistant" && role != "developer" {
+			role = "user"
+		}
+
+		var text string
+		flushText := func() {
+			if text == "" {
+				return
 			}
 			responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
 				Role:    role,
-				Content: rawJSONString(content),
+				Content: rawJSONString(text),
 			})
+			text = ""
 		}
 
-		// Assistant tool calls become function_call items.
-		for _, tc := range msg.ToolCallsList() {
-			responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
-				Type:      "function_call",
-				CallID:    tc.ID,
-				Name:      tc.Name,
-				Arguments: tc.Arguments,
-			})
+		toolResults := msg.ToolResultsList()
+		toolResultIndex := 0
+		for _, block := range msg.Blocks {
+			switch block.Type {
+			case "text":
+				text += block.Text
+			case "tool_use":
+				flushText()
+				responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+					Type:      "function_call",
+					CallID:    block.ID,
+					Name:      block.Name,
+					Arguments: string(block.Input),
+				})
+			case "tool_result":
+				flushText()
+				tr := toolResults[toolResultIndex]
+				toolResultIndex++
+				responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+					Type:   "function_call_output",
+					CallID: tr.ToolCallID,
+					Output: rawJSONString(tr.Content),
+				})
+			default:
+				flushText()
+			}
 		}
-
-		// Tool results become function_call_output items.
-		for _, tr := range msg.ToolResultsList() {
-			responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
-				Type:   "function_call_output",
-				CallID: tr.ToolCallID,
-				Output: rawJSONString(tr.Content),
-			})
-		}
+		flushText()
 	}
 
 	// Convert tools.

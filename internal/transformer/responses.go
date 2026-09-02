@@ -29,6 +29,21 @@ func (t *RequestTransformer) TransformToResponses(
 	for _, msg := range anthropicReq.Messages {
 		blocks := msg.ContentBlocks()
 		var textParts []string
+		flushText := func() {
+			if len(textParts) == 0 {
+				return
+			}
+			var sb strings.Builder
+			for _, p := range textParts {
+				sb.WriteString(p)
+			}
+			content, _ := json.Marshal(sb.String())
+			input = append(input, types.ResponsesInput{
+				Role:    msg.Role,
+				Content: content,
+			})
+			textParts = nil
+		}
 
 		for _, block := range blocks {
 			switch block.Type {
@@ -37,6 +52,7 @@ func (t *RequestTransformer) TransformToResponses(
 			case "image":
 				textParts = append(textParts, "[Image]")
 			case "tool_use":
+				flushText()
 				// Tool calls are typed items, not text.
 				input = append(input, types.ResponsesInput{
 					Type:      "function_call",
@@ -45,6 +61,7 @@ func (t *RequestTransformer) TransformToResponses(
 					Arguments: string(block.Input),
 				})
 			case "tool_result":
+				flushText()
 				// Tool results are typed items, not {"role":"tool"} messages.
 				input = append(input, types.ResponsesInput{
 					Type:   "function_call_output",
@@ -54,18 +71,7 @@ func (t *RequestTransformer) TransformToResponses(
 			}
 		}
 
-		if len(textParts) > 0 {
-			var sb strings.Builder
-			for _, p := range textParts {
-				sb.WriteString(p)
-			}
-			text := sb.String()
-			content, _ := json.Marshal(text)
-			input = append(input, types.ResponsesInput{
-				Role:    msg.Role,
-				Content: content,
-			})
-		}
+		flushText()
 	}
 
 	req := &types.ResponsesRequest{
