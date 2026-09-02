@@ -2,6 +2,7 @@ package transformer
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
@@ -102,6 +103,11 @@ func NormalizedToResponses(req *core.NormalizedRequest, model config.ModelConfig
 				})
 			default:
 				flushText()
+				slog.Warn(
+					"dropping unsupported Responses input block",
+					"type", block.Type,
+					"role", msg.Role,
+				)
 			}
 		}
 		flushText()

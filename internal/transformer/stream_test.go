@@ -1472,6 +1472,9 @@ func TestProxyResponsesStream_ToolCall(t *testing.T) {
 	if events[1].ContentBlock.Name != "get_weather" {
 		t.Errorf("event[1].ContentBlock.Name = %q, want get_weather", events[1].ContentBlock.Name)
 	}
+	if got := string(events[1].ContentBlock.Input); got != `{}` {
+		t.Errorf("event[1].ContentBlock.Input = %s, want {}", got)
+	}
 	if events[1].Index == nil || *events[1].Index != 0 {
 		t.Errorf("event[1].Index = %v, want 0", events[1].Index)
 	}
@@ -1523,12 +1526,43 @@ func TestProxyResponsesStream_OverlappingToolCallsUseDistinctIndices(t *testing.
 		t.Fatalf("expected 9 events, got %d: %+v", len(events), events)
 	}
 
-	wantIndices := []int{0, 1, 0, 1, 0, 1}
-	for i, want := range wantIndices {
+	wantEvents := []struct {
+		eventType string
+		index     int
+		deltaType string
+	}{
+		{eventType: "content_block_start", index: 0},
+		{eventType: "content_block_start", index: 1},
+		{eventType: "content_block_delta", index: 0, deltaType: "input_json_delta"},
+		{eventType: "content_block_delta", index: 1, deltaType: "input_json_delta"},
+		{eventType: "content_block_stop", index: 0},
+		{eventType: "content_block_stop", index: 1},
+	}
+	for i, want := range wantEvents {
 		event := events[i+1]
-		if event.Index == nil || *event.Index != want {
-			t.Errorf("event[%d] index = %v, want %d", i+1, event.Index, want)
+		if event.Type != want.eventType {
+			t.Errorf("event[%d].Type = %q, want %q", i+1, event.Type, want.eventType)
 		}
+		if event.Index == nil || *event.Index != want.index {
+			t.Errorf("event[%d].Index = %v, want %d", i+1, event.Index, want.index)
+		}
+		if want.eventType == "content_block_start" &&
+			(event.ContentBlock == nil || event.ContentBlock.Type != "tool_use") {
+			t.Errorf("event[%d].ContentBlock = %+v, want tool_use", i+1, event.ContentBlock)
+		}
+		if want.deltaType != "" &&
+			(event.Delta == nil || event.Delta.Type != want.deltaType) {
+			t.Errorf("event[%d].Delta = %+v, want %s", i+1, event.Delta, want.deltaType)
+		}
+	}
+
+	if events[7].Type != "message_delta" ||
+		events[7].Delta == nil ||
+		events[7].Delta.StopReason != "tool_use" {
+		t.Errorf("event[7] = %+v, want message_delta with tool_use stop reason", events[7])
+	}
+	if events[8].Type != "message_stop" {
+		t.Errorf("event[8].Type = %q, want message_stop", events[8].Type)
 	}
 }
 
