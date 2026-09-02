@@ -15,9 +15,17 @@ type ResponsesRequest struct {
 }
 
 // ResponsesInput represents a single input item in the Responses request.
+// The API accepts heterogeneous items: role-based messages (developer/user/
+// assistant) and typed items (function_call, function_call_output, reasoning).
+// Fields are omitempty so one struct covers every shape.
 type ResponsesInput struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content,omitempty"`
+	Type      string          `json:"type,omitempty"`
+	Role      string          `json:"role,omitempty"`
+	Content   json.RawMessage `json:"content,omitempty"`
+	CallID    string          `json:"call_id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Arguments string          `json:"arguments,omitempty"`
+	Output    json.RawMessage `json:"output,omitempty"`
 }
 
 // ResponsesTool represents a tool definition for the Responses API.
@@ -70,7 +78,9 @@ type ResponsesUsage struct {
 type ResponsesChunk struct {
 	Type   string            `json:"type"`
 	ID     string            `json:"id,omitempty"`
+	ItemID string            `json:"item_id,omitempty"`
 	Delta  string            `json:"delta,omitempty"`
+	Item   *ResponsesOutput  `json:"item,omitempty"`
 	Output []ResponsesOutput `json:"output,omitempty"`
 	Usage  *ResponsesUsage   `json:"usage,omitempty"`
 }

@@ -2,7 +2,6 @@ package transformer
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/routatic/proxy/internal/config"
@@ -38,14 +37,19 @@ func (t *RequestTransformer) TransformToResponses(
 			case "image":
 				textParts = append(textParts, "[Image]")
 			case "tool_use":
-				textParts = append(textParts, fmt.Sprintf("[Tool: %s(%s)]", block.Name, string(block.Input)))
-			case "tool_result":
-				// For Responses API, tool results are separate items
-				toolContent := block.TextContent()
-				content, _ := json.Marshal(toolContent)
+				// Tool calls are typed items, not text.
 				input = append(input, types.ResponsesInput{
-					Role:    "tool",
-					Content: content,
+					Type:      "function_call",
+					CallID:    block.ID,
+					Name:      block.Name,
+					Arguments: string(block.Input),
+				})
+			case "tool_result":
+				// Tool results are typed items, not {"role":"tool"} messages.
+				input = append(input, types.ResponsesInput{
+					Type:   "function_call_output",
+					CallID: block.ToolUseID,
+					Output: rawJSONString(block.TextContent()),
 				})
 			}
 		}

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -175,5 +176,86 @@ func TestOpenCodeGoProvider_ExecuteResponses_Override(t *testing.T) {
 	}
 	if !strings.Contains(string(result.Body), "hi") {
 		t.Errorf("Execute() body = %s, want it to contain the assistant text", result.Body)
+	}
+}
+
+// TestOpenCodeGoProvider_ExecuteResponses_ToolRoundTrip sends a 3-message tool
+// round-trip (user text -> assistant tool_use -> user tool_result) and asserts
+// the request body the server receives contains a function_call item followed
+// by a function_call_output item for the same call id, and no item that is
+// neither typed nor role+content (the shape that 400s upstream).
+func TestOpenCodeGoProvider_ExecuteResponses_ToolRoundTrip(t *testing.T) {
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.ResponsesResponse{
+			ID: "resp-tool", Object: "response", Created: 1, Model: "muse-spark-1.2-contributor",
+			Output: []types.ResponsesOutput{{
+				Type: "message", Role: "assistant",
+				Content: []types.ResponsesContent{{Type: "output_text", Text: "done"}},
+			}},
+			Usage: types.ResponsesUsage{InputTokens: 1, OutputTokens: 1},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIKey:     "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{BaseURL: "http://127.0.0.1:1", ResponsesBaseURL: server.URL},
+	}
+	p := NewOpenCodeGoProvider(config.NewAtomicConfig(cfg, ""))
+
+	model := config.ModelConfig{ModelID: "muse-spark-1.2-contributor", WireFormat: "responses"}
+	req := &core.NormalizedRequest{
+		Model: model.ModelID,
+		Messages: []core.NormalizedMessage{
+			{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "What's the weather?"}}},
+			{Role: "assistant", Blocks: []core.NormalizedContentBlock{
+				{Type: "text", Text: "Let me check."},
+				{Type: "tool_use", ID: "t1", Name: "get_weather", Input: json.RawMessage(`{"location":"SF"}`)},
+			}},
+			{Role: "user", Blocks: []core.NormalizedContentBlock{
+				{Type: "tool_result", ToolUseID: "t1", Content: json.RawMessage(`"72F"`)},
+			}},
+		},
+	}
+
+	if _, err := p.Execute(context.Background(), req, model); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	var rr types.ResponsesRequest
+	if err := json.Unmarshal(gotBody, &rr); err != nil {
+		t.Fatalf("request body is not a valid ResponsesRequest: %v\nbody: %s", err, gotBody)
+	}
+
+	callIdx, outputIdx := -1, -1
+	for i, item := range rr.Input {
+		if item.Type == "" && (item.Role == "" || len(item.Content) == 0) {
+			t.Errorf("input[%d] is neither typed nor role+content: %+v", i, item)
+		}
+		switch item.Type {
+		case "function_call":
+			callIdx = i
+			if item.CallID != "t1" || item.Name != "get_weather" {
+				t.Errorf("function_call item = %+v, want call_id t1 / name get_weather", item)
+			}
+		case "function_call_output":
+			outputIdx = i
+			if item.CallID != "t1" {
+				t.Errorf("function_call_output item = %+v, want call_id t1", item)
+			}
+		}
+	}
+
+	if callIdx == -1 {
+		t.Error("no function_call item in request body")
+	}
+	if outputIdx == -1 {
+		t.Error("no function_call_output item in request body")
+	}
+	if callIdx != -1 && outputIdx != -1 && callIdx > outputIdx {
+		t.Errorf("function_call at %d must precede function_call_output at %d", callIdx, outputIdx)
 	}
 }

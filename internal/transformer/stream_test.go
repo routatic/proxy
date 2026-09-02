@@ -1430,3 +1430,199 @@ func TestProxyStream_NoDuplicateToolStopsOnErrorAfterFinishReason(t *testing.T) 
 		t.Errorf("penultimate event = %+v, want message_delta with stop_reason tool_use", got)
 	}
 }
+
+// TestProxyResponsesStream_ToolCall verifies that a function_call output item in
+// a Responses stream becomes an Anthropic tool_use block with incremental
+// input_json_delta arguments and stop_reason tool_use.
+func TestProxyResponsesStream_ToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","output":[{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"get_weather","arguments":"","status":"in_progress"}]}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"city\":"}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"\"Paris\"}"}`,
+		`{"type":"response.output_item.done","output":[{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"get_weather","arguments":"{\"city\":\"Paris\"}","status":"completed"}]}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, tool_start(idx=0), 2x input_json_delta, tool_stop(idx=0),
+	// message_delta, message_stop = 7
+	if len(events) != 7 {
+		t.Fatalf("expected 7 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].Type != "content_block_start" {
+		t.Errorf("event[1].Type = %q, want content_block_start", events[1].Type)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[1].ContentBlock = %+v, want tool_use", events[1].ContentBlock)
+	}
+	if events[1].ContentBlock.ID != "call_abc" {
+		t.Errorf("event[1].ContentBlock.ID = %q, want call_abc", events[1].ContentBlock.ID)
+	}
+	if events[1].ContentBlock.Name != "get_weather" {
+		t.Errorf("event[1].ContentBlock.Name = %q, want get_weather", events[1].ContentBlock.Name)
+	}
+	if events[1].Index == nil || *events[1].Index != 0 {
+		t.Errorf("event[1].Index = %v, want 0", events[1].Index)
+	}
+
+	if events[2].Delta == nil || events[2].Delta.Type != "input_json_delta" || events[2].Delta.PartialJSON != `{"city":` {
+		t.Errorf("event[2] = %+v, want input_json_delta `{\"city\":`", events[2])
+	}
+	if events[3].Delta == nil || events[3].Delta.Type != "input_json_delta" || events[3].Delta.PartialJSON != `"Paris"}` {
+		t.Errorf("event[3] = %+v, want input_json_delta `\"Paris\"}`", events[3])
+	}
+
+	if events[4].Type != "content_block_stop" {
+		t.Errorf("event[4].Type = %q, want content_block_stop", events[4].Type)
+	}
+
+	if events[5].Type != "message_delta" {
+		t.Errorf("event[5].Type = %q, want message_delta", events[5].Type)
+	}
+	if events[5].Delta == nil || events[5].Delta.StopReason != "tool_use" {
+		t.Errorf("event[5].Delta.StopReason = %q, want tool_use", events[5].Delta.StopReason)
+	}
+	if events[6].Type != "message_stop" {
+		t.Errorf("event[6].Type = %q, want message_stop", events[6].Type)
+	}
+}
+
+// TestProxyResponsesStream_TextThenToolCall verifies that a text block followed
+// by a function_call produces contiguous indices (text=0, tool=1) and that both
+// blocks are closed before the terminal message_delta.
+func TestProxyResponsesStream_TextThenToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"I'll fetch it now."}`,
+		`{"type":"response.output_item.added","output":[{"type":"function_call","id":"fc_9","call_id":"call_xyz","name":"search","arguments":"","status":"in_progress"}]}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_9","delta":"{\"q\":\"go\"}"}`,
+		`{"type":"response.output_item.done","output":[{"type":"function_call","id":"fc_9","call_id":"call_xyz","name":"search","arguments":"{\"q\":\"go\"}","status":"completed"}]}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, text_start(0), text_delta, text_stop(0), tool_start(1),
+	// args_delta(1), tool_stop(1), message_delta, message_stop = 9
+	if len(events) != 9 {
+		t.Fatalf("expected 9 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "text" {
+		t.Errorf("event[1] = %+v, want text block start", events[1])
+	}
+	if events[1].Index == nil || *events[1].Index != 0 {
+		t.Errorf("event[1].Index = %v, want 0", events[1].Index)
+	}
+
+	if events[3].Type != "content_block_stop" {
+		t.Errorf("event[3].Type = %q, want content_block_stop (text close)", events[3].Type)
+	}
+
+	if events[4].ContentBlock == nil || events[4].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[4] = %+v, want tool_use block start", events[4])
+	}
+	if events[4].Index == nil || *events[4].Index != 1 {
+		t.Errorf("event[4].Index = %v, want 1", events[4].Index)
+	}
+
+	if events[5].Delta == nil || events[5].Delta.Type != "input_json_delta" {
+		t.Errorf("event[5] = %+v, want input_json_delta", events[5])
+	}
+
+	if events[7].Type != "message_delta" || events[7].Delta == nil || events[7].Delta.StopReason != "tool_use" {
+		t.Errorf("event[7] = %+v, want message_delta stop_reason tool_use", events[7])
+	}
+}
+
+// TestProxyResponsesStream_TextOnlyStillWorks guards the pre-existing text-only
+// behavior: stop_reason stays end_turn and no tool blocks are emitted.
+func TestProxyResponsesStream_TextOnlyStillWorks(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Four"}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, text_start, text_delta, text_stop, message_delta, message_stop = 6
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "end_turn" {
+		t.Errorf("event[4] = %+v, want message_delta stop_reason end_turn", events[4])
+	}
+}
+
+// TestProxyResponsesStream_ToolCall_ItemField matches the event shape opencode.ai's
+// Responses endpoint actually sends: output_item events carry the item in the
+// "item" field (not an "output" array), and arguments arrive via
+// function_call_arguments.delta keyed by item_id.
+func TestProxyResponsesStream_ToolCall_ItemField(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","sequence_number":4,"output_index":2,"item":{"id":"fc_abc","type":"function_call","status":"in_progress","name":"get_weather","call_id":"call_xyz"}}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":11,"output_index":2,"item_id":"fc_abc","delta":"{\"city\":\"Paris\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":13,"output_index":2,"item":{"id":"fc_abc","type":"function_call","status":"completed","name":"get_weather","call_id":"call_xyz","arguments":"{\"city\":\"Paris\"}"}}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, tool_start(idx=0), args_delta, tool_stop(idx=0),
+	// message_delta, message_stop = 6
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Fatalf("event[1] = %+v, want tool_use block start", events[1])
+	}
+	if events[1].ContentBlock.ID != "call_xyz" || events[1].ContentBlock.Name != "get_weather" {
+		t.Errorf("event[1] tool_use = %+v, want id call_xyz name get_weather", events[1].ContentBlock)
+	}
+	if events[2].Delta == nil || events[2].Delta.Type != "input_json_delta" || events[2].Delta.PartialJSON != `{"city":"Paris"}` {
+		t.Errorf("event[2] = %+v, want input_json_delta `{\"city\":\"Paris\"}`", events[2])
+	}
+	if events[3].Type != "content_block_stop" {
+		t.Errorf("event[3].Type = %q, want content_block_stop", events[3].Type)
+	}
+	if events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
+		t.Errorf("event[4] = %+v, want message_delta stop_reason tool_use", events[4])
+	}
+}
