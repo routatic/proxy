@@ -1,0 +1,27 @@
+[Unit]
+Description=Routatic Proxy Service
+Documentation=https://github.com/routatic/proxy
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/routatic-proxy serve
+Restart=on-failure
+RestartSec=5
+
+# Optional: put ROUTATIC_PROXY_API_KEY (and any other overrides) here.
+# The leading "-" makes the file optional.
+EnvironmentFile=-%h/.config/routatic-proxy/env
+
+# Hardening. The proxy only needs loopback networking and its own config
+# directory under $HOME.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=%h/.config/routatic-proxy %h/.local/share/routatic-proxy
+
+[Install]
+WantedBy=default.target

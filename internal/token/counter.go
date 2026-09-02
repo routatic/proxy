@@ -2,9 +2,12 @@
 package token
 
 import (
+	"container/list"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/pkoukk/tiktoken-go"
 )
@@ -12,6 +15,67 @@ import (
 // Counter handles token counting for text and message arrays.
 type Counter struct {
 	tiktoken *tiktoken.Tiktoken
+	encoding string
+	cacheMu  sync.Mutex
+	cache    *tokenCache
+}
+
+const defaultCacheCapacity = 8192
+
+type tokenCache struct {
+	enabled  bool
+	capacity int
+	ll       *list.List
+	items    map[[32]byte]*list.Element
+}
+
+type tokenCacheEntry struct {
+	key   [32]byte
+	count int
+}
+
+func newTokenCache(enabled bool, capacity int) *tokenCache {
+	if capacity <= 0 {
+		capacity = defaultCacheCapacity
+	}
+	return &tokenCache{
+		enabled:  enabled,
+		capacity: capacity,
+		ll:       list.New(),
+		items:    make(map[[32]byte]*list.Element, capacity),
+	}
+}
+
+func (c *tokenCache) get(key [32]byte) (int, bool) {
+	if !c.enabled {
+		return 0, false
+	}
+	elem, ok := c.items[key]
+	if !ok {
+		return 0, false
+	}
+	c.ll.MoveToFront(elem)
+	return elem.Value.(tokenCacheEntry).count, true
+}
+
+func (c *tokenCache) put(key [32]byte, count int) {
+	if !c.enabled {
+		return
+	}
+	if elem, ok := c.items[key]; ok {
+		elem.Value = tokenCacheEntry{key: key, count: count}
+		c.ll.MoveToFront(elem)
+		return
+	}
+	elem := c.ll.PushFront(tokenCacheEntry{key: key, count: count})
+	c.items[key] = elem
+	if c.ll.Len() > c.capacity {
+		oldest := c.ll.Back()
+		if oldest != nil {
+			c.ll.Remove(oldest)
+			delete(c.items, oldest.Value.(tokenCacheEntry).key)
+		}
+	}
 }
 
 // defaultCacheDir returns a user-writable cache directory for tiktoken files.
@@ -41,13 +105,57 @@ func NewCounter() (*Counter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get encoding: %w", err)
 	}
-	return &Counter{tiktoken: enc}, nil
+	return &Counter{
+		tiktoken: enc,
+		encoding: "cl100k_base",
+		cache:    newTokenCache(true, defaultCacheCapacity),
+	}, nil
+}
+
+// ConfigureCache atomically replaces the token count cache. Replacing the
+// cache drops old entries so a config reload cannot retain stale state.
+func (c *Counter) ConfigureCache(enabled bool, capacity int) {
+	c.cacheMu.Lock()
+	c.cache = newTokenCache(enabled, capacity)
+	c.cacheMu.Unlock()
+}
+
+// CacheStats returns the current cache size, capacity, and hit/miss counters.
+// It is intended for diagnostics and tests.
+func (c *Counter) CacheStats() (size, capacity int, enabled bool) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	if c.cache == nil {
+		return 0, 0, false
+	}
+	return c.cache.ll.Len(), c.cache.capacity, c.cache.enabled
 }
 
 // CountTokens counts tokens in a string.
 func (c *Counter) CountTokens(text string) (int, error) {
+	encoding := c.encoding
+	if encoding == "" {
+		encoding = "unknown"
+	}
+	key := sha256.Sum256(append([]byte(encoding+"\x00"), []byte(text)...))
+	c.cacheMu.Lock()
+	if c.cache != nil {
+		if count, ok := c.cache.get(key); ok {
+			c.cacheMu.Unlock()
+			return count, nil
+		}
+	}
+	c.cacheMu.Unlock()
+
 	tokens := c.tiktoken.Encode(text, nil, nil)
-	return len(tokens), nil
+	count := len(tokens)
+
+	c.cacheMu.Lock()
+	if c.cache != nil {
+		c.cache.put(key, count)
+	}
+	c.cacheMu.Unlock()
+	return count, nil
 }
 
 // MessageContent represents a single message in a conversation.

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/routatic/proxy/internal/catalog"
@@ -18,25 +19,94 @@ import (
 var ErrUnknownProvider = errors.New("unknown provider")
 
 type ModelRouter struct {
-	atomic      *config.AtomicConfig
-	db          *storage.Database
-	catalogPath string
-	catMu       sync.Mutex
-	cat         *catalog.IndexedCatalog
-	catErr      error
-	catCache    time.Time
+	atomic       *config.AtomicConfig
+	db           *storage.Database
+	catalogPath  string
+	catMu        sync.Mutex
+	cat          atomic.Pointer[catalog.IndexedCatalog]
+	catErr       error
+	catCache     atomic.Int64
+	refreshing   atomic.Bool
+	refreshStop  chan struct{}
+	refreshDone  chan struct{}
+	updateSignal chan struct{}
+	refreshWG    sync.WaitGroup
 }
 
 func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
-	return &ModelRouter{atomic: atomic}
+	return newModelRouter(atomic, nil, "")
 }
 
 func NewModelRouterWithDB(atomic *config.AtomicConfig, db *storage.Database) *ModelRouter {
-	return &ModelRouter{atomic: atomic, db: db}
+	return newModelRouter(atomic, db, "")
 }
 
 func NewModelRouterWithCatalog(atomic *config.AtomicConfig, catalogPath string) *ModelRouter {
-	return &ModelRouter{atomic: atomic, catalogPath: catalogPath}
+	return newModelRouter(atomic, nil, catalogPath)
+}
+
+func newModelRouter(atomic *config.AtomicConfig, db *storage.Database, catalogPath string) *ModelRouter {
+	return &ModelRouter{
+		atomic: atomic, db: db, catalogPath: catalogPath,
+		updateSignal: make(chan struct{}, 1),
+	}
+}
+
+// StartCatalogRefresh keeps a valid catalog snapshot warm in the background.
+// Requests continue using the last valid snapshot while a refresh is running.
+func (r *ModelRouter) StartCatalogRefresh(ctx context.Context) {
+	r.catMu.Lock()
+	if r.refreshStop != nil {
+		r.catMu.Unlock()
+		return
+	}
+	r.refreshStop = make(chan struct{})
+	r.refreshDone = make(chan struct{})
+	stop := r.refreshStop
+	done := r.refreshDone
+	updates := r.updateSignal
+	r.catMu.Unlock()
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		r.refreshCatalogAsync(context.Background())
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-stop:
+				return
+			case <-ticker.C:
+				r.refreshCatalogAsync(context.Background())
+			case <-updates:
+				r.refreshCatalogAsync(context.Background())
+			}
+		}
+	}()
+}
+
+// SignalCatalogUpdate asks the background refresher to publish a new snapshot.
+func (r *ModelRouter) SignalCatalogUpdate() {
+	select {
+	case r.updateSignal <- struct{}{}:
+	default:
+	}
+}
+
+// StopCatalogRefresh stops the background refresh loop.
+func (r *ModelRouter) StopCatalogRefresh() {
+	r.catMu.Lock()
+	stop, done := r.refreshStop, r.refreshDone
+	r.refreshStop, r.refreshDone = nil, nil
+	r.catMu.Unlock()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	<-done
+	r.refreshWG.Wait()
 }
 
 func (r *ModelRouter) catalog(ctx context.Context) (*catalog.IndexedCatalog, error) {
@@ -45,25 +115,56 @@ func (r *ModelRouter) catalog(ctx context.Context) (*catalog.IndexedCatalog, err
 		return nil, nil
 	}
 
-	r.catMu.Lock()
-	defer r.catMu.Unlock()
-
-	if r.cat != nil && time.Since(r.catCache) < 30*time.Second {
-		return r.cat, nil
+	current := r.cat.Load()
+	lastRefresh := time.Unix(0, r.catCache.Load())
+	if current != nil && time.Since(lastRefresh) < 30*time.Second {
+		return current, nil
+	}
+	if current != nil {
+		r.refreshCatalogAsync(ctx)
+		return current, nil
 	}
 
+	r.catMu.Lock()
+	defer r.catMu.Unlock()
+	if current = r.cat.Load(); current != nil {
+		return current, nil
+	}
+	return r.refreshCatalogLocked(ctx)
+}
+
+func (r *ModelRouter) refreshCatalogAsync(ctx context.Context) {
+	if !r.refreshing.CompareAndSwap(false, true) {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	r.refreshWG.Add(1)
+	go func() {
+		defer r.refreshWG.Done()
+		defer r.refreshing.Store(false)
+		r.catMu.Lock()
+		defer r.catMu.Unlock()
+		_, _ = r.refreshCatalogLocked(ctx)
+	}()
+}
+
+func (r *ModelRouter) refreshCatalogLocked(ctx context.Context) (*catalog.IndexedCatalog, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	var loaded *catalog.IndexedCatalog
+	var err error
 	if r.db != nil {
-		r.cat, r.catErr = catalog.LoadFromSQLite(ctx, r.db)
+		loaded, err = catalog.LoadFromSQLite(ctx, r.db)
 	} else if r.catalogPath != "" {
-		r.cat, r.catErr = catalog.Load(r.catalogPath)
+		loaded, err = catalog.Load(r.catalogPath)
 	}
-	if r.catErr == nil {
-		r.catCache = time.Now()
+	r.catErr = err
+	if err == nil {
+		r.cat.Store(loaded)
+		r.catCache.Store(time.Now().UnixNano())
 	}
-	return r.cat, r.catErr
+	return loaded, err
 }
 
 // isRespectRequestedModel returns true when the client-specified model should be
@@ -77,10 +178,30 @@ func isRespectRequestedModel(cfg *config.Config) bool {
 }
 
 // RouteResult contains the selected model and fallback chain.
+//
+// Reason is the human-readable routing explanation used by logs and the
+// dry-run/debug paths. It combines the scenario trigger (why this scenario
+// matched) with the model that was actually resolved for it — always read from
+// config or the catalog, never a hardcoded name, so it cannot drift.
 type RouteResult struct {
 	Primary   config.ModelConfig
 	Fallbacks []config.ModelConfig
 	Scenario  Scenario
+	Reason    string
+}
+
+// describeRouting pairs a scenario trigger with the model resolved for it.
+// The model ID is always sourced from the resolved ModelConfig (config or
+// catalog), which is what makes the reason self-updating.
+func describeRouting(trigger string, primary config.ModelConfig) string {
+	modelID := primary.ModelID
+	if modelID == "" {
+		modelID = "(unresolved)"
+	}
+	if trigger == "" {
+		return fmt.Sprintf("resolved model %s", modelID)
+	}
+	return fmt.Sprintf("%s -> resolved model %s", trigger, modelID)
 }
 
 // resolveRequestedModel checks if the user-specified model should override
@@ -131,6 +252,7 @@ func (r *ModelRouter) resolveRequestedModel(cfg *config.Config, requestedModel s
 		Primary:   primary,
 		Fallbacks: fallbacks,
 		Scenario:  ScenarioDefault,
+		Reason:    describeRouting(fmt.Sprintf("respect_requested_model honored request for %q", requestedModel), primary),
 	}, true, nil
 }
 
@@ -234,6 +356,7 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requested
 	// Otherwise, use scenario-based routing
 	result := DetectScenario(messages, tokenCount, cfg)
 	scenarioKey := string(result.Scenario)
+	trigger := fmt.Sprintf("scenario=%s (%s)", result.Scenario, result.Reason)
 
 	// Get primary model for scenario. When cost-based routing is enabled and
 	// a non-empty catalog is available, prefer the cheapest matching catalog
@@ -245,6 +368,7 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requested
 		if resolved, err := selector.SelectCheapest(scenarioKey, constraints); err == nil {
 			primary = resolvedModelToConfig(resolved)
 			ok = true
+			trigger += ", cheapest catalog model"
 		}
 	}
 
@@ -257,6 +381,7 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requested
 		if !ok {
 			return RouteResult{}, fmt.Errorf("no default model configured")
 		}
+		trigger += ", scenario not configured so using \"default\" model"
 	}
 
 	// Get fallbacks for scenario
@@ -273,6 +398,7 @@ func (r *ModelRouter) Route(messages []MessageContent, tokenCount int, requested
 		Primary:   primary,
 		Fallbacks: fallbacks,
 		Scenario:  result.Scenario,
+		Reason:    describeRouting(trigger, primary),
 	}, nil
 }
 
@@ -358,6 +484,7 @@ func buildOverrideResult(cfg *config.Config, override config.ModelConfig, fallba
 		Primary:   override,
 		Fallbacks: fallbacks,
 		Scenario:  ScenarioOverride,
+		Reason:    describeRouting(fmt.Sprintf("matched configured override key %q", fallbackKey), override),
 	}
 }
 
@@ -455,6 +582,7 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 	// Otherwise, use scenario-based routing for streaming
 	result := RouteForStreaming(messages, tokenCount, cfg)
 	scenarioKey := string(result.Scenario)
+	trigger := fmt.Sprintf("scenario=%s (%s)", result.Scenario, result.Reason)
 
 	// Get primary model for scenario. When cost-based routing is enabled and
 	// a non-empty catalog is available, prefer the cheapest matching catalog
@@ -466,6 +594,7 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 		if resolved, err := selector.SelectCheapest(scenarioKey, constraints); err == nil {
 			primary = resolvedModelToConfig(resolved)
 			ok = true
+			trigger += ", cheapest catalog model"
 		}
 	}
 	if !ok {
@@ -477,6 +606,9 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 		if !ok {
 			// Fall back to default
 			primary = cfg.Models["default"]
+			trigger += ", scenario and \"fast\" not configured so using \"default\" model"
+		} else {
+			trigger += ", scenario not configured so using \"fast\" model"
 		}
 	}
 	if primary.ModelID == "" {
@@ -498,6 +630,7 @@ func (r *ModelRouter) RouteForStreaming(messages []MessageContent, tokenCount in
 		Primary:   primary,
 		Fallbacks: fallbacks,
 		Scenario:  result.Scenario,
+		Reason:    describeRouting(trigger, primary),
 	}, nil
 }
 

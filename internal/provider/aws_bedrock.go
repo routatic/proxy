@@ -31,6 +31,12 @@ func NewAWSBedrockProvider(atomic *config.AtomicConfig) *AWSBedrockProvider {
 // Name returns the provider identifier.
 func (p *AWSBedrockProvider) Name() string { return "aws-bedrock" }
 
+// ValidateRequest checks ordered content against this provider's capabilities
+// before any upstream request is attempted.
+func (p *AWSBedrockProvider) ValidateRequest(req *core.NormalizedRequest, model config.ModelConfig) error {
+	return validateRequest(p, req, model)
+}
+
 // Capabilities returns provider-level capabilities.
 func (p *AWSBedrockProvider) Capabilities() core.ProviderCapabilities {
 	return core.ProviderCapabilities{
@@ -54,13 +60,13 @@ func (p *AWSBedrockProvider) ModelCapabilities(modelID string) (core.ProviderCap
 // "anthropic." use the Anthropic Messages endpoint, everything else uses
 // OpenAI Chat Completions. The global wire_format config acts as a fallback
 // only when no prefix match applies.
-func (p *AWSBedrockProvider) WireFormat(modelID string) core.WireFormat {
+func (p *AWSBedrockProvider) WireFormat(model config.ModelConfig) core.WireFormat {
 	switch {
-	case strings.HasPrefix(modelID, "anthropic."):
+	case strings.HasPrefix(model.ModelID, "anthropic."):
 		return core.WireFormatAnthropic
-	case strings.HasPrefix(modelID, "openai.gpt-"):
+	case strings.HasPrefix(model.ModelID, "openai.gpt-"):
 		return core.WireFormatOpenAIResponses
-	case strings.HasPrefix(modelID, "openai."):
+	case strings.HasPrefix(model.ModelID, "openai."):
 		return core.WireFormatOpenAIChat
 	default:
 		cfg := p.atomic.Get()
@@ -91,7 +97,7 @@ func (p *AWSBedrockProvider) StreamIdleTimeout(model config.ModelConfig) time.Du
 }
 
 func (p *AWSBedrockProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.executeAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -102,7 +108,7 @@ func (p *AWSBedrockProvider) Execute(ctx context.Context, req *core.NormalizedRe
 }
 
 func (p *AWSBedrockProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.streamAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -230,7 +236,7 @@ func (p *AWSBedrockProvider) streamResponses(ctx context.Context, req *core.Norm
 func (p *AWSBedrockProvider) buildResponsesRequest(req *core.NormalizedRequest, model config.ModelConfig) *types.ResponsesRequest {
 	var inputs []types.ResponsesInput
 	for _, msg := range req.Messages {
-		contentBytes, _ := json.Marshal(msg.Content)
+		contentBytes, _ := json.Marshal(msg.TextContent())
 		inputs = append(inputs, types.ResponsesInput{
 			Role:    msg.Role,
 			Content: contentBytes,

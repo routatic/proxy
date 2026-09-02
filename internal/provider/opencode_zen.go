@@ -24,7 +24,8 @@ const upstreamUserAgent = "opencode/routatic-proxy"
 
 // OpenCodeZenProvider implements core.Provider for the OpenCode Zen backend.
 // Zen supports four wire formats determined by model ID: Anthropic (Claude,
-// Qwen), Responses (GPT), Gemini, and Chat Completions (everything else).
+// Qwen), Responses (GPT, Grok, Muse Spark), Gemini, and Chat Completions
+// (everything else).
 type OpenCodeZenProvider struct {
 	baseProvider
 }
@@ -36,6 +37,12 @@ func NewOpenCodeZenProvider(atomic *config.AtomicConfig) *OpenCodeZenProvider {
 
 // Name returns the provider identifier.
 func (p *OpenCodeZenProvider) Name() string { return "opencode-zen" }
+
+// ValidateRequest checks ordered content against this provider's capabilities
+// before any upstream request is attempted.
+func (p *OpenCodeZenProvider) ValidateRequest(req *core.NormalizedRequest, model config.ModelConfig) error {
+	return validateRequest(p, req, model)
+}
 
 // Capabilities returns provider-level capabilities.
 func (p *OpenCodeZenProvider) Capabilities() core.ProviderCapabilities {
@@ -72,8 +79,8 @@ func (p *OpenCodeZenProvider) ModelCapabilities(modelID string) (core.ProviderCa
 
 // WireFormat returns the wire format for the given model on Zen.
 // This replaces the old client.ClassifyEndpoint function.
-func (p *OpenCodeZenProvider) WireFormat(modelID string) core.WireFormat {
-	switch models.ClassifyEndpoint(modelID) {
+func (p *OpenCodeZenProvider) WireFormat(model config.ModelConfig) core.WireFormat {
+	switch models.ClassifyEndpoint(model.ModelID) {
 	case models.EndpointAnthropic:
 		return core.WireFormatAnthropic
 	case models.EndpointGemini:
@@ -106,7 +113,7 @@ func (p *OpenCodeZenProvider) StreamIdleTimeout(model config.ModelConfig) time.D
 
 // Execute sends a non-streaming request and returns the response.
 func (p *OpenCodeZenProvider) Execute(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (*core.ExecuteResult, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.executeAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:
@@ -120,7 +127,7 @@ func (p *OpenCodeZenProvider) Execute(ctx context.Context, req *core.NormalizedR
 
 // Stream sends a streaming request and returns an io.ReadCloser for SSE events.
 func (p *OpenCodeZenProvider) Stream(ctx context.Context, req *core.NormalizedRequest, model config.ModelConfig) (io.ReadCloser, error) {
-	switch p.WireFormat(model.ModelID) {
+	switch p.WireFormat(model) {
 	case core.WireFormatAnthropic:
 		return p.streamAnthropic(ctx, req, model)
 	case core.WireFormatOpenAIResponses:

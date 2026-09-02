@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/routatic/proxy/internal/catalog"
@@ -353,6 +354,40 @@ func TestRouteWithOverride_MatchesKey(t *testing.T) {
 	}
 	if len(result.Fallbacks) != 1 || result.Fallbacks[0].ModelID != "qwen3.5-plus" {
 		t.Errorf("expected single fallback qwen3.5-plus, got %+v", result.Fallbacks)
+	}
+}
+
+// Overrides pointing at OpenRouter or Bedrock must route with the provider
+// intact so the handler dispatches to that upstream — see issue #134.
+func TestRouteWithOverride_PreservesNonOpenCodeProvider(t *testing.T) {
+	for _, provider := range config.KnownProviders {
+		t.Run(provider, func(t *testing.T) {
+			cfg := &config.Config{
+				ModelOverrides: map[string]config.ModelConfig{
+					"custom": {Provider: provider, ModelID: "upstream-model"},
+				},
+				ModelFamilyOverrides: map[string]config.ModelConfig{
+					"sonnet": {Provider: provider, ModelID: "upstream-model"},
+				},
+			}
+			router := NewModelRouter(newTestAtomicConfig(cfg))
+
+			exact, ok := router.RouteWithOverride("custom")
+			if !ok {
+				t.Fatal("expected RouteWithOverride to match")
+			}
+			if exact.Primary.Provider != provider {
+				t.Errorf("exact override provider = %q, want %q", exact.Primary.Provider, provider)
+			}
+
+			family, ok := router.RouteWithFamilyOverride("claude-sonnet-4-20250514")
+			if !ok {
+				t.Fatal("expected RouteWithFamilyOverride to match")
+			}
+			if family.Primary.Provider != provider {
+				t.Errorf("family override provider = %q, want %q", family.Primary.Provider, provider)
+			}
+		})
 	}
 }
 
@@ -1104,5 +1139,83 @@ func TestListModels_Empty(t *testing.T) {
 	router := NewModelRouter(newTestAtomicConfig(&config.Config{}))
 	if models := router.ListModels(context.Background()); len(models) != 0 {
 		t.Errorf("expected no models, got %+v", models)
+	}
+}
+
+// TestRoute_ReasonReportsConfiguredModel proves the routing reason names the
+// model actually resolved from config — using deliberately unusual model IDs so
+// the assertion can only pass if the value came from config, not a literal in
+// the router.
+func TestRoute_ReasonReportsConfiguredModel(t *testing.T) {
+	cfg := &config.Config{
+		RespectRequestedModel: boolPtr(false),
+		Models: map[string]config.ModelConfig{
+			"default": {ModelID: "totally-made-up-default-v9"},
+			"complex": {ModelID: "totally-made-up-complex-v9"},
+			"fast":    {ModelID: "totally-made-up-fast-v9"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{ModelID: "totally-made-up-default-v9"}},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	complexMessages := []MessageContent{{Role: "user", Content: "Architect a new microservice"}}
+	result, err := router.Route(complexMessages, 100, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Reason, "totally-made-up-complex-v9") {
+		t.Errorf("expected reason to name the configured complex model, got: %s", result.Reason)
+	}
+	// The trigger must survive alongside the model so the log stays debuggable.
+	if !strings.Contains(result.Reason, "scenario=complex") {
+		t.Errorf("expected reason to explain the scenario trigger, got: %s", result.Reason)
+	}
+
+	streamResult, err := router.RouteForStreaming(complexMessages, 100, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(streamResult.Reason, "totally-made-up-fast-v9") {
+		t.Errorf("expected streaming reason to name the configured fast model, got: %s", streamResult.Reason)
+	}
+}
+
+// TestRoute_ReasonReportsRequestedModel covers the respect_requested_model path.
+func TestRoute_ReasonReportsRequestedModel(t *testing.T) {
+	cfg := &config.Config{
+		RespectRequestedModel: boolPtr(true),
+		Models: map[string]config.ModelConfig{
+			"default":     {ModelID: "totally-made-up-default-v9"},
+			"my-alias-v9": {ModelID: "totally-made-up-requested-v9"},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, err := router.Route([]MessageContent{{Role: "user", Content: "Hello"}}, 100, "my-alias-v9")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Reason, "totally-made-up-requested-v9") {
+		t.Errorf("expected reason to name the resolved requested model, got: %s", result.Reason)
+	}
+}
+
+// TestRouteWithOverride_ReasonReportsOverrideModel covers the model_overrides path.
+func TestRouteWithOverride_ReasonReportsOverrideModel(t *testing.T) {
+	cfg := &config.Config{
+		ModelOverrides: map[string]config.ModelConfig{
+			"claude-opus-4-20250514": {ModelID: "totally-made-up-override-v9"},
+		},
+	}
+	router := NewModelRouter(newTestAtomicConfig(cfg))
+
+	result, ok := router.RouteWithOverride("claude-opus-4-20250514")
+	if !ok {
+		t.Fatal("expected override to match")
+	}
+	if !strings.Contains(result.Reason, "totally-made-up-override-v9") {
+		t.Errorf("expected reason to name the override model, got: %s", result.Reason)
 	}
 }

@@ -83,6 +83,11 @@ func (a *AtomicConfig) Reload() error {
 }
 
 // OnReload registers a callback that will be invoked after each successful reload.
+//
+// Callbacks run BEFORE the new config is published, so that they can still
+// mutate it (e.g. a port override). A callback must therefore read the *Config
+// it is handed rather than calling Get(), which still returns the previous
+// config until every callback has returned.
 func (a *AtomicConfig) OnReload(fn func(*Config)) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

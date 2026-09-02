@@ -10,7 +10,9 @@ This guide covers setting up, configuring, and using routatic-proxy on Fedora 44
 - [Running the Proxy](#running-the-proxy)
 - [Configuring Claude Code](#configuring-claude-code)
 - [Systemd Service Setup](#systemd-service-setup)
+- [Auto-start on Login](#auto-start-on-login)
 - [Troubleshooting](#troubleshooting)
+- [Updating](#updating)
 
 ---
 
@@ -32,7 +34,76 @@ Before installing routatic-proxy, ensure you have:
 
 ## Installation Methods
 
-### Method 1: Download Pre-built Binary (Recommended)
+### Method 1: RPM Package with dnf (Recommended)
+
+Every release publishes RPMs for `x86_64` and `aarch64`. Installing the RPM puts
+the binary at `/usr/bin/routatic-proxy`, ships an optional systemd **user** unit,
+and lets `dnf` handle upgrades and removal.
+
+```bash
+# Pick the version you want from the Releases page, e.g. v0.5.3
+VERSION=0.5.3
+
+# x86_64 (most common)
+sudo dnf install "https://github.com/routatic/proxy/releases/download/v${VERSION}/routatic-proxy-${VERSION}-1.x86_64.rpm"
+
+# aarch64 (ARM64)
+sudo dnf install "https://github.com/routatic/proxy/releases/download/v${VERSION}/routatic-proxy-${VERSION}-1.aarch64.rpm"
+
+# Verify installation
+routatic-proxy --version
+```
+
+To always grab the newest release without hardcoding a version:
+
+```bash
+RPM_URL=$(curl -fsSL https://api.github.com/repos/routatic/proxy/releases/latest \
+  | grep -o 'https://[^"]*\.'"$(uname -m)"'\.rpm')
+sudo dnf install "$RPM_URL"
+```
+
+Beta channel RPMs carry a `~beta.N` version suffix (RPM version `0.6.4~beta.5`),
+which RPM sorts *below* the matching stable `0.6.4` release — so a later
+`dnf upgrade` moves you onto stable cleanly. Note that the *filename* renders
+that suffix with dots, so install a beta by tag like this:
+
+```bash
+sudo dnf install "https://github.com/routatic/proxy/releases/download/v0.6.4-beta.5/routatic-proxy-0.6.4.beta.5-1.$(uname -m).rpm"
+```
+
+See [Beta Releases](../INSTALLATION.md#beta-releases) for the full beta workflow.
+
+What the package installs:
+
+| Path | Purpose |
+|------|---------|
+| `/usr/bin/routatic-proxy` | The binary (`/usr/bin/oc-go-cc` is a symlink to it) |
+| `/etc/routatic-proxy/config.json` | System-wide config template, `%config(noreplace)` — your edits survive upgrades |
+| `/usr/lib/systemd/user/routatic-proxy.service` | Optional systemd user unit, disabled by default |
+| `/usr/share/doc/routatic-proxy/` | README, configuration, troubleshooting, this guide |
+| `/usr/share/licenses/routatic-proxy/LICENSE` | AGPL-3.0-only license text |
+
+Removing it:
+
+```bash
+sudo dnf remove routatic-proxy
+```
+
+#### A Note on Signatures
+
+The published RPMs are **not GPG-signed yet**, so `dnf` will not be able to verify
+their provenance. Until signing lands, verify the download against the
+`checksums.txt` asset attached to the same release:
+
+```bash
+curl -fsSLO "https://github.com/routatic/proxy/releases/download/v${VERSION}/checksums.txt"
+sha256sum -c checksums.txt --ignore-missing
+```
+
+The plan is to sign releases with a project GPG key (and likely publish a COPR
+repository so `dnf` can resolve upgrades directly). Neither exists today.
+
+### Method 2: Download Pre-built Binary
 
 Download the latest Linux binary from the [Releases page](https://github.com/routatic/proxy/releases):
 
@@ -51,7 +122,7 @@ sudo mv routatic-proxy /usr/local/bin/
 routatic-proxy --version
 ```
 
-### Method 2: Build from Source
+### Method 3: Build from Source
 
 Building from source requires Go 1.25.0 or later.
 
@@ -99,7 +170,7 @@ sudo make install
 routatic-proxy --version
 ```
 
-### Method 3: Docker
+### Method 4: Docker
 
 Install Docker on Fedora 44:
 
@@ -273,9 +344,51 @@ Claude Code will now route all requests through routatic-proxy to your configure
 
 ## Systemd Service Setup
 
-For production use, run routatic-proxy as a systemd service.
+routatic-proxy is a per-user proxy listening on loopback and reading its config
+from `~/.config/routatic-proxy`, so the supported unit is a **systemd user
+service**, not a machine-level daemon.
 
-### Create Service File
+### Option A: Packaged User Service (Recommended)
+
+The RPM ships `/usr/lib/systemd/user/routatic-proxy.service`, disabled by default.
+Opt in per user — no root needed after installation:
+
+```bash
+# Optional: put your API key (and any other overrides) in the unit's env file
+mkdir -p ~/.config/routatic-proxy
+echo 'ROUTATIC_PROXY_API_KEY=sk-opencode-your-key-here' > ~/.config/routatic-proxy/env
+chmod 600 ~/.config/routatic-proxy/env
+
+# Enable and start for your user
+systemctl --user enable --now routatic-proxy
+
+# Check status and logs
+systemctl --user status routatic-proxy
+journalctl --user -u routatic-proxy -f
+```
+
+Managing it:
+
+```bash
+systemctl --user restart routatic-proxy
+systemctl --user stop routatic-proxy
+systemctl --user disable routatic-proxy
+```
+
+By default a user service stops when your last session ends. To keep the proxy
+running after logout:
+
+```bash
+sudo loginctl enable-linger "$USER"
+```
+
+### Option B: System-wide Service (Manual)
+
+Only needed if the proxy must serve something other than your own login session
+(for example a shared host). This unit is not shipped by the package — write it
+yourself.
+
+#### Create Service File
 
 ```bash
 sudo nano /etc/systemd/system/routatic-proxy.service
@@ -293,7 +406,7 @@ Type=simple
 User=%USER%
 Group=%USER%
 WorkingDirectory=/home/%USER%
-ExecStart=/usr/local/bin/routatic-proxy serve
+ExecStart=/usr/bin/routatic-proxy serve
 Restart=on-failure
 RestartSec=5
 
@@ -313,9 +426,11 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-Replace `%USER%` with your actual username.
+Replace `%USER%` with your actual username. If you installed from a tarball or
+source rather than the RPM, point `ExecStart` at wherever the binary actually
+lives (for example `/usr/local/bin/routatic-proxy`).
 
-### Enable and Start Service
+#### Enable and Start Service
 
 ```bash
 # Reload systemd daemon
@@ -334,7 +449,7 @@ sudo systemctl status routatic-proxy
 journalctl -u routatic-proxy -f
 ```
 
-### Managing the Service
+#### Managing the Service
 
 ```bash
 # Stop
@@ -467,18 +582,39 @@ routatic-proxy logs
 
 ## Updating
 
-### Binary Update
+### RPM Update
+
+There is no COPR repository yet, so point `dnf` at the new release's RPM:
 
 ```bash
-# Check for updates
-routatic-proxy update --check
+VERSION=0.5.4
+sudo dnf upgrade "https://github.com/routatic/proxy/releases/download/v${VERSION}/routatic-proxy-${VERSION}-1.$(uname -m).rpm"
+```
 
-# Update to latest version
+Your `/etc/routatic-proxy/config.json` edits are preserved; if the packaged
+template changed, the new version lands beside it as `config.json.rpmnew`.
+
+> Don't use `routatic-proxy update` on an RPM install — it replaces the binary
+> behind `dnf`'s back and leaves the package database out of sync.
+
+### Binary Update
+
+For a standalone binary (not the RPM), use the built-in updater:
+
+```bash
+# Check for updates without installing
+routatic-proxy update check
+
+# Update to the latest version on your channel
 routatic-proxy update
 
-# Skip confirmation
-routatic-proxy update --yes
+# Opt in to beta builds (see INSTALLATION.md#beta-releases)
+routatic-proxy update-channel beta
 ```
+
+If the binary lives in a root-owned directory such as `/usr/local/bin`, run it
+with `sudo` — the updater stops before downloading and says so when it cannot
+write there.
 
 ### Manual Update
 

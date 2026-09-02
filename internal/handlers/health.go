@@ -34,6 +34,12 @@ func NewHealthHandler(tokenCounter *token.Counter, fallbackHandler *router.Fallb
 func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	// Get metrics snapshot
 	snapshot := h.metrics.GetSnapshot()
+	p95, p99 := snapshot.Percentiles()
+	ttftP95, _ := snapshot.TTFTPercentiles()
+	warnings := make([]string, 0, 1)
+	if snapshot.StorageDropped > 0 {
+		warnings = append(warnings, "storage completion records have been dropped")
+	}
 
 	// Get circuit breaker states
 	cbStates := map[string]string{}
@@ -56,11 +62,15 @@ func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 			"upstream_calls":    snapshot.UpstreamCalls,
 			"rate_limited":      snapshot.RateLimited,
 			"deduplicated":      snapshot.Deduplicated,
-			"p95_latency_ms":    snapshot.CalculateP95().Milliseconds(),
-			"p99_latency_ms":    snapshot.CalculateP99().Milliseconds(),
+			"storage_dropped":   snapshot.StorageDropped,
+			"p95_latency_ms":    p95.Milliseconds(),
+			"p99_latency_ms":    p99.Milliseconds(),
+			"ttft_p95_ms":       ttftP95.Milliseconds(),
+			"ttft_samples":      len(snapshot.TTFT),
 		},
 		"circuit_breakers": cbStates,
 		"models":           snapshot.ModelCounts,
+		"warnings":         warnings,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

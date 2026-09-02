@@ -2,6 +2,7 @@ package transformer
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
@@ -55,22 +56,61 @@ func NormalizedToResponses(req *core.NormalizedRequest, model config.ModelConfig
 		})
 	}
 
-	// Convert messages.
+	// Convert messages. The Responses API rejects any input item that does not
+	// match a supported shape, so tool_use/tool_result blocks become typed
+	// items (function_call / function_call_output) instead of being folded
+	// into text. Walk the canonical block list directly to preserve chronology.
 	for _, msg := range req.Messages {
-		input := types.ResponsesInput{Role: msg.Role}
-		content := msg.Content
+		role := msg.Role
+		if role != "user" && role != "assistant" && role != "developer" {
+			role = "user"
+		}
 
-		// For assistant messages with tool calls, serialize as text.
-		if len(msg.ToolCalls) > 0 {
-			for _, tc := range msg.ToolCalls {
-				content += "[Tool: " + tc.Name + "(" + tc.Arguments + ")]"
+		var text string
+		flushText := func() {
+			if text == "" {
+				return
+			}
+			responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+				Role:    role,
+				Content: rawJSONString(text),
+			})
+			text = ""
+		}
+
+		toolResults := msg.ToolResultsList()
+		toolResultIndex := 0
+		for _, block := range msg.Blocks {
+			switch block.Type {
+			case "text":
+				text += block.Text
+			case "tool_use":
+				flushText()
+				responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+					Type:      "function_call",
+					CallID:    block.ID,
+					Name:      block.Name,
+					Arguments: string(block.Input),
+				})
+			case "tool_result":
+				flushText()
+				tr := toolResults[toolResultIndex]
+				toolResultIndex++
+				responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+					Type:   "function_call_output",
+					CallID: tr.ToolCallID,
+					Output: rawJSONString(tr.Content),
+				})
+			default:
+				flushText()
+				slog.Warn(
+					"dropping unsupported Responses input block",
+					"type", block.Type,
+					"role", msg.Role,
+				)
 			}
 		}
-
-		if content != "" {
-			input.Content = rawJSONString(content)
-		}
-		responsesReq.Input = append(responsesReq.Input, input)
+		flushText()
 	}
 
 	// Convert tools.
@@ -110,7 +150,7 @@ func NormalizedToGemini(req *core.NormalizedRequest, model config.ModelConfig) *
 	// Convert messages.
 	for _, msg := range req.Messages {
 		gc := types.GeminiContent{Role: msg.Role}
-		gc.Parts = append(gc.Parts, types.GeminiPart{Text: msg.Content})
+		gc.Parts = append(gc.Parts, types.GeminiPart{Text: msg.TextContent()})
 		contents = append(contents, gc)
 	}
 
@@ -150,20 +190,23 @@ func OpenAIResponseToNormalized(openaiResp *types.ChatCompletionResponse, modelI
 
 		// Extract text content.
 		if msg.Content != nil {
-			nm.Content = msg.ContentText()
+			nm.Blocks = append(nm.Blocks, core.NormalizedContentBlock{
+				Type: "text", Text: msg.ContentText(),
+			})
 		}
 
 		// Extract reasoning content (pointer field).
 		if msg.ReasoningContent != nil {
-			nm.Thinking = *msg.ReasoningContent
+			nm.Blocks = append(nm.Blocks, core.NormalizedContentBlock{
+				Type: "thinking", Thinking: *msg.ReasoningContent,
+			})
 		}
 
 		// Extract tool calls.
 		for _, tc := range msg.ToolCalls {
-			nm.ToolCalls = append(nm.ToolCalls, core.NormalizedToolCall{
-				ID:        tc.ID,
-				Name:      tc.Function.Name,
-				Arguments: tc.Function.Arguments,
+			nm.Blocks = append(nm.Blocks, core.NormalizedContentBlock{
+				Type: "tool_use", ID: tc.ID, Name: tc.Function.Name,
+				Input: []byte(tc.Function.Arguments),
 			})
 		}
 
@@ -208,20 +251,19 @@ func ResponsesToNormalized(responsesResp *types.ResponsesResponse, modelID strin
 			nm := core.NormalizedMessage{Role: output.Role}
 			for _, c := range output.Content {
 				if c.Type == "output_text" {
-					nm.Content += c.Text
+					nm.Blocks = append(nm.Blocks, core.NormalizedContentBlock{
+						Type: "text", Text: c.Text,
+					})
 				}
 			}
 			nr.Messages = append(nr.Messages, nm)
 		case "function_call":
 			nm := core.NormalizedMessage{
 				Role: "assistant",
-				ToolCalls: []core.NormalizedToolCall{
-					{
-						ID:        output.CallID,
-						Name:      output.Name,
-						Arguments: output.Arguments,
-					},
-				},
+				Blocks: []core.NormalizedContentBlock{{
+					Type: "tool_use", ID: output.CallID, Name: output.Name,
+					Input: []byte(output.Arguments),
+				}},
 			}
 			nr.Messages = append(nr.Messages, nm)
 		}
@@ -249,7 +291,9 @@ func GeminiToNormalized(geminiResp *types.GeminiResponse, modelID string) *core.
 
 		for _, part := range candidate.Content.Parts {
 			if part.Text != "" {
-				nm.Content += part.Text
+				nm.Blocks = append(nm.Blocks, core.NormalizedContentBlock{
+					Type: "text", Text: part.Text,
+				})
 			}
 		}
 
@@ -282,12 +326,17 @@ func GeminiToNormalized(geminiResp *types.GeminiResponse, modelID string) *core.
 // pipeline.
 func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageRequest {
 	anthropicReq := &types.MessageRequest{
-		Model:     req.Model,
-		MaxTokens: req.MaxTokens,
+		Model:        req.Model,
+		MaxTokens:    req.MaxTokens,
+		CacheControl: req.CacheControl,
 	}
 
 	// Set system prompt.
-	if req.SystemPrompt != "" {
+	if len(req.SystemBlocks) > 0 {
+		if b, err := json.Marshal(normalizedBlocksToAnthropic(req.SystemBlocks)); err == nil {
+			anthropicReq.System = b
+		}
+	} else if req.SystemPrompt != "" {
 		if b, err := json.Marshal(req.SystemPrompt); err == nil {
 			anthropicReq.System = json.RawMessage(b)
 		}
@@ -319,51 +368,7 @@ func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageReque
 	for _, nm := range req.Messages {
 		msg := types.Message{Role: nm.Role}
 
-		var blocks []types.ContentBlock
-		if nm.Content != "" {
-			blocks = append(blocks, types.ContentBlock{Type: "text", Text: nm.Content})
-		}
-		// Reconstruct image blocks from the normalized representation so the
-		// downstream transformer can decide whether to convert them to
-		// image_url (vision-capable model) or to a [Image] text placeholder.
-		for _, img := range nm.Images {
-			blocks = append(blocks, types.ContentBlock{
-				Type: "image",
-				Source: &types.ImageSource{
-					Type:      "base64",
-					MediaType: img.MediaType,
-					Data:      img.Data,
-				},
-			})
-		}
-		if nm.Thinking != "" {
-			blocks = append(blocks, types.ContentBlock{Type: "thinking", Thinking: nm.Thinking})
-		}
-		for _, tc := range nm.ToolCalls {
-			blocks = append(blocks, types.ContentBlock{
-				Type:  "tool_use",
-				ID:    tc.ID,
-				Name:  tc.Name,
-				Input: []byte(tc.Arguments),
-			})
-		}
-		if len(nm.ToolResults) > 0 {
-			for _, tr := range nm.ToolResults {
-				content, _ := json.Marshal(tr.Content)
-				blocks = append(blocks, types.ContentBlock{
-					Type:      "tool_result",
-					ToolUseID: tr.ToolCallID,
-					Content:   content,
-				})
-			}
-		} else if nm.ToolCallID != "" {
-			content, _ := json.Marshal(nm.Content)
-			blocks = append(blocks, types.ContentBlock{
-				Type:      "tool_result",
-				ToolUseID: nm.ToolCallID,
-				Content:   content,
-			})
-		}
+		blocks := normalizedMessageBlocks(nm)
 
 		if len(blocks) > 0 {
 			b, _ := json.Marshal(blocks)
@@ -378,13 +383,37 @@ func normalizedToMessageRequest(req *core.NormalizedRequest) *types.MessageReque
 	// Convert tools.
 	for _, nt := range req.Tools {
 		anthropicReq.Tools = append(anthropicReq.Tools, types.Tool{
-			Name:        nt.Name,
-			Description: nt.Description,
-			InputSchema: nt.InputSchema,
+			Name:         nt.Name,
+			Description:  nt.Description,
+			InputSchema:  nt.InputSchema,
+			CacheControl: nt.CacheControl,
 		})
 	}
 
 	return anthropicReq
+}
+
+func normalizedMessageBlocks(nm core.NormalizedMessage) []types.ContentBlock {
+	return normalizedBlocksToAnthropic(nm.Blocks)
+}
+
+func normalizedBlocksToAnthropic(blocks []core.NormalizedContentBlock) []types.ContentBlock {
+	out := make([]types.ContentBlock, 0, len(blocks))
+	for _, block := range blocks {
+		converted := types.ContentBlock{
+			Type: block.Type, Text: block.Text, ID: block.ID, ToolUseID: block.ToolUseID,
+			Name: block.Name, Input: block.Input, Content: block.Content,
+			IsError: block.IsError, Thinking: block.Thinking, Signature: block.Signature,
+			CacheControl: block.CacheControl, Raw: block.Raw,
+		}
+		if block.Image != nil {
+			converted.Source = &types.ImageSource{
+				Type: "base64", MediaType: block.Image.MediaType, Data: block.Image.Data,
+			}
+		}
+		out = append(out, converted)
+	}
+	return out
 }
 
 func rawJSONString(s string) json.RawMessage {
@@ -400,11 +429,11 @@ func rawJSONString(s string) json.RawMessage {
 func joinMessageText(messages []core.NormalizedMessage) string {
 	var text string
 	for _, m := range messages {
-		if m.Content != "" {
+		if content := m.TextContent(); content != "" {
 			if text != "" {
 				text += "\n"
 			}
-			text += m.Role + ": " + m.Content
+			text += m.Role + ": " + content
 		}
 	}
 	return text

@@ -18,6 +18,7 @@ const (
 	defaultPort             = 3456
 	defaultBaseURL          = "https://opencode.ai/zen/go/v1/chat/completions"
 	defaultAnthropicBaseURL = "https://opencode.ai/zen/go/v1/messages"
+	defaultResponsesBaseURL = "https://opencode.ai/zen/go/v1/responses"
 	defaultTimeoutMs        = 300000
 	defaultLogLevel         = "info"
 	defaultAnthropicAPIURL  = "https://api.anthropic.com"
@@ -254,6 +255,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.OpenCodeGo.AnthropicBaseURL == "" {
 		cfg.OpenCodeGo.AnthropicBaseURL = defaultAnthropicBaseURL
 	}
+	if cfg.OpenCodeGo.ResponsesBaseURL == "" {
+		cfg.OpenCodeGo.ResponsesBaseURL = defaultResponsesBaseURL
+	}
 	if cfg.OpenCodeGo.TimeoutMs == 0 {
 		cfg.OpenCodeGo.TimeoutMs = defaultTimeoutMs
 	}
@@ -471,8 +475,8 @@ func validateOverrideMap(label string, overrides map[string]ModelConfig) error {
 		if mc.ModelID == "" {
 			return fmt.Errorf("%s[%q] is missing required field model_id", label, key)
 		}
-		if mc.Provider != "" && mc.Provider != "opencode-go" && mc.Provider != "opencode-zen" {
-			return fmt.Errorf("%s[%q] has invalid provider %q (must be \"opencode-go\" or \"opencode-zen\")", label, key, mc.Provider)
+		if !IsKnownProvider(mc.Provider) {
+			return fmt.Errorf("%s[%q] has invalid provider %q (must be %s)", label, key, mc.Provider, quotedKnownProviders())
 		}
 	}
 	return nil

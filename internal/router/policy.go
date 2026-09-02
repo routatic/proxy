@@ -158,7 +158,7 @@ func (p *ScenarioPolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelConfig,
 		messages = append(messages, MessageContent{Role: "system", Content: systemText})
 	}
 	for _, msg := range ctx.Request.Messages {
-		messages = append(messages, MessageContent{Role: msg.Role, Content: msg.Content})
+		messages = append(messages, MessageContent{Role: msg.Role, Content: msg.TextContent()})
 	}
 
 	isStreaming := ctx.Request.Stream
@@ -179,6 +179,6 @@ func (p *ScenarioPolicy) Evaluate(ctx *EvaluationContext) ([]config.ModelConfig,
 		PolicyName: "scenario",
 		ModelID:    result.Primary.ModelID,
 		Provider:   result.Primary.Provider,
-		Reason:     fmt.Sprintf("scenario=%s: %s", result.Scenario, result.Scenario),
+		Reason:     result.Reason,
 	}, nil
 }

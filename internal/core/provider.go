@@ -40,6 +40,27 @@ func (w WireFormat) String() string {
 	}
 }
 
+// ParseWireFormat parses a configured `wire_format` value into a WireFormat.
+// It reports false for the empty string, "auto", and any unrecognised value,
+// all of which mean "use the provider's built-in classification".
+//
+// This is the single place `wire_format` strings are interpreted, so every
+// dispatch site resolves an override identically.
+func ParseWireFormat(s string) (WireFormat, bool) {
+	switch s {
+	case "openai", "chat", "chat_completions":
+		return WireFormatOpenAIChat, true
+	case "anthropic", "messages":
+		return WireFormatAnthropic, true
+	case "responses":
+		return WireFormatOpenAIResponses, true
+	case "gemini":
+		return WireFormatGemini, true
+	default:
+		return WireFormatOpenAIChat, false
+	}
+}
+
 // ProviderCapabilities describes what a provider can do at the provider level.
 // Per-model refinements are returned by ModelCapabilities.
 type ProviderCapabilities struct {
@@ -72,7 +93,12 @@ type Provider interface {
 	ModelCapabilities(modelID string) (ProviderCapabilities, bool)
 
 	// WireFormat returns the wire format for the given model on this provider.
-	WireFormat(modelID string) WireFormat
+	//
+	// Execute, Stream, and the streaming handler all dispatch on this single
+	// method so they cannot disagree about how to parse the upstream response.
+	// Providers that honour the per-model `wire_format` config override resolve
+	// it here rather than in their own dispatch switch.
+	WireFormat(model config.ModelConfig) WireFormat
 
 	// Execute sends a non-streaming request and returns the response.
 	Execute(ctx context.Context, req *NormalizedRequest, model config.ModelConfig) (*ExecuteResult, error)
@@ -89,4 +115,11 @@ type Provider interface {
 	// StreamIdleTimeout returns the maximum gap between bytes on an active
 	// stream before it is treated as stuck and aborted.
 	StreamIdleTimeout(model config.ModelConfig) time.Duration
+}
+
+// RequestValidator is optionally implemented by providers that can reject
+// normalized content before an upstream call. Compatibility failures are
+// client errors and must not affect circuit-breaker state.
+type RequestValidator interface {
+	ValidateRequest(req *NormalizedRequest, model config.ModelConfig) error
 }

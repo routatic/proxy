@@ -1,0 +1,87 @@
+# nfpm configuration for routatic-proxy RPM packages.
+#
+# Driven entirely by environment variables so the same file produces every
+# architecture:
+#
+#   NFPM_VERSION  version without the leading "v" (e.g. 0.5.3 or 0.5.3-beta.1)
+#   NFPM_ARCH     nfpm/Go arch name: amd64 -> x86_64, arm64 -> aarch64
+#   NFPM_BINARY   path to the prebuilt linux binary for that arch
+#
+# Build with:
+#   nfpm package --config packaging/nfpm.yaml --packager rpm --target dist/
+#
+# See docs: https://nfpm.goreleaser.com/configuration/
+name: routatic-proxy
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${NFPM_VERSION}
+# semver schema: a prerelease suffix (-beta.N) becomes an RPM tilde version,
+# e.g. 0.6.4-beta.1 -> Version 0.6.4~beta.1 with Release 1, so beta packages
+# sort *below* the matching stable release.
+version_schema: semver
+release: "1"
+maintainer: samuel tuyizere <tuyizeres0@gmail.com>
+vendor: Routatic
+homepage: https://github.com/routatic/proxy
+license: AGPL-3.0-only
+description: |
+  Proxy Claude Code requests to OpenCode Go API.
+  routatic-proxy sits between Claude Code and OpenCode, translating Anthropic
+  API requests to the upstream provider format, routing them to the cheapest
+  capable model, and translating responses back. Includes a local dashboard
+  for usage metrics, request history, and live config editing.
+
+rpm:
+  summary: Proxy Claude Code requests to OpenCode Go API
+  group: Applications/Internet
+  compression: xz
+
+contents:
+  # expand: true is required for ${...} substitution inside contents entries.
+  - src: ${NFPM_BINARY}
+    dst: /usr/bin/routatic-proxy
+    expand: true
+    file_info:
+      mode: 0755
+
+  # Legacy command name, kept in step with the Homebrew/Scoop packages.
+  - src: /usr/bin/routatic-proxy
+    dst: /usr/bin/oc-go-cc
+    type: symlink
+
+  # Per-user systemd unit. Enable with:
+  #   systemctl --user enable --now routatic-proxy
+  # A user unit (not a system one) is deliberate: the proxy reads its config
+  # from ~/.config/routatic-proxy and only listens on loopback, so it belongs
+  # to the invoking user rather than a system service account.
+  - src: packaging/systemd/routatic-proxy.service
+    dst: /usr/lib/systemd/user/routatic-proxy.service
+    file_info:
+      mode: 0644
+
+  # System-wide config template. Marked noreplace so a package upgrade never
+  # overwrites local edits (the .rpmnew file is written alongside instead).
+  # routatic-proxy reads ~/.config/routatic-proxy/config.json by default; point
+  # it at this file with `routatic-proxy serve -c /etc/routatic-proxy/config.json`.
+  - src: configs/config.example.json
+    dst: /etc/routatic-proxy/config.json
+    type: "config|noreplace"
+    file_info:
+      mode: 0644
+
+  - src: LICENSE
+    dst: /usr/share/licenses/routatic-proxy/LICENSE
+    type: license
+
+  - src: README.md
+    dst: /usr/share/doc/routatic-proxy/README.md
+    type: doc
+  - src: CONFIGURATION.md
+    dst: /usr/share/doc/routatic-proxy/CONFIGURATION.md
+    type: doc
+  - src: TROUBLESHOOTING.md
+    dst: /usr/share/doc/routatic-proxy/TROUBLESHOOTING.md
+    type: doc
+  - src: docs/fedora-setup.md
+    dst: /usr/share/doc/routatic-proxy/fedora-setup.md
+    type: doc
