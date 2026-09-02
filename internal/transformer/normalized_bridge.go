@@ -2,6 +2,7 @@ package transformer
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
@@ -55,20 +56,61 @@ func NormalizedToResponses(req *core.NormalizedRequest, model config.ModelConfig
 		})
 	}
 
-	// Convert messages.
+	// Convert messages. The Responses API rejects any input item that does not
+	// match a supported shape, so tool_use/tool_result blocks become typed
+	// items (function_call / function_call_output) instead of being folded
+	// into text. Walk the canonical block list directly to preserve chronology.
 	for _, msg := range req.Messages {
-		input := types.ResponsesInput{Role: msg.Role}
-		content := msg.TextContent()
-
-		// For assistant messages with tool calls, serialize as text.
-		for _, tc := range msg.ToolCallsList() {
-			content += "[Tool: " + tc.Name + "(" + tc.Arguments + ")]"
+		role := msg.Role
+		if role != "user" && role != "assistant" && role != "developer" {
+			role = "user"
 		}
 
-		if content != "" {
-			input.Content = rawJSONString(content)
+		var text string
+		flushText := func() {
+			if text == "" {
+				return
+			}
+			responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+				Role:    role,
+				Content: rawJSONString(text),
+			})
+			text = ""
 		}
-		responsesReq.Input = append(responsesReq.Input, input)
+
+		toolResults := msg.ToolResultsList()
+		toolResultIndex := 0
+		for _, block := range msg.Blocks {
+			switch block.Type {
+			case "text":
+				text += block.Text
+			case "tool_use":
+				flushText()
+				responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+					Type:      "function_call",
+					CallID:    block.ID,
+					Name:      block.Name,
+					Arguments: string(block.Input),
+				})
+			case "tool_result":
+				flushText()
+				tr := toolResults[toolResultIndex]
+				toolResultIndex++
+				responsesReq.Input = append(responsesReq.Input, types.ResponsesInput{
+					Type:   "function_call_output",
+					CallID: tr.ToolCallID,
+					Output: rawJSONString(tr.Content),
+				})
+			default:
+				flushText()
+				slog.Warn(
+					"dropping unsupported Responses input block",
+					"type", block.Type,
+					"role", msg.Role,
+				)
+			}
+		}
+		flushText()
 	}
 
 	// Convert tools.

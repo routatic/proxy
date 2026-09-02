@@ -815,7 +815,9 @@ func (h *StreamHandler) ProxyResponsesStream(
 	contentIndex := 0
 	var lineBuf []byte
 	contentStarted := false
-	stopSent := false
+	reasoningStarted := false
+	hasToolUse := false
+	startedToolCalls := make(map[string]int)
 	readBuf := readBufPool.Get().(*[]byte)
 	defer readBufPool.Put(readBuf)
 
@@ -834,7 +836,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 			for i := 0; i < n; i++ {
 				b := (*readBuf)[i]
 				if b == '\n' {
-					if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+					if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &hasToolUse, startedToolCalls, originalModel); err != nil {
 						return err
 					}
 					lineBuf = lineBuf[:0]
@@ -846,7 +848,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 
 		if err == io.EOF {
 			if len(lineBuf) > 0 {
-				if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &stopSent, originalModel); err != nil {
+				if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &hasToolUse, startedToolCalls, originalModel); err != nil {
 					return err
 				}
 			}
@@ -863,6 +865,9 @@ func (h *StreamHandler) ProxyResponsesStream(
 		}
 	}
 
+	// Close any open text block, then any tool_use blocks the upstream left
+	// open (e.g. abort mid-call), in ascending index order, so content_block_stop
+	// always precedes the terminal message_delta.
 	if contentStarted {
 		stopEvent := types.MessageEvent{
 			Type:  "content_block_stop",
@@ -872,19 +877,36 @@ func (h *StreamHandler) ProxyResponsesStream(
 			return ErrClientDisconnected
 		}
 	}
+	if len(startedToolCalls) > 0 {
+		indices := make([]int, 0, len(startedToolCalls))
+		for _, blockIdx := range startedToolCalls {
+			indices = append(indices, blockIdx)
+		}
+		sort.Ints(indices)
+		for _, blockIdx := range indices {
+			stopEvent := types.MessageEvent{
+				Type:  "content_block_stop",
+				Index: &blockIdx,
+			}
+			if err := writeSSEEvent(w, stopEvent); err != nil {
+				return ErrClientDisconnected
+			}
+		}
+	}
 
-	if !stopSent {
-		msgDelta := types.MessageEvent{
-			Type: "message_delta",
-			Delta: &types.Delta{
-				StopReason: "end_turn",
-			},
-			Usage: &types.Usage{InputTokens: 0, OutputTokens: 0},
-		}
-		if err := writeSSEEvent(w, msgDelta); err != nil {
-			return ErrClientDisconnected
-		}
-		stopSent = true
+	stopReason := "end_turn"
+	if hasToolUse {
+		stopReason = "tool_use"
+	}
+	msgDelta := types.MessageEvent{
+		Type: "message_delta",
+		Delta: &types.Delta{
+			StopReason: stopReason,
+		},
+		Usage: &types.Usage{InputTokens: 0, OutputTokens: 0},
+	}
+	if err := writeSSEEvent(w, msgDelta); err != nil {
+		return ErrClientDisconnected
 	}
 
 	stopEvent := types.MessageEvent{
@@ -904,7 +926,9 @@ func (h *StreamHandler) processResponsesSSELine(
 	line []byte,
 	contentIndex *int,
 	contentStarted *bool,
-	stopSent *bool,
+	reasoningStarted *bool,
+	hasToolUse *bool,
+	startedToolCalls map[string]int,
 	originalModel string,
 ) error {
 	line = bytes.TrimSpace(line)
@@ -950,24 +974,101 @@ func (h *StreamHandler) processResponsesSSELine(
 		flusher.Flush()
 	}
 
-	if chunk.Type == "response.completed" || chunk.Type == "response.done" {
-		if !*stopSent {
-			msgDelta := types.MessageEvent{
-				Type: "message_delta",
-				Delta: &types.Delta{
-					StopReason: "end_turn",
-				},
-				Usage: usageInfoToAnthropic(nil),
+	// A function_call output item becomes an Anthropic tool_use block. Close any
+	// open text block first, then reserve and advance a unique index for the
+	// tool block so subsequent and overlapping calls cannot reuse it.
+	if chunk.Type == "response.output_item.added" {
+		fc, ok := responsesOutputItem(chunk)
+		if !ok || fc.Type != "function_call" {
+			return nil
+		}
+		if fc.ID == "" {
+			return nil
+		}
+		closed, err := closeOpenBlock(w, *contentIndex, contentStarted, reasoningStarted)
+		if err != nil {
+			return ErrClientDisconnected
+		}
+		if closed {
+			*contentIndex++
+		}
+		blockIdx := *contentIndex
+		startedToolCalls[fc.ID] = blockIdx
+		*hasToolUse = true
+
+		toolID := fc.CallID
+		if toolID == "" {
+			toolID = fmt.Sprintf("toolu_%s", generateID())
+		}
+		startEvent := types.MessageEvent{
+			Type:  "content_block_start",
+			Index: &blockIdx,
+			ContentBlock: &types.ContentBlock{
+				Type:  "tool_use",
+				ID:    toolID,
+				Name:  fc.Name,
+				Input: json.RawMessage(`{}`),
+			},
+		}
+		if err := writeSSEEvent(w, startEvent); err != nil {
+			return ErrClientDisconnected
+		}
+		*contentIndex++
+		flusher.Flush()
+	}
+
+	// Incremental arguments for an open function_call.
+	if chunk.Type == "response.function_call_arguments.delta" && chunk.Delta != "" {
+		if blockIdx, exists := startedToolCalls[chunk.ItemID]; exists {
+			delta := types.Delta{
+				Type:        "input_json_delta",
+				PartialJSON: chunk.Delta,
 			}
-			if err := writeSSEEvent(w, msgDelta); err != nil {
+			event := types.MessageEvent{
+				Type:  "content_block_delta",
+				Index: &blockIdx,
+				Delta: &delta,
+			}
+			if err := writeSSEEvent(w, event); err != nil {
 				return ErrClientDisconnected
 			}
-			*stopSent = true
+			flusher.Flush()
+		}
+	}
+
+	// A completed function_call closes its tool_use block.
+	if chunk.Type == "response.output_item.done" {
+		fc, ok := responsesOutputItem(chunk)
+		if !ok || fc.Type != "function_call" {
+			return nil
+		}
+		if blockIdx, exists := startedToolCalls[fc.ID]; exists {
+			stopEvent := types.MessageEvent{
+				Type:  "content_block_stop",
+				Index: &blockIdx,
+			}
+			if err := writeSSEEvent(w, stopEvent); err != nil {
+				return ErrClientDisconnected
+			}
+			delete(startedToolCalls, fc.ID)
 			flusher.Flush()
 		}
 	}
 
 	return nil
+}
+
+// responsesOutputItem returns the output item carried by an output_item event.
+// opencode.ai's Responses endpoint puts the item in the "item" field while the
+// OpenAI reference format uses an "output" array; accept both.
+func responsesOutputItem(chunk types.ResponsesChunk) (types.ResponsesOutput, bool) {
+	if chunk.Item != nil {
+		return *chunk.Item, true
+	}
+	if len(chunk.Output) > 0 {
+		return chunk.Output[0], true
+	}
+	return types.ResponsesOutput{}, false
 }
 
 // ProxyGeminiStream takes a Gemini streaming response and writes Anthropic-format SSE.
