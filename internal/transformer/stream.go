@@ -724,6 +724,22 @@ func usageInfoToAnthropic(usage *types.UsageInfo) *types.Usage {
 	}
 }
 
+// responsesUsageToAnthropic maps Responses terminal usage to the Anthropic
+// terminal message_delta usage. Responses usage has no cache split, so the
+// fields map 1:1. A missing terminal event keeps the old zero behavior.
+func responsesUsageToAnthropic(usage *types.ResponsesUsage) *types.Usage {
+	if usage == nil {
+		return &types.Usage{
+			InputTokens:  0,
+			OutputTokens: 0,
+		}
+	}
+	return &types.Usage{
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+	}
+}
+
 // writeContentBlockStop writes a content_block_stop SSE event at the given index.
 func writeContentBlockStop(w http.ResponseWriter, index int) error {
 	return writeSSEEvent(w, types.MessageEvent{
@@ -818,6 +834,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 	reasoningStarted := false
 	hasToolUse := false
 	startedToolCalls := make(map[string]int)
+	var terminalUsage *types.ResponsesUsage
 	readBuf := readBufPool.Get().(*[]byte)
 	defer readBufPool.Put(readBuf)
 
@@ -836,7 +853,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 			for i := 0; i < n; i++ {
 				b := (*readBuf)[i]
 				if b == '\n' {
-					if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &hasToolUse, startedToolCalls, originalModel); err != nil {
+					if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &hasToolUse, startedToolCalls, originalModel, &terminalUsage); err != nil {
 						return err
 					}
 					lineBuf = lineBuf[:0]
@@ -848,7 +865,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 
 		if err == io.EOF {
 			if len(lineBuf) > 0 {
-				if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &hasToolUse, startedToolCalls, originalModel); err != nil {
+				if err := h.processResponsesSSELine(w, flusher, lineBuf, &contentIndex, &contentStarted, &reasoningStarted, &hasToolUse, startedToolCalls, originalModel, &terminalUsage); err != nil {
 					return err
 				}
 			}
@@ -903,7 +920,7 @@ func (h *StreamHandler) ProxyResponsesStream(
 		Delta: &types.Delta{
 			StopReason: stopReason,
 		},
-		Usage: &types.Usage{InputTokens: 0, OutputTokens: 0},
+		Usage: responsesUsageToAnthropic(terminalUsage),
 	}
 	if err := writeSSEEvent(w, msgDelta); err != nil {
 		return ErrClientDisconnected
@@ -930,6 +947,7 @@ func (h *StreamHandler) processResponsesSSELine(
 	hasToolUse *bool,
 	startedToolCalls map[string]int,
 	originalModel string,
+	terminalUsage **types.ResponsesUsage,
 ) error {
 	line = bytes.TrimSpace(line)
 	if len(line) == 0 || !bytes.HasPrefix(line, []byte("data: ")) {
@@ -943,6 +961,18 @@ func (h *StreamHandler) processResponsesSSELine(
 
 	var chunk types.ResponsesChunk
 	if err := json.Unmarshal(data, &chunk); err != nil {
+		return nil
+	}
+
+	// Terminal event carries the only usage in a Responses stream.
+	// Flat shape: {"type":"response.completed","usage":{...}}.
+	// Nested shape: {"type":"response.completed","response":{"usage":{...}}}.
+	if chunk.Type == "response.completed" {
+		if chunk.Usage != nil {
+			*terminalUsage = chunk.Usage
+		} else if chunk.Response != nil && chunk.Response.Usage != nil {
+			*terminalUsage = chunk.Response.Usage
+		}
 		return nil
 	}
 

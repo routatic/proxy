@@ -1694,3 +1694,102 @@ func TestProxyResponsesStream_ToolCall_ItemField(t *testing.T) {
 		t.Errorf("event[4] = %+v, want message_delta stop_reason tool_use", events[4])
 	}
 }
+
+// TestProxyResponsesStream_TerminalUsageFlat verifies a flat usage object on
+// response.completed lands in the terminal message_delta usage.
+func TestProxyResponsesStream_TerminalUsageFlat(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Hi"}`,
+		`{"type":"response.completed","usage":{"input_tokens":100,"output_tokens":25}}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	delta := events[4]
+	if delta.Type != "message_delta" {
+		t.Fatalf("event[4].Type = %q, want message_delta", delta.Type)
+	}
+	if delta.Usage == nil {
+		t.Fatalf("event[4].Usage = nil, want 100/25")
+	}
+	if delta.Usage.InputTokens != 100 || delta.Usage.OutputTokens != 25 {
+		t.Errorf("event[4].Usage = %+v, want input 100 output 25", delta.Usage)
+	}
+}
+
+// TestProxyResponsesStream_TerminalUsageNested verifies a nested
+// response.usage object on response.completed lands in message_delta usage.
+func TestProxyResponsesStream_TerminalUsageNested(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Hi"}`,
+		`{"type":"response.completed","response":{"usage":{"input_tokens":200,"output_tokens":30}}}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	delta := events[4]
+	if delta.Type != "message_delta" {
+		t.Fatalf("event[4].Type = %q, want message_delta", delta.Type)
+	}
+	if delta.Usage == nil {
+		t.Fatalf("event[4].Usage = nil, want 200/30")
+	}
+	if delta.Usage.InputTokens != 200 || delta.Usage.OutputTokens != 30 {
+		t.Errorf("event[4].Usage = %+v, want input 200 output 30", delta.Usage)
+	}
+}
+
+// TestProxyResponsesStream_TerminalUsageMissing verifies a bare
+// response.completed keeps zero usage without crashing.
+func TestProxyResponsesStream_TerminalUsageMissing(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Hi"}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	delta := events[4]
+	if delta.Type != "message_delta" {
+		t.Fatalf("event[4].Type = %q, want message_delta", delta.Type)
+	}
+	if delta.Usage == nil {
+		t.Fatalf("event[4].Usage = nil, want zero usage")
+	}
+	if delta.Usage.InputTokens != 0 || delta.Usage.OutputTokens != 0 {
+		t.Errorf("event[4].Usage = %+v, want 0/0", delta.Usage)
+	}
+}

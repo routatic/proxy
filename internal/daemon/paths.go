@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -99,10 +100,29 @@ func resolveExecutablePath(execPath string) string {
 		return execPath
 	}
 
+	// Homebrew on macOS: stable symlinks (/opt/homebrew/opt/* and
+	// /opt/homebrew/bin/*, plus /usr/local equivalents on Intel) must not
+	// be resolved to Cellar/X.Y.Z, which is deleted on `brew upgrade` and
+	// would break the launchd plist. Only applies to darwin + brew prefixes;
+	// all other installs (go install, direct download, Linux) keep EvalSymlinks.
+	if runtime.GOOS == "darwin" && isHomebrewStablePath(execPath) {
+		if abs, err := filepath.Abs(execPath); err == nil {
+			return abs
+		}
+		return execPath
+	}
+
 	resolved, err := filepath.EvalSymlinks(execPath)
 	if err != nil {
 		slog.Warn("symlink resolution failed, using raw path", "path", execPath, "err", err)
 		return execPath
 	}
 	return resolved
+}
+
+func isHomebrewStablePath(p string) bool {
+	return strings.HasPrefix(p, "/opt/homebrew/opt/") ||
+		strings.HasPrefix(p, "/opt/homebrew/bin/") ||
+		strings.HasPrefix(p, "/usr/local/opt/") ||
+		strings.HasPrefix(p, "/usr/local/bin/")
 }
