@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
@@ -1888,5 +1890,336 @@ func TestHandleStreaming_AnthropicRaw_NoKeepaliveInjection(t *testing.T) {
 
 	if strings.Contains(body, ":keepalive") {
 		t.Errorf("keepalive comment leaked into Anthropic raw stream output (concurrent write bug):\n%s", body)
+	}
+}
+
+// newSessionPropagationHandler builds a fully-wired MessagesHandler (legacy
+// client path, nil provider registry) whose OpenCode Go models hit the
+// anthropic endpoint of upstreamURL.
+func newSessionPropagationHandler(t *testing.T, upstreamURL string) *MessagesHandler {
+	t.Helper()
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"minimax-m3": {Provider: "opencode-go", ModelID: "minimax-m3"},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{
+			AnthropicBaseURL: upstreamURL,
+			BaseURL:          upstreamURL,
+			TimeoutMs:        5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+	handler := NewMessagesHandler(
+		client.NewOpenCodeClient(atomicCfg, nil),
+		nil, // providerRegistry
+		router.NewModelRouter(atomicCfg),
+		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
+		tokenCounter,
+		metrics.New(),
+		nil, // captureLogger
+		nil, // hist
+		nil, // storage
+	)
+	handler.logger = slog.Default()
+	return handler
+}
+
+// TestHandleMessages_PropagatesClaudeCodeSessionID pins that the inbound
+// x-claude-code-session-id is forwarded verbatim as x-opencode-session on both
+// the streaming and non-streaming paths.
+func TestHandleMessages_PropagatesClaudeCodeSessionID(t *testing.T) {
+	const sessionID = "test-session-0001"
+
+	for _, tc := range []struct {
+		name   string
+		stream bool
+	}{
+		{name: "streaming", stream: true},
+		{name: "non-streaming"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotSession string
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotSession = r.Header.Get(core.OpenCodeSessionHeader)
+				if tc.stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+					_, _ = fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"model":"minimax-m3","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5}}`))
+				}
+			}))
+			defer upstream.Close()
+
+			handler := newSessionPropagationHandler(t, upstream.URL)
+
+			streamField := "false"
+			if tc.stream {
+				streamField = "true"
+			}
+			requestBody := fmt.Sprintf(`{"model":"minimax-m3","stream":%s,"max_tokens":256,"messages":[{"role":"user","content":"Say hello"}]}`, streamField)
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("x-claude-code-session-id", sessionID)
+
+			handler.HandleMessages(recorder, req)
+
+			if gotSession != sessionID {
+				t.Errorf("upstream %s = %q, want %q", core.OpenCodeSessionHeader, gotSession, sessionID)
+			}
+		})
+	}
+}
+
+// TestHandleMessages_SessionIDStableAcrossRequests pins the invariant: the same
+// inbound session maps to the same upstream value, and different inbound
+// sessions map to different values.
+func TestHandleMessages_SessionIDStableAcrossRequests(t *testing.T) {
+	var sessions []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions = append(sessions, r.Header.Get(core.OpenCodeSessionHeader))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"model":"minimax-m3","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5}}`))
+	}))
+	defer upstream.Close()
+
+	handler := newSessionPropagationHandler(t, upstream.URL)
+
+	requestBody := `{"model":"minimax-m3","max_tokens":256,"messages":[{"role":"user","content":"Say hello"}]}`
+	send := func(sid string) {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-claude-code-session-id", sid)
+		handler.HandleMessages(recorder, req)
+	}
+
+	send("session-A")
+	send("session-A")
+	send("session-B")
+
+	if len(sessions) != 3 {
+		t.Fatalf("expected 3 upstream calls, got %d", len(sessions))
+	}
+	if sessions[0] != "session-A" || sessions[1] != "session-A" {
+		t.Errorf("same inbound session must map to the same upstream value, got %v", sessions[:2])
+	}
+	if sessions[2] != "session-B" {
+		t.Errorf("different inbound session must map to a different upstream value, got %q", sessions[2])
+	}
+	if sessions[0] == sessions[2] {
+		t.Error("different inbound sessions collided to the same upstream value")
+	}
+}
+
+// TestHandleMessages_MissingSessionID_UsesUUIDFallback pins that clients that
+// do not send x-claude-code-session-id get a per-request UUID fallback so the
+// upstream header is always present.
+func TestHandleMessages_MissingSessionID_UsesUUIDFallback(t *testing.T) {
+	var gotSession string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get(core.OpenCodeSessionHeader)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],"model":"minimax-m3","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5}}`))
+	}))
+	defer upstream.Close()
+
+	handler := newSessionPropagationHandler(t, upstream.URL)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"minimax-m3","max_tokens":256,"messages":[{"role":"user","content":"Say hello"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	handler.HandleMessages(recorder, req)
+
+	if _, err := uuid.Parse(gotSession); err != nil {
+		t.Errorf("fallback session %q is not a valid UUID: %v", gotSession, err)
+	}
+}
+
+// TestHandleStreaming_FallbackAttemptsShareSessionID pins that every fallback
+// attempt for one inbound request carries the same session value: the first
+// model fails, the second succeeds, and both upstream requests share the
+// inbound session.
+func TestHandleStreaming_FallbackAttemptsShareSessionID(t *testing.T) {
+	var sessions []string
+	callCount := int32(0)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions = append(sessions, r.Header.Get(core.OpenCodeSessionHeader))
+		if atomic.AddInt32(&callCount, 1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+		_, _ = fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+	}))
+	defer upstream.Close()
+
+	handler := newSessionPropagationHandler(t, upstream.URL)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"minimax-m3","stream":true,"max_tokens":256,"messages":[{"role":"user","content":"Say hello"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-claude-code-session-id", "session-fallback-1")
+
+	handler.HandleMessages(recorder, req)
+
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 upstream calls (1 fail + 1 fallback), got %d", len(sessions))
+	}
+	if sessions[0] != "session-fallback-1" || sessions[1] != "session-fallback-1" {
+		t.Errorf("all fallback attempts must share the session, got %v", sessions)
+	}
+}
+
+// sessionRecordingProvider is a fake OpenCode Go provider that records the
+// session ID it receives via context and returns a minimal Anthropic SSE body.
+type sessionRecordingProvider struct {
+	session *string
+}
+
+func (p *sessionRecordingProvider) Name() string { return "opencode-go" }
+func (p *sessionRecordingProvider) Capabilities() core.ProviderCapabilities {
+	return core.ProviderCapabilities{SupportsStreaming: true, SupportsTools: true}
+}
+func (p *sessionRecordingProvider) ModelCapabilities(string) (core.ProviderCapabilities, bool) {
+	return p.Capabilities(), true
+}
+func (p *sessionRecordingProvider) WireFormat(config.ModelConfig) core.WireFormat {
+	return core.WireFormatAnthropic
+}
+func (p *sessionRecordingProvider) Execute(context.Context, *core.NormalizedRequest, config.ModelConfig) (*core.ExecuteResult, error) {
+	return nil, nil
+}
+func (p *sessionRecordingProvider) Stream(ctx context.Context, _ *core.NormalizedRequest, _ config.ModelConfig) (io.ReadCloser, error) {
+	*p.session = core.SessionIDFromContext(ctx)
+	return io.NopCloser(strings.NewReader("event: message_start\ndata: {}\n\nevent: message_stop\ndata: {}\n\n")), nil
+}
+func (p *sessionRecordingProvider) RoundTripName(model config.ModelConfig) string {
+	return model.ModelID
+}
+func (p *sessionRecordingProvider) StreamIdleTimeout(config.ModelConfig) time.Duration {
+	return time.Minute
+}
+
+// TestHandleStreaming_SessionIDReachesProvider pins that the session ID reaches
+// the provider interface via context on the registry (provider) dispatch path.
+func TestHandleStreaming_SessionIDReachesProvider(t *testing.T) {
+	var gotSession string
+	registry := core.NewProviderRegistry()
+	_ = registry.Register(&sessionRecordingProvider{session: &gotSession})
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-go", ModelID: "kimi-k2.6"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-go", ModelID: "glm-5"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"minimax-m3": {Provider: "opencode-go", ModelID: "minimax-m3"},
+		},
+		OpenCodeGo: config.OpenCodeGoConfig{BaseURL: "http://127.0.0.1:1", TimeoutMs: 5000},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+	handler := NewMessagesHandler(
+		client.NewOpenCodeClient(atomicCfg, nil),
+		registry,
+		router.NewModelRouter(atomicCfg),
+		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
+		tokenCounter,
+		metrics.New(),
+		nil, // captureLogger
+		nil, // hist
+		nil, // storage
+	)
+	handler.logger = slog.Default()
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"minimax-m3","stream":true,"max_tokens":256,"messages":[{"role":"user","content":"Say hello"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-claude-code-session-id", "session-provider-1")
+
+	handler.HandleMessages(recorder, req)
+
+	if gotSession != "session-provider-1" {
+		t.Errorf("provider received session %q via context, want %q", gotSession, "session-provider-1")
+	}
+}
+
+// TestHandleMessages_OpenCodeZen_OmitsSessionHeader pins that the session ID
+// does not leak onto OpenCode Zen requests even when the inbound header is
+// present.
+func TestHandleMessages_OpenCodeZen_OmitsSessionHeader(t *testing.T) {
+	var gotSession string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get(core.OpenCodeSessionHeader)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"cmpl-1","object":"chat.completion","created":1,"model":"deepseek-v4-flash-free","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		Models: map[string]config.ModelConfig{
+			"default": {Provider: "opencode-zen", ModelID: "deepseek-v4-flash-free"},
+		},
+		Fallbacks: map[string][]config.ModelConfig{
+			"default": {{Provider: "opencode-zen", ModelID: "mimo-v2.5-free"}},
+		},
+		ModelOverrides: map[string]config.ModelConfig{
+			"deepseek-v4-flash-free": {Provider: "opencode-zen", ModelID: "deepseek-v4-flash-free"},
+		},
+		OpenCodeZen: config.OpenCodeZenConfig{
+			BaseURL:   upstream.URL,
+			TimeoutMs: 5000,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "/tmp/test-config.json")
+	tokenCounter, err := token.NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+	handler := NewMessagesHandler(
+		client.NewOpenCodeClient(atomicCfg, nil),
+		nil, // providerRegistry
+		router.NewModelRouter(atomicCfg),
+		router.NewFallbackHandler(slog.Default(), 3, 30*time.Second),
+		tokenCounter,
+		metrics.New(),
+		nil, // captureLogger
+		nil, // hist
+		nil, // storage
+	)
+	handler.logger = slog.Default()
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"deepseek-v4-flash-free","max_tokens":256,"messages":[{"role":"user","content":"Say hello"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-claude-code-session-id", "session-zen-1")
+
+	handler.HandleMessages(recorder, req)
+
+	if gotSession != "" {
+		t.Errorf("OpenCode Zen must not receive %s, got %q", core.OpenCodeSessionHeader, gotSession)
 	}
 }
