@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/routatic/proxy/internal/client"
 	"github.com/routatic/proxy/internal/config"
 	"github.com/routatic/proxy/internal/core"
@@ -265,6 +267,10 @@ func (w *responseWriter) Flush() {
 const (
 	defaultKeepaliveInterval = 3 * time.Second
 	keepaliveWriteTimeout    = 5 * time.Second
+
+	// claudeCodeSessionHeader carries the Claude Code conversation UUID. Its
+	// value is forwarded verbatim to OpenCode Go as x-opencode-session.
+	claudeCodeSessionHeader = "x-claude-code-session-id"
 )
 
 // WriteKeepalive writes a keepalive comment frame (":keepalive\n\n") to the
@@ -389,6 +395,18 @@ func (h *MessagesHandler) HandleMessages(w http.ResponseWriter, r *http.Request)
 		requestID = h.requestIDGen.Generate()
 	}
 	w.Header().Set("X-Request-ID", requestID)
+
+	// Resolve the OpenCode session ID from the Claude Code conversation header
+	// before any dispatch: this context reaches every provider call and every
+	// fallback attempt. Header.Get returns the first value when duplicates are
+	// present; the first value wins. Clients that do not send the header (curl,
+	// older Claude Code) get a per-request UUID so the header is always present
+	// on OpenCode Go.
+	sessionID := r.Header.Get(claudeCodeSessionHeader)
+	if sessionID == "" {
+		sessionID = uuid.NewString()
+	}
+	r = r.WithContext(core.WithSessionID(r.Context(), sessionID))
 
 	// Rate limiting
 	clientIP := middleware.GetClientIP(r)

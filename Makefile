@@ -128,7 +128,9 @@ dist: clean
 # ── RPM Packaging (Fedora / RHEL) ──────────────────────────────────
 # Mirrors the CI job. Requires nfpm:
 #   go install github.com/goreleaser/nfpm/v2/cmd/nfpm@$(NFPM_VERSION)
-NFPM_VERSION = v2.47.0
+# Keep this compatible with the Go version in go.mod. setup-go v7 exports
+# GOTOOLCHAIN=local, and nfpm v2.47.0 requires Go 1.26.4.
+NFPM_VERSION = v2.46.3
 RPM_VERSION ?= $(patsubst v%,%,$(VERSION))
 
 rpm:

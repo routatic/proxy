@@ -76,13 +76,20 @@ type ResponsesUsage struct {
 
 // ResponsesChunk represents a streaming chunk from the Responses API.
 type ResponsesChunk struct {
-	Type   string            `json:"type"`
-	ID     string            `json:"id,omitempty"`
-	ItemID string            `json:"item_id,omitempty"`
-	Delta  string            `json:"delta,omitempty"`
-	Item   *ResponsesOutput  `json:"item,omitempty"`
-	Output []ResponsesOutput `json:"output,omitempty"`
-	Usage  *ResponsesUsage   `json:"usage,omitempty"`
+	Type     string            `json:"type"`
+	ID       string            `json:"id,omitempty"`
+	ItemID   string            `json:"item_id,omitempty"`
+	Delta    string            `json:"delta,omitempty"`
+	Item     *ResponsesOutput  `json:"item,omitempty"`
+	Output   []ResponsesOutput `json:"output,omitempty"`
+	Usage    *ResponsesUsage   `json:"usage,omitempty"`
+	Response *ResponsesResult  `json:"response,omitempty"`
+}
+
+// ResponsesResult carries the completed response object inside a
+// response.completed event. Only usage is decoded; other fields are ignored.
+type ResponsesResult struct {
+	Usage *ResponsesUsage `json:"usage,omitempty"`
 }
 
 // Google Gemini API types.

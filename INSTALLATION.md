@@ -188,6 +188,16 @@ If you installed via a package manager, use it rather than `routatic-proxy updat
 | RPM (Fedora/RHEL) | `sudo dnf upgrade routatic-proxy` |
 | Docker | `docker pull ghcr.io/routatic/proxy:latest` |
 
+On macOS when `routatic-proxy autostart` is enabled, `brew upgrade` swaps the
+`Cellar` binary but leaves the running daemon in RAM. `launchd` cold-starts the
+new binary on next login. To run the new version now:
+
+```bash
+routatic-proxy stop
+launchctl kickstart -k gui/$(id -u)/com.routatic.proxy
+# or: routatic-proxy autostart disable && routatic-proxy autostart enable
+```
+
 ### Verifying a download
 
 Every release publishes `checksums.txt`. `routatic-proxy update` does not verify checksums itself, so for a manual download compare the hash yourself:

@@ -64,6 +64,14 @@ func TestEnableDisableAutostart_Darwin(t *testing.T) {
 		t.Errorf("Plist missing XML-escaped API key value. Content:\n%s", content)
 	}
 
+	// On darwin, when the binary is a Homebrew stable path, the plist must
+	// not contain a versioned Cellar path (launchd would break on brew upgrade).
+	if isHomebrewStablePath(resolveExecutablePath(mustExecutable(t))) {
+		if strings.Contains(content, "Cellar/") {
+			t.Errorf("Plist must not contain Cellar/ for Homebrew installs, got:\n%s", content)
+		}
+	}
+
 	// Disable autostart
 	err = DisableAutostart()
 	if err != nil {
@@ -74,4 +82,13 @@ func TestEnableDisableAutostart_Darwin(t *testing.T) {
 	if _, err := os.Stat(plistPath); !os.IsNotExist(err) {
 		t.Errorf("Expected plist file to be deleted, but it still exists")
 	}
+}
+
+func mustExecutable(t *testing.T) string {
+	t.Helper()
+	p, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	return p
 }

@@ -8,7 +8,7 @@
 # Environment:
 #   VERSION   version without the leading "v" (e.g. 0.6.4 or 0.6.4-beta.1)
 #   OUTDIR    output directory (default: dist)
-#   NFPM_REF  nfpm module version to install (default: v2.47.0)
+#   NFPM_REF  nfpm module version to install (default: v2.46.3)
 #
 # Produces, in $OUTDIR:
 #   routatic-proxy_linux-amd64          raw binary
@@ -19,7 +19,10 @@ set -euo pipefail
 
 : "${VERSION:?VERSION must be set (version without the leading v)}"
 OUTDIR="${OUTDIR:-dist}"
-NFPM_REF="${NFPM_REF:-v2.47.0}"
+# setup-go v7 keeps commands on the selected repository toolchain by exporting
+# GOTOOLCHAIN=local. nfpm v2.47.0 requires Go 1.26.4, while v2.46.3 supports
+# the Go 1.25 toolchain declared in this repository's go.mod.
+NFPM_REF="${NFPM_REF:-v2.46.3}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
