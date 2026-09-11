@@ -183,6 +183,7 @@ func (t *ResponseTransformer) TransformResponsesResponse(
 	}
 
 	var contentBlocks []types.ContentBlock
+	hasToolCall := false
 
 	for _, output := range responsesResp.Output {
 		switch output.Type {
@@ -196,9 +197,10 @@ func (t *ResponseTransformer) TransformResponsesResponse(
 				}
 			}
 		case "function_call":
+			hasToolCall = true
 			inputJSON := json.RawMessage(`{}`)
 			if output.Arguments != "" {
-				inputJSON = json.RawMessage(output.Arguments)
+				inputJSON = json.RawMessage(normalizeToolArguments(output.Arguments))
 			}
 			contentBlocks = append(contentBlocks, types.ContentBlock{
 				Type:  "tool_use",
@@ -216,13 +218,21 @@ func (t *ResponseTransformer) TransformResponsesResponse(
 		})
 	}
 
+	// A function_call output becomes a tool_use block, so the turn must report
+	// tool_use. Reporting end_turn here makes the client treat the turn as
+	// finished and skip running the tool.
+	stopReason := "end_turn"
+	if hasToolCall {
+		stopReason = "tool_use"
+	}
+
 	anthropicResp := &types.MessageResponse{
 		ID:         responsesResp.ID,
 		Type:       "message",
 		Role:       "assistant",
 		Content:    contentBlocks,
 		Model:      originalModel,
-		StopReason: "end_turn",
+		StopReason: stopReason,
 		Usage: types.Usage{
 			InputTokens:  responsesResp.Usage.InputTokens,
 			OutputTokens: responsesResp.Usage.OutputTokens,
