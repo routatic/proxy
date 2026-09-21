@@ -37,8 +37,9 @@ Examples:
 			return fmt.Errorf("failed to check for updates: %w", err)
 		}
 
-		// Check if update is available
-		if release.TagName == currentVersion || release.TagName <= currentVersion {
+		// Semantic comparison, not string comparison: "v0.6.10" sorts before
+		// "v0.6.9" lexically and would look like a downgrade.
+		if !update.IsNewerVersion(currentVersion, release.TagName) {
 			fmt.Printf("You are already on the latest version (%s).\n", currentVersion)
 			return nil
 		}
@@ -60,7 +61,7 @@ Examples:
 		fmt.Printf("Downloading %s...\n", filename)
 
 		// Download and install
-		if err := update.DownloadAndInstall(url, filename); err != nil {
+		if err := update.DownloadAndInstall(url); err != nil {
 			return fmt.Errorf("failed to install update: %w", err)
 		}
 

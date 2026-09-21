@@ -1,6 +1,8 @@
 # How to Add a New Model
 
-Adding a new model requires zero code changes. Everything is config-driven.
+Adding a model from an existing family requires only config changes. A new Zen
+model family that uses a non-default endpoint (Responses, Gemini, or Messages)
+may require updating `internal/models/classifier.go`.
 
 ## Step 1: Identify the Provider and Endpoint
 
@@ -12,56 +14,51 @@ Determine which upstream provider the model uses and which endpoint format it ac
 | `opencode-go` | `/v1/messages` | Anthropic Messages (MiniMax, Qwen) |
 | `opencode-zen` | `/v1/chat/completions` | OpenAI Chat Completions |
 | `opencode-zen` | `/v1/messages` | Anthropic Messages (Claude, Qwen) |
-| `opencode-zen` | `/v1/responses` | OpenAI Responses (GPT models) |
+| `opencode-zen` | `/v1/responses` | OpenAI Responses (GPT, Grok, Muse Spark) |
 | `opencode-zen` | `/v1/models/{id}` | Gemini |
 | `aws-bedrock` | `/v1/chat/completions` | OpenAI Chat Completions (Bedrock Mantle) |
 | `aws-bedrock` | `/v1/messages` | Anthropic Messages (Bedrock Mantle, requires `wire_format: "anthropic"`) |
 
-## Step 2: Add Endpoint Classification (Zen only)
+## Step 2: Check Endpoint Classification
 
-If the model uses Zen, add it to the appropriate classifier in `internal/models/classifier.go`:
+Zen endpoint classification is prefix-based. Models in these existing families
+need no classifier change:
+
+| Endpoint | Recognized model prefixes | Classifier |
+|----------|---------------------------|------------|
+| Anthropic Messages | `claude-*`, `qwen*` | `IsZenAnthropicModel` |
+| OpenAI Responses | `gpt-*`, `grok-*`, `muse-spark-*` | `IsResponsesModel` |
+| Gemini | `gemini-*` | `IsGeminiModel` |
+
+Update `internal/models/classifier.go` only when Zen introduces a new model
+family that uses a non-default endpoint. Add the family prefix to the
+appropriate classifier and add unit-test coverage. For example, a new
+Responses family would be added alongside the existing prefixes:
 
 ```go
-// For Anthropic endpoint:
-func IsZenAnthropicModel(modelID string) bool {
-    // ...
-    if modelID == "my-new-model" {
-        return true
-    }
-    // ...
-}
-
-// For Responses endpoint:
 func IsResponsesModel(modelID string) bool {
-    // ...
-    case "gpt-5.5", "gpt-5.5-pro", "my-new-model":
-        return true
-    // ...
-}
-
-// For Gemini endpoint:
-func IsGeminiModel(modelID string) bool {
-    // ...
-    case "gemini-3.5-flash", "my-new-model":
-        return true
-    // ...
+    return strings.HasPrefix(modelID, "gpt-") ||
+        strings.HasPrefix(modelID, "grok-") ||
+        strings.HasPrefix(modelID, "muse-spark-") ||
+        strings.HasPrefix(modelID, "my-responses-family-")
 }
 ```
 
-If the model uses Go provider and requires the Anthropic endpoint (not Chat Completions), add it to `IsAnthropicModel`:
+The Go provider is config-driven. If a Go model requires a non-default wire
+format, set `wire_format` on its model configuration instead of changing the
+Zen classifier:
 
-```go
-func IsAnthropicModel(modelID string) bool {
-    switch modelID {
-    // ...
-    case "minimax-m2.5", "my-new-model":
-        return true
-    // ...
-    }
+```json
+{
+  "provider": "opencode-go",
+  "model_id": "my-new-model",
+  "wire_format": "anthropic"
 }
 ```
 
-**Note:** These classification functions are shared between `internal/client` and `internal/provider` packages to ensure consistent routing.
+Supported Go-provider overrides are `openai`, `anthropic`, and `responses`.
+Zen classification functions are shared between `internal/client` and
+`internal/provider` so both paths route models consistently.
 
 ## Step 3: Add to Config
 

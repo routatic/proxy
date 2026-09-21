@@ -66,25 +66,15 @@ func IsZenAnthropicModel(modelID string) bool {
 }
 
 // IsGeminiModel returns true for models using the Gemini endpoint.
+// Uses prefix check to cover all current and future Gemini models.
 func IsGeminiModel(modelID string) bool {
-	switch modelID {
-	case "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash":
-		return true
-	default:
-		return false
-	}
+	return strings.HasPrefix(modelID, "gemini-")
 }
 
 // IsResponsesModel returns true for models using the OpenAI Responses endpoint.
+// Uses prefix checks to cover all current and future model families.
 func IsResponsesModel(modelID string) bool {
-	switch modelID {
-	case "gpt-5.5", "gpt-5.5-pro", "gpt-5.5-mini", "gpt-5.5-nano",
-		"gpt-5.4", "gpt-5.4-pro", "gpt-5.4-mini", "gpt-5.4-nano",
-		"gpt-5.3-codex", "gpt-5.3-codex-spark", "gpt-5.2", "gpt-5.2-codex",
-		"gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini",
-		"gpt-5", "gpt-5-codex", "gpt-5-nano":
-		return true
-	default:
-		return false
-	}
+	return strings.HasPrefix(modelID, "gpt-") ||
+		strings.HasPrefix(modelID, "grok-") ||
+		strings.HasPrefix(modelID, "muse-spark-")
 }

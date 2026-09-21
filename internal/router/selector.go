@@ -3,7 +3,6 @@ package router
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/routatic/proxy/internal/catalog"
 	"github.com/routatic/proxy/internal/config"
@@ -57,31 +56,17 @@ func (s *Selector) SelectCheapest(scenario string, constraints ScenarioConstrain
 		return catalog.ResolvedModel{}, fmt.Errorf("unknown scenario %q", scenario)
 	}
 
-	candidates := s.resolveCandidates(scen, constraints)
-	if len(candidates) == 0 {
+	best := s.resolveCandidates(scen, constraints)
+	if best == nil {
 		return catalog.ResolvedModel{}, fmt.Errorf("%w: scenario %q", ErrNoCandidateModel, scenario)
 	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		a, b := candidates[i], candidates[j]
-		costA := a.CostInputPerM + a.CostOutputPerM + s.effectivePenalty(a.Provider)
-		costB := b.CostInputPerM + b.CostOutputPerM + s.effectivePenalty(b.Provider)
-		if costA != costB {
-			return costA < costB
-		}
-		if a.ContextWindow != b.ContextWindow {
-			return a.ContextWindow > b.ContextWindow
-		}
-		return a.ModelID < b.ModelID
-	})
-
-	return candidates[0], nil
+	return *best, nil
 }
 
 // resolveCandidates enumerates all enabled provider/model pairs for a scenario
 // and returns the resolved models that match the scenario requirements and
 // constraints.
-func (s *Selector) resolveCandidates(scen catalog.Scenario, constraints ScenarioConstraints) []catalog.ResolvedModel {
+func (s *Selector) resolveCandidates(scen catalog.Scenario, constraints ScenarioConstraints) *catalog.ResolvedModel {
 	providers := s.providerSet(scen)
 	minContext := max(scen.MinContextWindow, constraints.Context)
 
@@ -90,40 +75,52 @@ func (s *Selector) resolveCandidates(scen catalog.Scenario, constraints Scenario
 		maxContext = s.cfg.CostRouting.MaxContextWindow
 	}
 
-	var candidates []catalog.ResolvedModel
+	var best *catalog.ResolvedModel
 	for providerName := range providers {
-		provider, ok := s.catalog.Providers[providerName]
-		if !ok {
-			continue
-		}
-		for modelKey, model := range s.catalog.Models {
-			if !modelSupportsProvider(modelKey, providerName) {
+		for _, candidate := range s.catalog.ListProviderModels(providerName) {
+			if maxContext > 0 && candidate.ContextWindow > maxContext {
 				continue
 			}
-			if maxContext > 0 && model.ContextWindow() > maxContext {
+			if !resolvedModelMatches(candidate, scen, constraints, minContext) {
 				continue
 			}
-			if !modelMatches(model, scen, constraints, minContext) {
-				continue
+			if best == nil || s.betterResolvedModel(candidate, *best) {
+				copy := candidate
+				best = &copy
 			}
-			candidates = append(candidates, catalog.ResolvedModel{
-				Provider:               provider.Name,
-				ModelID:                catalog.ModelNameFromKey(modelKey),
-				CanonicalName:          modelKey,
-				DisplayName:            model.DisplayName(),
-				BaseURL:                provider.BaseURL,
-				APIKey:                 provider.APIKey,
-				AnthropicToolsDisabled: provider.AnthropicToolsDisabled,
-				ContextWindow:          model.ContextWindow(),
-				CostInputPerM:          model.CostInputPerM(),
-				CostOutputPerM:         model.CostOutputPerM(),
-				Tools:                  model.SupportsTools(),
-				Vision:                 model.SupportsVision(),
-				Reasoning:              model.Reasoning,
-			})
 		}
 	}
-	return candidates
+	return best
+}
+
+func resolvedModelMatches(model catalog.ResolvedModel, scen catalog.Scenario, constraints ScenarioConstraints, minContext int64) bool {
+	if model.ContextWindow < minContext {
+		return false
+	}
+	if scen.RequiresTools != nil && *scen.RequiresTools && !model.Tools {
+		return false
+	}
+	if scen.RequiresVision != nil && *scen.RequiresVision && !model.Vision {
+		return false
+	}
+	if scen.RequiresReasoning != nil && *scen.RequiresReasoning && !model.Reasoning {
+		return false
+	}
+	return (!constraints.Tools || model.Tools) &&
+		(!constraints.Vision || model.Vision) &&
+		(!constraints.Reasoning || model.Reasoning)
+}
+
+func (s *Selector) betterResolvedModel(a, b catalog.ResolvedModel) bool {
+	costA := a.CostInputPerM + a.CostOutputPerM + s.effectivePenalty(a.Provider)
+	costB := b.CostInputPerM + b.CostOutputPerM + s.effectivePenalty(b.Provider)
+	if costA != costB {
+		return costA < costB
+	}
+	if a.ContextWindow != b.ContextWindow {
+		return a.ContextWindow > b.ContextWindow
+	}
+	return a.ModelID < b.ModelID
 }
 
 // providerSet returns the enabled providers that should be considered for a
@@ -189,35 +186,6 @@ func (s *Selector) globalPreferProviders() []string {
 		return nil
 	}
 	return s.cfg.CostRouting.PreferProviders
-}
-
-func modelSupportsProvider(modelKey string, provider string) bool {
-	return catalog.ProviderFromModelKey(modelKey) == provider
-}
-
-func modelMatches(model catalog.Model, scen catalog.Scenario, constraints ScenarioConstraints, minContext int64) bool {
-	if model.ContextWindow() < minContext {
-		return false
-	}
-	if scen.RequiresTools != nil && *scen.RequiresTools && !model.SupportsTools() {
-		return false
-	}
-	if scen.RequiresVision != nil && *scen.RequiresVision && !model.SupportsVision() {
-		return false
-	}
-	if scen.RequiresReasoning != nil && *scen.RequiresReasoning && !model.Reasoning {
-		return false
-	}
-	if constraints.Tools && !model.SupportsTools() {
-		return false
-	}
-	if constraints.Vision && !model.SupportsVision() {
-		return false
-	}
-	if constraints.Reasoning && !model.Reasoning {
-		return false
-	}
-	return true
 }
 
 // enabledProviders returns the providers that have an effective API key in the

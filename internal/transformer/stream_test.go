@@ -1430,3 +1430,526 @@ func TestProxyStream_NoDuplicateToolStopsOnErrorAfterFinishReason(t *testing.T) 
 		t.Errorf("penultimate event = %+v, want message_delta with stop_reason tool_use", got)
 	}
 }
+
+// TestProxyResponsesStream_ToolCall verifies that a function_call output item in
+// a Responses stream becomes an Anthropic tool_use block with incremental
+// input_json_delta arguments and stop_reason tool_use.
+func TestProxyResponsesStream_ToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","output":[{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"get_weather","arguments":"","status":"in_progress"}]}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"city\":"}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"\"Paris\"}"}`,
+		`{"type":"response.output_item.done","output":[{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"get_weather","arguments":"{\"city\":\"Paris\"}","status":"completed"}]}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, tool_start(idx=0), input_json_delta, tool_stop(idx=0),
+	// message_delta, message_stop = 6
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].Type != "content_block_start" {
+		t.Errorf("event[1].Type = %q, want content_block_start", events[1].Type)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[1].ContentBlock = %+v, want tool_use", events[1].ContentBlock)
+	}
+	if events[1].ContentBlock.ID != "call_abc" {
+		t.Errorf("event[1].ContentBlock.ID = %q, want call_abc", events[1].ContentBlock.ID)
+	}
+	if events[1].ContentBlock.Name != "get_weather" {
+		t.Errorf("event[1].ContentBlock.Name = %q, want get_weather", events[1].ContentBlock.Name)
+	}
+	if got := string(events[1].ContentBlock.Input); got != `{}` {
+		t.Errorf("event[1].ContentBlock.Input = %s, want {}", got)
+	}
+	if events[1].Index == nil || *events[1].Index != 0 {
+		t.Errorf("event[1].Index = %v, want 0", events[1].Index)
+	}
+
+	if events[2].Delta == nil || events[2].Delta.Type != "input_json_delta" || events[2].Delta.PartialJSON != `{"city":"Paris"}` {
+		t.Errorf("event[2] = %+v, want complete input_json_delta", events[2])
+	}
+
+	if events[3].Type != "content_block_stop" {
+		t.Errorf("event[3].Type = %q, want content_block_stop", events[3].Type)
+	}
+
+	if events[4].Type != "message_delta" {
+		t.Errorf("event[4].Type = %q, want message_delta", events[4].Type)
+	}
+	if events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
+		t.Errorf("event[4].Delta.StopReason = %q, want tool_use", events[4].Delta.StopReason)
+	}
+	if events[5].Type != "message_stop" {
+		t.Errorf("event[5].Type = %q, want message_stop", events[5].Type)
+	}
+}
+
+func TestProxyResponsesStream_TrimsWhitespaceFromToolArgumentKeys(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_ask","call_id":"call_ask","name":"AskUserQuestion"}}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_ask","delta":"{\"questions\":[{\"options\":[{\"label\":\"A\",\"description "}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_ask","delta":"\":\"answer\"}]}]}"}`,
+		`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_ask","call_id":"call_ask","name":"AskUserQuestion","arguments":"{\"questions\":[{\"options\":[{\"label\":\"A\",\"description \":\"answer\"}]}]}"}}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	var arguments strings.Builder
+	for _, event := range events {
+		if event.Delta != nil && event.Delta.Type == "input_json_delta" {
+			arguments.WriteString(event.Delta.PartialJSON)
+		}
+	}
+
+	var decoded struct {
+		Questions []struct {
+			Options []map[string]string `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(arguments.String()), &decoded); err != nil {
+		t.Fatalf("unmarshal streamed tool arguments: %v; arguments = %s", err, arguments.String())
+	}
+	if got := decoded.Questions[0].Options[0]["description"]; got != "answer" {
+		t.Fatalf("description = %q, want answer; arguments = %s", got, arguments.String())
+	}
+}
+
+func TestProxyResponsesStream_PreservesBufferedToolArguments(t *testing.T) {
+	for _, completion := range []string{"done arguments", "buffered done", "EOF"} {
+		for _, tt := range []struct {
+			name string
+			raw  string
+			want string
+		}{
+			{
+				name: "string escapes",
+				raw:  `{"text ":"\ud800 \u0061\/"}`,
+				want: `{"text":"\ud800 \u0061\/"}`,
+			},
+			{
+				name: "colliding keys",
+				raw:  `{" description":"A","description ":"B"}`,
+				want: `{" description":"A","description ":"B"}`,
+			},
+		} {
+			t.Run(completion+"/"+tt.name, func(t *testing.T) {
+				// Include an initial argument prefix and small deltas so escapes
+				// are split across events as well as buffered correctly.
+				added, err := json.Marshal(types.ResponsesChunk{
+					Type: "response.output_item.added",
+					Item: &types.ResponsesOutput{
+						Type: "function_call", ID: "fc_1", CallID: "call_1",
+						Name: "test", Arguments: tt.raw[:1],
+					},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				lines := []string{string(added)}
+				for i := 1; i < len(tt.raw); i++ {
+					delta, err := json.Marshal(types.ResponsesChunk{
+						Type: "response.function_call_arguments.delta", ItemID: "fc_1",
+						Delta: tt.raw[i : i+1],
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					lines = append(lines, string(delta))
+				}
+				if completion != "EOF" {
+					item := &types.ResponsesOutput{Type: "function_call", ID: "fc_1"}
+					if completion == "done arguments" {
+						item.Arguments = tt.raw
+					}
+					done, err := json.Marshal(types.ResponsesChunk{
+						Type: "response.output_item.done", Item: item,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					lines = append(lines, string(done), `{"type":"response.completed"}`)
+				}
+
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				w := newMockResponseWriter()
+				if err := NewStreamHandler().ProxyResponsesStream(w, sseLines(lines...), "test", ctx, 0, cancel); err != nil {
+					t.Fatal(err)
+				}
+				events := parseSSEEvents(t, w.buf.String())
+				if len(events) != 6 {
+					t.Fatalf("expected one complete tool call (6 events), got %d: %s", len(events), w.buf.String())
+				}
+				if delta := events[2].Delta; delta == nil || delta.Type != "input_json_delta" || delta.PartialJSON != tt.want {
+					t.Fatalf("tool input = %+v, want %s", delta, tt.want)
+				}
+				if events[3].Type != "content_block_stop" || events[4].Delta == nil ||
+					events[4].Delta.StopReason != "tool_use" || events[5].Type != "message_stop" {
+					t.Fatalf("incorrect tool completion: %s", w.buf.String())
+				}
+			})
+		}
+	}
+}
+
+// Small upstream deltas must not repeatedly copy the full accumulated input.
+// Compare B/op across payload sizes to detect quadratic allocation growth.
+func BenchmarkProxyResponsesStreamToolArguments(b *testing.B) {
+	for _, size := range []int{32 << 10, 128 << 10, 512 << 10} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			args := `{"content":"` + strings.Repeat("x", size) + `"}`
+			lines := []string{
+				`{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"Write"}}`,
+			}
+			for offset := 0; offset < len(args); offset += 16 {
+				delta, err := json.Marshal(types.ResponsesChunk{
+					Type: "response.function_call_arguments.delta", ItemID: "fc_1",
+					Delta: args[offset:min(offset+16, len(args))],
+				})
+				if err != nil {
+					b.Fatal(err)
+				}
+				lines = append(lines, string(delta))
+			}
+			lines = append(lines,
+				`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1"}}`,
+				`{"type":"response.completed"}`,
+			)
+			body := sseLines(lines...)
+			rawBody, err := io.ReadAll(body)
+			_ = body.Close()
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(args)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				ctx, cancel := context.WithCancel(context.Background())
+				err := NewStreamHandler().ProxyResponsesStream(
+					newMockResponseWriter(), io.NopCloser(bytes.NewReader(rawBody)), "test", ctx, 0, cancel,
+				)
+				cancel()
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestProxyResponsesStream_OverlappingToolCallsUseDistinctIndices(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first"}}`,
+		`{"type":"response.output_item.added","item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"second"}}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"a\":1}"}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_2","delta":"{\"b\":2}"}`,
+		`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first"}}`,
+		`{"type":"response.output_item.done","item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"second"}}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "gpt-5", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 9 {
+		t.Fatalf("expected 9 events, got %d: %+v", len(events), events)
+	}
+
+	wantEvents := []struct {
+		eventType string
+		index     int
+		deltaType string
+	}{
+		{eventType: "content_block_start", index: 0},
+		{eventType: "content_block_start", index: 1},
+		{eventType: "content_block_delta", index: 0, deltaType: "input_json_delta"},
+		{eventType: "content_block_stop", index: 0},
+		{eventType: "content_block_delta", index: 1, deltaType: "input_json_delta"},
+		{eventType: "content_block_stop", index: 1},
+	}
+	for i, want := range wantEvents {
+		event := events[i+1]
+		if event.Type != want.eventType {
+			t.Errorf("event[%d].Type = %q, want %q", i+1, event.Type, want.eventType)
+		}
+		if event.Index == nil || *event.Index != want.index {
+			t.Errorf("event[%d].Index = %v, want %d", i+1, event.Index, want.index)
+		}
+		if want.eventType == "content_block_start" &&
+			(event.ContentBlock == nil || event.ContentBlock.Type != "tool_use") {
+			t.Errorf("event[%d].ContentBlock = %+v, want tool_use", i+1, event.ContentBlock)
+		}
+		if want.deltaType != "" &&
+			(event.Delta == nil || event.Delta.Type != want.deltaType) {
+			t.Errorf("event[%d].Delta = %+v, want %s", i+1, event.Delta, want.deltaType)
+		}
+	}
+
+	if events[7].Type != "message_delta" ||
+		events[7].Delta == nil ||
+		events[7].Delta.StopReason != "tool_use" {
+		t.Errorf("event[7] = %+v, want message_delta with tool_use stop reason", events[7])
+	}
+	if events[8].Type != "message_stop" {
+		t.Errorf("event[8].Type = %q, want message_stop", events[8].Type)
+	}
+}
+
+// TestProxyResponsesStream_TextThenToolCall verifies that a text block followed
+// by a function_call produces contiguous indices (text=0, tool=1) and that both
+// blocks are closed before the terminal message_delta.
+func TestProxyResponsesStream_TextThenToolCall(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"I'll fetch it now."}`,
+		`{"type":"response.output_item.added","output":[{"type":"function_call","id":"fc_9","call_id":"call_xyz","name":"search","arguments":"","status":"in_progress"}]}`,
+		`{"type":"response.function_call_arguments.delta","item_id":"fc_9","delta":"{\"q\":\"go\"}"}`,
+		`{"type":"response.output_item.done","output":[{"type":"function_call","id":"fc_9","call_id":"call_xyz","name":"search","arguments":"{\"q\":\"go\"}","status":"completed"}]}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, text_start(0), text_delta, text_stop(0), tool_start(1),
+	// args_delta(1), tool_stop(1), message_delta, message_stop = 9
+	if len(events) != 9 {
+		t.Fatalf("expected 9 events, got %d: %+v", len(events), events)
+	}
+
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "text" {
+		t.Errorf("event[1] = %+v, want text block start", events[1])
+	}
+	if events[1].Index == nil || *events[1].Index != 0 {
+		t.Errorf("event[1].Index = %v, want 0", events[1].Index)
+	}
+
+	if events[3].Type != "content_block_stop" {
+		t.Errorf("event[3].Type = %q, want content_block_stop (text close)", events[3].Type)
+	}
+
+	if events[4].ContentBlock == nil || events[4].ContentBlock.Type != "tool_use" {
+		t.Errorf("event[4] = %+v, want tool_use block start", events[4])
+	}
+	if events[4].Index == nil || *events[4].Index != 1 {
+		t.Errorf("event[4].Index = %v, want 1", events[4].Index)
+	}
+
+	if events[5].Delta == nil || events[5].Delta.Type != "input_json_delta" {
+		t.Errorf("event[5] = %+v, want input_json_delta", events[5])
+	}
+
+	if events[7].Type != "message_delta" || events[7].Delta == nil || events[7].Delta.StopReason != "tool_use" {
+		t.Errorf("event[7] = %+v, want message_delta stop_reason tool_use", events[7])
+	}
+}
+
+// TestProxyResponsesStream_TextOnlyStillWorks guards the pre-existing text-only
+// behavior: stop_reason stays end_turn and no tool blocks are emitted.
+func TestProxyResponsesStream_TextOnlyStillWorks(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Four"}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, text_start, text_delta, text_stop, message_delta, message_stop = 6
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	if events[4].Type != "message_delta" || events[4].Delta == nil || events[4].Delta.StopReason != "end_turn" {
+		t.Errorf("event[4] = %+v, want message_delta stop_reason end_turn", events[4])
+	}
+}
+
+// TestProxyResponsesStream_ToolCall_ItemField matches the event shape opencode.ai's
+// Responses endpoint actually sends: output_item events carry the item in the
+// "item" field (not an "output" array), and arguments arrive via
+// function_call_arguments.delta keyed by item_id.
+func TestProxyResponsesStream_ToolCall_ItemField(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_item.added","sequence_number":4,"output_index":2,"item":{"id":"fc_abc","type":"function_call","status":"in_progress","name":"get_weather","call_id":"call_xyz"}}`,
+		`{"type":"response.function_call_arguments.delta","sequence_number":11,"output_index":2,"item_id":"fc_abc","delta":"{\"city\":\"Paris\"}"}`,
+		`{"type":"response.output_item.done","sequence_number":13,"output_index":2,"item":{"id":"fc_abc","type":"function_call","status":"completed","name":"get_weather","call_id":"call_xyz","arguments":"{\"city\":\"Paris\"}"}}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.2-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+
+	// message_start, tool_start(idx=0), args_delta, tool_stop(idx=0),
+	// message_delta, message_stop = 6
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	if events[1].ContentBlock == nil || events[1].ContentBlock.Type != "tool_use" {
+		t.Fatalf("event[1] = %+v, want tool_use block start", events[1])
+	}
+	if events[1].ContentBlock.ID != "call_xyz" || events[1].ContentBlock.Name != "get_weather" {
+		t.Errorf("event[1] tool_use = %+v, want id call_xyz name get_weather", events[1].ContentBlock)
+	}
+	if events[2].Delta == nil || events[2].Delta.Type != "input_json_delta" || events[2].Delta.PartialJSON != `{"city":"Paris"}` {
+		t.Errorf("event[2] = %+v, want input_json_delta `{\"city\":\"Paris\"}`", events[2])
+	}
+	if events[3].Type != "content_block_stop" {
+		t.Errorf("event[3].Type = %q, want content_block_stop", events[3].Type)
+	}
+	if events[4].Delta == nil || events[4].Delta.StopReason != "tool_use" {
+		t.Errorf("event[4] = %+v, want message_delta stop_reason tool_use", events[4])
+	}
+}
+
+// TestProxyResponsesStream_TerminalUsageFlat verifies a flat usage object on
+// response.completed lands in the terminal message_delta usage.
+func TestProxyResponsesStream_TerminalUsageFlat(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Hi"}`,
+		`{"type":"response.completed","usage":{"input_tokens":100,"output_tokens":25}}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	delta := events[4]
+	if delta.Type != "message_delta" {
+		t.Fatalf("event[4].Type = %q, want message_delta", delta.Type)
+	}
+	if delta.Usage == nil {
+		t.Fatalf("event[4].Usage = nil, want 100/25")
+	}
+	if delta.Usage.InputTokens != 100 || delta.Usage.OutputTokens != 25 {
+		t.Errorf("event[4].Usage = %+v, want input 100 output 25", delta.Usage)
+	}
+}
+
+// TestProxyResponsesStream_TerminalUsageNested verifies a nested
+// response.usage object on response.completed lands in message_delta usage.
+func TestProxyResponsesStream_TerminalUsageNested(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Hi"}`,
+		`{"type":"response.completed","response":{"usage":{"input_tokens":200,"output_tokens":30}}}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	delta := events[4]
+	if delta.Type != "message_delta" {
+		t.Fatalf("event[4].Type = %q, want message_delta", delta.Type)
+	}
+	if delta.Usage == nil {
+		t.Fatalf("event[4].Usage = nil, want 200/30")
+	}
+	if delta.Usage.InputTokens != 200 || delta.Usage.OutputTokens != 30 {
+		t.Errorf("event[4].Usage = %+v, want input 200 output 30", delta.Usage)
+	}
+}
+
+// TestProxyResponsesStream_TerminalUsageMissing verifies a bare
+// response.completed keeps zero usage without crashing.
+func TestProxyResponsesStream_TerminalUsageMissing(t *testing.T) {
+	handler := NewStreamHandler()
+	w := newMockResponseWriter()
+	body := sseLines(
+		`{"type":"response.output_text.delta","delta":"Hi"}`,
+		`{"type":"response.completed"}`,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := handler.ProxyResponsesStream(w, body, "muse-spark-1.3-contributor", ctx, 0, cancel); err != nil {
+		t.Fatalf("ProxyResponsesStream error: %v", err)
+	}
+
+	events := parseSSEEvents(t, w.buf.String())
+	if len(events) != 6 {
+		t.Fatalf("expected 6 events, got %d: %+v", len(events), events)
+	}
+	delta := events[4]
+	if delta.Type != "message_delta" {
+		t.Fatalf("event[4].Type = %q, want message_delta", delta.Type)
+	}
+	if delta.Usage == nil {
+		t.Fatalf("event[4].Usage = nil, want zero usage")
+	}
+	if delta.Usage.InputTokens != 0 || delta.Usage.OutputTokens != 0 {
+		t.Errorf("event[4].Usage = %+v, want 0/0", delta.Usage)
+	}
+}

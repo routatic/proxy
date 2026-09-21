@@ -17,13 +17,15 @@ type thinkingConfig struct {
 // This is a lossless extraction: all data from the Anthropic format survives.
 func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 	nr := &NormalizedRequest{
-		Model:     anthropicReq.Model,
-		MaxTokens: anthropicReq.MaxTokens,
-		Stream:    anthropicReq.Stream != nil && *anthropicReq.Stream,
+		Model:        anthropicReq.Model,
+		MaxTokens:    anthropicReq.MaxTokens,
+		Stream:       anthropicReq.Stream != nil && *anthropicReq.Stream,
+		CacheControl: anthropicReq.CacheControl,
 	}
 
 	// Extract system prompt (string or array of content blocks).
 	nr.SystemPrompt = anthropicReq.SystemText()
+	nr.SystemBlocks = normalizeSystemBlocks(anthropicReq.System)
 
 	// Set temperature if provided.
 	if anthropicReq.Temperature != nil {
@@ -47,35 +49,7 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 
 		blocks := msg.ContentBlocks()
 		for _, block := range blocks {
-			switch block.Type {
-			case "text":
-				nm.Content += block.Text
-			case "tool_use":
-				nm.ToolCalls = append(nm.ToolCalls, NormalizedToolCall{
-					ID:        block.ID,
-					Name:      block.Name,
-					Arguments: string(block.Input),
-				})
-			case "tool_result":
-				nm.ToolResults = append(nm.ToolResults, NormalizedToolResult{
-					ToolCallID: block.ToolUseID,
-					Content:    block.TextContent(),
-				})
-			case "thinking":
-				nm.Thinking += block.Thinking
-			case "image":
-				// Preserve image data so the downstream transformer can convert
-				// to image_url (or append a [Image] placeholder if the model
-				// does not support vision). Previously this was collapsed to
-				// the literal text "[Image]" which destroyed the image bytes
-				// before the transformer could inspect them.
-				if block.Source != nil && block.Source.Data != "" {
-					nm.Images = append(nm.Images, NormalizedImage{
-						MediaType: block.Source.MediaType,
-						Data:      block.Source.Data,
-					})
-				}
-			}
+			nm.Blocks = append(nm.Blocks, normalizeContentBlock(block))
 		}
 
 		nr.Messages = append(nr.Messages, nm)
@@ -84,14 +58,65 @@ func NormalizeRequest(anthropicReq *types.MessageRequest) *NormalizedRequest {
 	// Convert tools.
 	for _, tool := range anthropicReq.Tools {
 		nt := NormalizedToolDef{
-			Name:        tool.Name,
-			Description: tool.Description,
-			InputSchema: tool.InputSchema,
+			Name:         tool.Name,
+			Description:  tool.Description,
+			InputSchema:  tool.InputSchema,
+			CacheControl: tool.CacheControl,
 		}
 		nr.Tools = append(nr.Tools, nt)
 	}
 
 	return nr
+}
+
+func normalizeSystemBlocks(raw json.RawMessage) []NormalizedContentBlock {
+	if len(raw) == 0 {
+		return nil
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return []NormalizedContentBlock{{Type: "text", Text: text}}
+	}
+	var blocks []types.ContentBlock
+	if json.Unmarshal(raw, &blocks) != nil {
+		return nil
+	}
+	out := make([]NormalizedContentBlock, 0, len(blocks))
+	for _, block := range blocks {
+		out = append(out, normalizeContentBlock(block))
+	}
+	return out
+}
+
+func normalizeContentBlock(block types.ContentBlock) NormalizedContentBlock {
+	content := block.Content
+	if len(content) == 0 && len(block.Output) > 0 {
+		content = block.Output
+	}
+
+	return NormalizedContentBlock{
+		Type:      block.Type,
+		Text:      block.Text,
+		ID:        block.ID,
+		ToolUseID: block.ToolUseID,
+		Name:      block.Name,
+		Input:     append(json.RawMessage(nil), block.Input...),
+		Content:   append(json.RawMessage(nil), content...),
+		IsError:   block.IsError,
+		Thinking:  block.Thinking,
+		Signature: block.Signature,
+		Image: func() *NormalizedImage {
+			if block.Source == nil {
+				return nil
+			}
+			return &NormalizedImage{
+				MediaType: block.Source.MediaType,
+				Data:      block.Source.Data,
+			}
+		}(),
+		CacheControl: block.CacheControl,
+		Raw:          append(json.RawMessage(nil), block.Raw...),
+	}
 }
 
 // DenormalizeResponse converts a NormalizedResponse to an Anthropic MessageResponse.
@@ -113,30 +138,14 @@ func DenormalizeResponse(nr *NormalizedResponse) *types.MessageResponse {
 		switch msg.Role {
 		case "assistant":
 			resp.Role = "assistant"
-
-			// Add thinking block if present.
-			if msg.Thinking != "" {
+			for _, block := range msg.Blocks {
 				resp.Content = append(resp.Content, types.ContentBlock{
-					Type:     "thinking",
-					Thinking: msg.Thinking,
-				})
-			}
-
-			// Add text block if present.
-			if msg.Content != "" {
-				resp.Content = append(resp.Content, types.ContentBlock{
-					Type: "text",
-					Text: msg.Content,
-				})
-			}
-
-			// Add tool_use blocks.
-			for _, tc := range msg.ToolCalls {
-				resp.Content = append(resp.Content, types.ContentBlock{
-					Type:  "tool_use",
-					ID:    tc.ID,
-					Name:  tc.Name,
-					Input: []byte(tc.Arguments),
+					Type: block.Type, Text: block.Text, ID: block.ID,
+					ToolUseID: block.ToolUseID, Name: block.Name,
+					Input: block.Input, Content: block.Content,
+					IsError: block.IsError, Thinking: block.Thinking,
+					Signature: block.Signature, CacheControl: block.CacheControl,
+					Raw: block.Raw,
 				})
 			}
 		}

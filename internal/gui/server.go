@@ -248,6 +248,7 @@ type metricsResponse struct {
 	RequestsStreamed  int64            `json:"requests_streamed"`
 	RequestsSuccess   int64            `json:"requests_success"`
 	RequestsFailed    int64            `json:"requests_failed"`
+	StorageDropped    int64            `json:"storage_dropped"`
 	ModelCounts       map[string]int64 `json:"model_counts"`
 }
 
@@ -264,6 +265,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
 		RequestsStreamed:  snap.RequestsStreamed,
 		RequestsSuccess:   snap.RequestsSuccess,
 		RequestsFailed:    snap.RequestsFailed,
+		StorageDropped:    snap.StorageDropped,
 		ModelCounts:       snap.ModelCounts,
 	}
 	writeJSON(w, resp)

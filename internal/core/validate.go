@@ -21,13 +21,13 @@ func ValidateRequest(req *NormalizedRequest) error {
 		}
 
 		// Tool-result messages must have a ToolCallID.
-		if msg.Role == "tool" && msg.ToolCallID == "" {
+		if msg.Role == "tool" && !msg.HasToolCallID() {
 			return fmt.Errorf("messages[%d]: tool-result message missing tool_call_id", i)
 		}
 
 		// Assistant messages with tool calls must have non-empty tool calls.
-		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-			for j, tc := range msg.ToolCalls {
+		if msg.Role == "assistant" && len(msg.ToolCallsList()) > 0 {
+			for j, tc := range msg.ToolCallsList() {
 				if tc.ID == "" {
 					return fmt.Errorf("messages[%d].tool_calls[%d]: missing id", i, j)
 				}

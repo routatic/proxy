@@ -14,7 +14,7 @@ func TestNormalizedToAnthropic_SystemPromptWithNewline(t *testing.T) {
 		SystemPrompt: "Line one\nLine two\nLine three",
 		MaxTokens:    100,
 		Messages: []core.NormalizedMessage{
-			{Role: "user", Content: "Hello"},
+			{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hello"}}},
 		},
 	}
 
@@ -38,7 +38,7 @@ func TestNormalizedToAnthropic_MessageContentWithNewline(t *testing.T) {
 		Model:     "minimax-m3",
 		MaxTokens: 100,
 		Messages: []core.NormalizedMessage{
-			{Role: "user", Content: "Hello\nWorld"},
+			{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hello\nWorld"}}},
 		},
 	}
 
@@ -61,7 +61,7 @@ func TestNormalizedToResponses_SystemPromptWithNewline(t *testing.T) {
 		SystemPrompt: "Line one\nLine two",
 		MaxTokens:    100,
 		Messages: []core.NormalizedMessage{
-			{Role: "user", Content: "Hello\nWorld"},
+			{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hello\nWorld"}}},
 		},
 	}
 
@@ -88,7 +88,7 @@ func TestNormalizedToResponses_SystemPromptWithNewline(t *testing.T) {
 	if err := json.Unmarshal(responsesReq.Input[1].Content, &messageContent); err != nil {
 		t.Fatalf("message content was not valid JSON: %v", err)
 	}
-	if messageContent != req.Messages[0].Content {
-		t.Fatalf("message content mismatch: got %q, want %q", messageContent, req.Messages[0].Content)
+	if messageContent != req.Messages[0].TextContent() {
+		t.Fatalf("message content mismatch: got %q, want %q", messageContent, req.Messages[0].TextContent())
 	}
 }

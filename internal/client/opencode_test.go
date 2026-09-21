@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/pkg/types"
 )
 
@@ -320,9 +321,9 @@ func TestClassifyEndpoint(t *testing.T) {
 			expected: EndpointChatCompletions,
 		},
 		{
-			name:     "grok-build-0.1 uses chat completions endpoint",
+			name:     "grok-build-0.1 uses responses endpoint",
 			modelID:  "grok-build-0.1",
-			expected: EndpointChatCompletions,
+			expected: EndpointResponses,
 		},
 		{
 			name:     "big-pickle uses chat completions endpoint",
@@ -375,10 +376,13 @@ func TestIsGeminiModel(t *testing.T) {
 		modelID string
 		want    bool
 	}{
-		// Gemini models
+		// Gemini models (prefix check)
 		{"gemini-3.5-flash", true},
 		{"gemini-3.1-pro", true},
 		{"gemini-3-flash", true},
+		{"gemini-3.7-flash", true},
+		{"gemini-3.6-flash", true},
+		{"gemini-3.5-flash-lite", true},
 		// Non-Gemini models
 		{"kimi-k2.6", false},
 		{"kimi-k2.7-code", false},
@@ -407,32 +411,38 @@ func TestIsResponsesModel(t *testing.T) {
 		modelID string
 		want    bool
 	}{
-		// GPT 5.5 series
+		// GPT models (prefix check)
 		{"gpt-5.5", true},
 		{"gpt-5.5-pro", true},
 		{"gpt-5.5-mini", true},
 		{"gpt-5.5-nano", true},
-		// GPT 5.4 series
 		{"gpt-5.4", true},
 		{"gpt-5.4-pro", true},
 		{"gpt-5.4-mini", true},
 		{"gpt-5.4-nano", true},
-		// GPT 5.3 series
 		{"gpt-5.3-codex", true},
 		{"gpt-5.3-codex-spark", true},
-		// GPT 5.2 series
 		{"gpt-5.2", true},
 		{"gpt-5.2-codex", true},
-		// GPT 5.1 series
 		{"gpt-5.1", true},
 		{"gpt-5.1-codex", true},
 		{"gpt-5.1-codex-max", true},
 		{"gpt-5.1-codex-mini", true},
-		// GPT 5 series
 		{"gpt-5", true},
 		{"gpt-5-codex", true},
 		{"gpt-5-nano", true},
-		// Non-GPT models
+		{"gpt-5.6-sol", true},
+		{"gpt-5.6-terra", true},
+		{"gpt-5.6-luna", true},
+		// Grok models (prefix check)
+		{"grok-4.5", true},
+		{"grok-4.6", true},
+		{"grok-build-0.1", true},
+		// Muse Spark models (prefix check)
+		{"muse-spark-1.2", true},
+		{"muse-spark-1.2-contributor", true},
+		{"muse-spark-1.2-contributor-free", true},
+		// Non-Responses models
 		{"kimi-k2.6", false},
 		{"kimi-k2.7-code", false},
 		{"glm-5.1", false},
@@ -991,6 +1001,7 @@ func TestOpenRouterChatCompletion_UsesAttributionHeaders(t *testing.T) {
 		{name: "referer", header: "HTTP-Referer", want: "https://github.com/routatic/proxy"},
 		{name: "title", header: "X-OpenRouter-Title", want: "routatic-proxy"},
 		{name: "category", header: "X-OpenRouter-Categories", want: "cli-agent"},
+		{name: "no opencode session", header: "x-opencode-session", want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1071,5 +1082,71 @@ func TestGetProviderAPIKeys_EmptyReturnsGlobal(t *testing.T) {
 	want := []string{"global-single-key"}
 	if len(got) != len(want) || got[0] != want[0] {
 		t.Errorf("getProviderAPIKeys() = %v, want %v (should fallback to global)", got, want)
+	}
+}
+
+func TestOpenCodeClient_SetsOpenCodeSessionHeader(t *testing.T) {
+	var gotSession string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get(core.OpenCodeSessionHeader)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp-1","object":"chat.completion","created":1,"model":"deepseek-v4-pro","choices":[],"usage":{}}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeGo: config.OpenCodeGoConfig{
+			BaseURL: ts.URL,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeGo, ModelID: "deepseek-v4-pro"}
+	req := &types.ChatCompletionRequest{
+		Model:    "deepseek-v4-pro",
+		Messages: []types.ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	}
+	ctx := core.WithSessionID(context.Background(), "client-session-1")
+	if _, err := c.ChatCompletionNonStreaming(ctx, "deepseek-v4-pro", req, model); err != nil {
+		t.Fatalf("ChatCompletionNonStreaming() error = %v", err)
+	}
+
+	if gotSession != "client-session-1" {
+		t.Errorf("%s = %q, want %q", core.OpenCodeSessionHeader, gotSession, "client-session-1")
+	}
+}
+
+func TestOpenCodeClient_ZenOmitsOpenCodeSessionHeader(t *testing.T) {
+	var gotSession string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get(core.OpenCodeSessionHeader)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp-1","object":"chat.completion","created":1,"model":"deepseek-v4-flash-free","choices":[],"usage":{}}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeZen: config.OpenCodeZenConfig{
+			BaseURL: ts.URL,
+		},
+	}
+	atomicCfg := config.NewAtomicConfig(cfg, "")
+	c := NewOpenCodeClient(atomicCfg, nil)
+
+	model := config.ModelConfig{Provider: ProviderOpenCodeZen, ModelID: "deepseek-v4-flash-free"}
+	req := &types.ChatCompletionRequest{
+		Model:    "deepseek-v4-flash-free",
+		Messages: []types.ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	}
+	ctx := core.WithSessionID(context.Background(), "client-session-1")
+	if _, err := c.ChatCompletionNonStreaming(ctx, "deepseek-v4-flash-free", req, model); err != nil {
+		t.Fatalf("ChatCompletionNonStreaming() error = %v", err)
+	}
+
+	if gotSession != "" {
+		t.Errorf("OpenCode Zen must not receive %s, got %q", core.OpenCodeSessionHeader, gotSession)
 	}
 }

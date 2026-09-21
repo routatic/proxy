@@ -357,6 +357,40 @@ func TestRouteWithOverride_MatchesKey(t *testing.T) {
 	}
 }
 
+// Overrides pointing at OpenRouter or Bedrock must route with the provider
+// intact so the handler dispatches to that upstream — see issue #134.
+func TestRouteWithOverride_PreservesNonOpenCodeProvider(t *testing.T) {
+	for _, provider := range config.KnownProviders {
+		t.Run(provider, func(t *testing.T) {
+			cfg := &config.Config{
+				ModelOverrides: map[string]config.ModelConfig{
+					"custom": {Provider: provider, ModelID: "upstream-model"},
+				},
+				ModelFamilyOverrides: map[string]config.ModelConfig{
+					"sonnet": {Provider: provider, ModelID: "upstream-model"},
+				},
+			}
+			router := NewModelRouter(newTestAtomicConfig(cfg))
+
+			exact, ok := router.RouteWithOverride("custom")
+			if !ok {
+				t.Fatal("expected RouteWithOverride to match")
+			}
+			if exact.Primary.Provider != provider {
+				t.Errorf("exact override provider = %q, want %q", exact.Primary.Provider, provider)
+			}
+
+			family, ok := router.RouteWithFamilyOverride("claude-sonnet-4-20250514")
+			if !ok {
+				t.Fatal("expected RouteWithFamilyOverride to match")
+			}
+			if family.Primary.Provider != provider {
+				t.Errorf("family override provider = %q, want %q", family.Primary.Provider, provider)
+			}
+		})
+	}
+}
+
 func TestRouteWithOverride_NoMatch(t *testing.T) {
 	cfg := &config.Config{
 		ModelOverrides: map[string]config.ModelConfig{

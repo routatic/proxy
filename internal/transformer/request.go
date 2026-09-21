@@ -70,6 +70,16 @@ func constrainTemperature(modelID string, temp float64) float64 {
 func stripCacheControl(messages []types.ChatMessage) {
 	for i := range messages {
 		messages[i].CacheControl = nil
+		var parts []types.ChatContentPart
+		if err := json.Unmarshal(messages[i].Content, &parts); err != nil {
+			continue
+		}
+		for j := range parts {
+			parts[j].CacheControl = nil
+		}
+		if content, err := json.Marshal(parts); err == nil {
+			messages[i].Content = content
+		}
 	}
 }
 
@@ -140,6 +150,11 @@ func (t *RequestTransformer) TransformRequest(
 	// Transform tools if present
 	if len(anthropicReq.Tools) > 0 {
 		openaiReq.Tools = t.transformTools(anthropicReq.Tools)
+		if !isDeepSeekModel(model.ModelID) {
+			for i := range openaiReq.Tools {
+				openaiReq.Tools[i].CacheControl = nil
+			}
+		}
 	}
 
 	return openaiReq, nil
@@ -345,6 +360,9 @@ func (t *RequestTransformer) transformMessages(anthropicReq *types.MessageReques
 				}
 			}
 		}
+		if systemMsg.CacheControl == nil {
+			systemMsg.CacheControl = anthropicReq.CacheControl
+		}
 		result = append(result, systemMsg)
 	}
 
@@ -431,8 +449,12 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 	var textParts []string
 	var imageParts []types.ChatContentPart
 	hasImage := false
+	var messageCacheControl *types.CacheControl
 
 	for _, block := range blocks {
+		if messageCacheControl == nil {
+			messageCacheControl = block.CacheControl
+		}
 		switch block.Type {
 		case "text":
 			textParts = append(textParts, block.Text)
@@ -440,9 +462,10 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 			// In OpenAI, tool results are separate messages with role "tool"
 			toolContent := block.TextContent()
 			result = append(result, types.ChatMessage{
-				Role:       "tool",
-				Content:    contentText(toolContent),
-				ToolCallID: block.GetToolID(),
+				Role:         "tool",
+				Content:      contentText(toolContent),
+				ToolCallID:   block.GetToolID(),
+				CacheControl: block.CacheControl,
 			})
 		case "image":
 			if block.Source != nil {
@@ -452,6 +475,7 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 						ImageURL: &types.ImageURL{
 							URL: fmt.Sprintf("data:%s;base64,%s", block.Source.MediaType, block.Source.Data),
 						},
+						CacheControl: block.CacheControl,
 					})
 				} else {
 					hasImage = true
@@ -471,8 +495,9 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 			var parts []types.ChatContentPart
 			if len(textParts) > 0 {
 				parts = append(parts, types.ChatContentPart{
-					Type: "text",
-					Text: strings.Join(textParts, ""),
+					Type:         "text",
+					Text:         strings.Join(textParts, ""),
+					CacheControl: messageCacheControl,
 				})
 			}
 			parts = append(parts, imageParts...)
@@ -480,7 +505,9 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal multimodal content: %w", err)
 			}
-			result = append(result, types.ChatMessage{Role: "user", Content: contentJSON})
+			result = append(result, types.ChatMessage{
+				Role: "user", Content: contentJSON, CacheControl: messageCacheControl,
+			})
 		} else {
 			// Text-only message (possibly with image placeholder for non-vision models)
 			text := strings.Join(textParts, "")
@@ -492,8 +519,9 @@ func (t *RequestTransformer) transformUserMessage(blocks []types.ContentBlock, v
 				}
 			}
 			result = append(result, types.ChatMessage{
-				Role:    "user",
-				Content: contentText(text),
+				Role:         "user",
+				Content:      contentText(text),
+				CacheControl: messageCacheControl,
 			})
 		}
 	}
@@ -506,8 +534,12 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 	var textParts []string
 	var thinkingParts []string
 	var toolCalls []types.ToolCall
+	var messageCacheControl *types.CacheControl
 
 	for _, block := range blocks {
+		if messageCacheControl == nil {
+			messageCacheControl = block.CacheControl
+		}
 		switch block.Type {
 		case "text":
 			textParts = append(textParts, block.Text)
@@ -581,6 +613,7 @@ func (t *RequestTransformer) transformAssistantMessage(blocks []types.ContentBlo
 		Content:          contentText(content),
 		ReasoningContent: reasoningContentPtr,
 		ToolCalls:        toolCalls,
+		CacheControl:     messageCacheControl,
 	}
 
 	return []types.ChatMessage{msg}, nil
@@ -635,7 +668,8 @@ func (t *RequestTransformer) transformTools(tools []types.Tool) []types.ToolDef 
 		}
 
 		result = append(result, types.ToolDef{
-			Type: "function",
+			Type:         "function",
+			CacheControl: tool.CacheControl,
 			Function: types.FunctionDef{
 				Name:        tool.Name,
 				Description: tool.Description,

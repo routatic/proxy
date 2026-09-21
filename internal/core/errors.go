@@ -1,6 +1,9 @@
 package core
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors for common provider and routing failures.
 var (
@@ -21,6 +24,21 @@ type NormalizedError struct {
 	Provider   string
 	ModelID    string
 }
+
+// CompatibilityError means the selected provider/model cannot represent the
+// request. It is safe to skip during fallback without recording a provider
+// failure.
+type CompatibilityError struct {
+	Provider string
+	ModelID  string
+	Reason   string
+}
+
+func (e *CompatibilityError) Error() string {
+	return fmt.Sprintf("model %s/%s is incompatible with request: %s", e.Provider, e.ModelID, e.Reason)
+}
+
+func (e *CompatibilityError) IsCompatibility() bool { return true }
 
 // Error implements the error interface.
 func (e *NormalizedError) Error() string {

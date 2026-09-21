@@ -15,18 +15,20 @@ type modelPerf struct {
 	AvgMs   int64  `json:"avg_ms"`
 	P50Ms   int64  `json:"p50_ms"`
 	P90Ms   int64  `json:"p90_ms"`
+	P95Ms   int64  `json:"p95_ms"`
 	P99Ms   int64  `json:"p99_ms"`
 	MinMs   int64  `json:"min_ms"`
 	MaxMs   int64  `json:"max_ms"`
 }
 
-func modelPerfFromFields(model string, count int64, avg, p50, p90, p99, min, max time.Duration) modelPerf {
+func modelPerfFromFields(model string, count int64, avg, p50, p90, p95, p99, min, max time.Duration) modelPerf {
 	return modelPerf{
 		Model: model,
 		Count: count,
 		AvgMs: avg.Milliseconds(),
 		P50Ms: p50.Milliseconds(),
 		P90Ms: p90.Milliseconds(),
+		P95Ms: p95.Milliseconds(),
 		P99Ms: p99.Milliseconds(),
 		MinMs: min.Milliseconds(),
 		MaxMs: max.Milliseconds(),
@@ -45,7 +47,7 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		modelStats, err := latency.GetStats(since)
 		if err == nil {
 			for _, stat := range modelStats {
-				result[stat.Model] = modelPerfFromFields(stat.Model, stat.Count, stat.Avg, stat.P50, stat.P90, stat.P99, stat.Min, stat.Max)
+				result[stat.Model] = modelPerfFromFields(stat.Model, stat.Count, stat.Avg, stat.P50, stat.P90, stat.P95, stat.P99, stat.Min, stat.Max)
 			}
 		}
 
@@ -78,7 +80,7 @@ func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		modelStats := s.met.GetModelLatencyStats()
 
 		for _, stat := range modelStats {
-			result[stat.Model] = modelPerfFromFields(stat.Model, stat.Count, stat.Avg, stat.P50, stat.P90, stat.P99, stat.Min, stat.Max)
+			result[stat.Model] = modelPerfFromFields(stat.Model, stat.Count, stat.Avg, stat.P50, stat.P90, stat.P95, stat.P99, stat.Min, stat.Max)
 		}
 
 		for model, count := range snap.ModelCounts {

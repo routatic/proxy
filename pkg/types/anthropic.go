@@ -11,16 +11,17 @@ import (
 
 // MessageRequest represents a request to the Anthropic Messages API.
 type MessageRequest struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens"`
-	System      json.RawMessage `json:"system,omitempty"`
-	Messages    []Message       `json:"messages"`
-	Stream      *bool           `json:"stream,omitempty"`
-	Tools       []Tool          `json:"tools,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
-	TopP        *float64        `json:"top_p,omitempty"`
-	Metadata    *Metadata       `json:"metadata,omitempty"`
-	Thinking    json.RawMessage `json:"thinking,omitempty"`
+	Model        string          `json:"model"`
+	MaxTokens    int             `json:"max_tokens"`
+	System       json.RawMessage `json:"system,omitempty"`
+	Messages     []Message       `json:"messages"`
+	Stream       *bool           `json:"stream,omitempty"`
+	Tools        []Tool          `json:"tools,omitempty"`
+	Temperature  *float64        `json:"temperature,omitempty"`
+	TopP         *float64        `json:"top_p,omitempty"`
+	Metadata     *Metadata       `json:"metadata,omitempty"`
+	Thinking     json.RawMessage `json:"thinking,omitempty"`
+	CacheControl *CacheControl   `json:"cache_control,omitempty"`
 }
 
 // SystemText extracts the system prompt text from the raw system field.
@@ -108,18 +109,33 @@ func (m *Message) ContentBlocks() []ContentBlock {
 //   - "thinking": Thinking, Signature are populated
 //   - "image": Source is populated
 type ContentBlock struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text"`
-	ID        string          `json:"id,omitempty"`          // For tool_use (the tool call ID)
-	ToolUseID string          `json:"tool_use_id,omitempty"` // For tool_result (references the tool_use ID)
-	Name      string          `json:"name,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	Output    json.RawMessage `json:"output,omitempty"`    // Deprecated: use Content
-	Content   json.RawMessage `json:"content,omitempty"`   // For tool_result inner content
-	IsError   *bool           `json:"is_error,omitempty"`  // For tool_result
-	Thinking  string          `json:"thinking"`            // For thinking blocks
-	Signature string          `json:"signature,omitempty"` // For thinking blocks
-	Source    *ImageSource    `json:"source,omitempty"`    // For image blocks
+	Type         string          `json:"type"`
+	Text         string          `json:"text"`
+	ID           string          `json:"id,omitempty"`          // For tool_use (the tool call ID)
+	ToolUseID    string          `json:"tool_use_id,omitempty"` // For tool_result (references the tool_use ID)
+	Name         string          `json:"name,omitempty"`
+	Input        json.RawMessage `json:"input,omitempty"`
+	Output       json.RawMessage `json:"output,omitempty"`    // Deprecated: use Content
+	Content      json.RawMessage `json:"content,omitempty"`   // For tool_result inner content
+	IsError      *bool           `json:"is_error,omitempty"`  // For tool_result
+	Thinking     string          `json:"thinking"`            // For thinking blocks
+	Signature    string          `json:"signature,omitempty"` // For thinking blocks
+	Source       *ImageSource    `json:"source,omitempty"`    // For image blocks
+	CacheControl *CacheControl   `json:"cache_control,omitempty"`
+	Raw          json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON preserves the original block bytes so unknown fields survive
+// normalization and provider transformation.
+func (b *ContentBlock) UnmarshalJSON(data []byte) error {
+	type alias ContentBlock
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*b = ContentBlock(decoded)
+	b.Raw = append([]byte(nil), data...)
+	return nil
 }
 
 // GetToolID returns the appropriate tool ID for this block type.
@@ -168,19 +184,20 @@ func (b ContentBlock) MarshalJSON() ([]byte, error) {
 	switch b.Type {
 	case "text":
 		type TextBlock struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type         string        `json:"type"`
+			Text         string        `json:"text"`
+			CacheControl *CacheControl `json:"cache_control,omitempty"`
 		}
 		return json.Marshal(TextBlock{
-			Type: b.Type,
-			Text: b.Text,
+			Type: b.Type, Text: b.Text, CacheControl: b.CacheControl,
 		})
 	case "tool_use":
 		type ToolUseBlock struct {
-			Type  string          `json:"type"`
-			ID    string          `json:"id"`
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
+			Type         string          `json:"type"`
+			ID           string          `json:"id"`
+			Name         string          `json:"name"`
+			Input        json.RawMessage `json:"input"`
+			CacheControl *CacheControl   `json:"cache_control,omitempty"`
 		}
 		input := b.Input
 		if len(input) == 0 {
@@ -190,42 +207,51 @@ func (b ContentBlock) MarshalJSON() ([]byte, error) {
 			Type:  b.Type,
 			ID:    b.ID,
 			Name:  b.Name,
-			Input: input,
+			Input: input, CacheControl: b.CacheControl,
 		})
 	case "tool_result":
 		type ToolResultBlock struct {
-			Type      string          `json:"type"`
-			ToolUseID string          `json:"tool_use_id"`
-			Content   json.RawMessage `json:"content,omitempty"`
-			IsError   *bool           `json:"is_error,omitempty"`
+			Type         string          `json:"type"`
+			ToolUseID    string          `json:"tool_use_id"`
+			Content      json.RawMessage `json:"content,omitempty"`
+			IsError      *bool           `json:"is_error,omitempty"`
+			CacheControl *CacheControl   `json:"cache_control,omitempty"`
 		}
 		return json.Marshal(ToolResultBlock{
-			Type:      b.Type,
-			ToolUseID: b.ToolUseID,
-			Content:   b.Content,
-			IsError:   b.IsError,
+			Type:         b.Type,
+			ToolUseID:    b.ToolUseID,
+			Content:      b.Content,
+			IsError:      b.IsError,
+			CacheControl: b.CacheControl,
 		})
 	case "thinking":
 		type ThinkingBlock struct {
-			Type      string `json:"type"`
-			Thinking  string `json:"thinking"`
-			Signature string `json:"signature,omitempty"`
+			Type         string        `json:"type"`
+			Thinking     string        `json:"thinking"`
+			Signature    string        `json:"signature,omitempty"`
+			CacheControl *CacheControl `json:"cache_control,omitempty"`
 		}
 		return json.Marshal(ThinkingBlock{
-			Type:      b.Type,
-			Thinking:  b.Thinking,
-			Signature: b.Signature,
+			Type:         b.Type,
+			Thinking:     b.Thinking,
+			Signature:    b.Signature,
+			CacheControl: b.CacheControl,
 		})
 	case "image":
 		type ImageBlock struct {
-			Type   string       `json:"type"`
-			Source *ImageSource `json:"source"`
+			Type         string        `json:"type"`
+			Source       *ImageSource  `json:"source"`
+			CacheControl *CacheControl `json:"cache_control,omitempty"`
 		}
 		return json.Marshal(ImageBlock{
-			Type:   b.Type,
-			Source: b.Source,
+			Type:         b.Type,
+			Source:       b.Source,
+			CacheControl: b.CacheControl,
 		})
 	default:
+		if len(b.Raw) > 0 {
+			return append([]byte(nil), b.Raw...), nil
+		}
 		type Alias ContentBlock
 		return json.Marshal(Alias(b))
 	}
@@ -241,9 +267,10 @@ type ImageSource struct {
 
 // Tool represents a tool definition for function calling.
 type Tool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	InputSchema  json.RawMessage `json:"input_schema"`
+	CacheControl *CacheControl   `json:"cache_control,omitempty"`
 }
 
 // ToolResult represents the result of a tool execution.

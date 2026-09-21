@@ -62,9 +62,16 @@ RPM_URL=$(curl -fsSL https://api.github.com/repos/routatic/proxy/releases/latest
 sudo dnf install "$RPM_URL"
 ```
 
-Beta channel RPMs use a `~beta.N` version suffix (for example
-`routatic-proxy-0.5.3~beta.1-1.x86_64.rpm`), which RPM sorts *below* the matching
-stable `0.5.3` release — so a later `dnf upgrade` moves you onto stable cleanly.
+Beta channel RPMs carry a `~beta.N` version suffix (RPM version `0.6.4~beta.5`),
+which RPM sorts *below* the matching stable `0.6.4` release — so a later
+`dnf upgrade` moves you onto stable cleanly. Note that the *filename* renders
+that suffix with dots, so install a beta by tag like this:
+
+```bash
+sudo dnf install "https://github.com/routatic/proxy/releases/download/v0.6.4-beta.5/routatic-proxy-0.6.4.beta.5-1.$(uname -m).rpm"
+```
+
+See [Beta Releases](../INSTALLATION.md#beta-releases) for the full beta workflow.
 
 What the package installs:
 
@@ -592,16 +599,22 @@ template changed, the new version lands beside it as `config.json.rpmnew`.
 
 ### Binary Update
 
-```bash
-# Check for updates
-routatic-proxy update --check
+For a standalone binary (not the RPM), use the built-in updater:
 
-# Update to latest version
+```bash
+# Check for updates without installing
+routatic-proxy update check
+
+# Update to the latest version on your channel
 routatic-proxy update
 
-# Skip confirmation
-routatic-proxy update --yes
+# Opt in to beta builds (see INSTALLATION.md#beta-releases)
+routatic-proxy update-channel beta
 ```
+
+If the binary lives in a root-owned directory such as `/usr/local/bin`, run it
+with `sudo` — the updater stops before downloading and says so when it cannot
+write there.
 
 ### Manual Update
 

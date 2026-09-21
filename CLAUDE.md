@@ -35,7 +35,7 @@ make dist    # Cross-compile for all platforms
 
 **Purpose:** routatic-proxy is a proxy server that sits between Claude Code and OpenCode Go. It intercepts Anthropic API requests, transforms them to OpenAI Chat Completions format, forwards them to OpenCode Go, and transforms responses back to Anthropic SSE.
 
-**Model routing is config-driven, not code-driven.** All models are defined in `~/.config/routatic-proxy/config.json` — adding a new model requires no code changes. Go provider models are transformed to OpenAI Chat Completions format automatically. Zen models use endpoint classification via `ClassifyEndpoint()`. The router in `internal/router/` selects models by matching request content against scenario patterns defined in `scenarios.go`.
+**Model routing is config-driven for existing model families.** All models are defined in `~/.config/routatic-proxy/config.json`. Adding a Go-provider model or a Zen model whose ID matches a recognized family prefix requires only config changes. A new Zen family that uses a non-default endpoint requires updating `ClassifyEndpoint()`. Go-provider wire-format differences remain configurable through `wire_format`. The router in `internal/router/` selects models by matching request content against scenario patterns defined in `scenarios.go`.
 
 If a model's upstream doesn't support Anthropic tool format (`type: "custom"` server-tool shorthands), set `"anthropic_tools_disabled": true` in the model config to force it through the Chat Completions transform path instead of the raw Anthropic endpoint.
 
@@ -43,13 +43,17 @@ If a model's upstream doesn't support Anthropic tool format (`type: "custom"` se
 
 - `EndpointChatCompletions` — OpenAI-compatible `/v1/chat/completions`. The default, and what most models use.
 - `EndpointAnthropic` — Anthropic `/v1/messages`.
-- `EndpointResponses` — OpenAI native `/v1/responses`. Used by the GPT-5.x families (`IsResponsesModel`).
-- `EndpointGemini` — Google `/v1/models/{id}`. Used by `gemini-3.5-flash`, `gemini-3.1-pro`, `gemini-3-flash` (`IsGeminiModel`).
+- `EndpointResponses` — OpenAI native `/v1/responses`. Used by `gpt-*`, `grok-*`, and `muse-spark-*` models (`IsResponsesModel`).
+- `EndpointGemini` — Google `/v1/models/{id}`. Used by `gemini-*` models (`IsGeminiModel`).
 
 Which models take the Anthropic endpoint depends on the provider:
 
 - **Go provider** — `IsAnthropicModel` (classifier.go) returns true for `minimax-m2.5`, `minimax-m2.7`, `minimax-m3` **and** `qwen3.5-plus`, `qwen3.6-plus`, `qwen3.7-plus`, `qwen3.7-max`. Everything else goes through the Chat Completions transform.
 - **Zen provider** — `ClassifyEndpoint` is Zen-specific. `IsZenAnthropicModel` routes any `claude-*` or `qwen*` model to Anthropic; MiniMax on Zen uses Chat Completions (unlike MiniMax on the Go provider).
+
+**Wire format overrides.** A model config's `wire_format` field overrides the built-in classification on the **Go provider only** — `"openai"` (aliases `chat`, `chat_completions`), `"anthropic"` (alias `messages`), or `"responses"`. This is how a Go model reaches the OpenAI Responses endpoint (`opencode_go.responses_base_url`), since Go classification never selects Responses on its own. `"gemini"`, `"auto"`, empty, and unrecognised values all fall back to classification — the Go provider has no Gemini path. Zen and Bedrock ignore the per-model override and classify by model ID.
+
+`core.ParseWireFormat` is the only place `wire_format` strings are interpreted, and `Provider.WireFormat(config.ModelConfig)` is the only place a model's format is resolved. `Execute`, `Stream`, and the streaming handler in `internal/handlers/messages.go` all dispatch on that one method so the endpoint a request is sent to and the SSE parser used to read the reply cannot disagree. Do not re-derive the format at a call site.
 
 **Available models:** the built-in capability registry is `modelMetadata` in `internal/config/model_registry.go`. It supplies context window, max output tokens, and vision support whenever the runtime config omits them (`ResolveModelConfig`). Every entry has `SupportsTools: true`.
 
@@ -77,7 +81,7 @@ Which models take the Anthropic endpoint depends on the provider:
 | `qwen3.6-plus` | Go | 1M | 8192 | yes | Streaming fallback |
 | `qwen3.5-plus` | Go | 1M | 8192 | yes | Simple read-only ops |
 
-The "typical provider" column reflects how the shipped config wires each model; the registry itself is provider-agnostic, so any model can be pointed at any provider in `config.json`. Zen additionally exposes many models that are not in the registry (Claude, Gemini, GPT-5.x, other free-tier models) — those get their capabilities from the catalog rather than `modelMetadata`.
+The "typical provider" column reflects how the shipped config wires each model; the registry itself is provider-agnostic, so any model can be pointed at any provider in `config.json`. Zen additionally exposes many models that are not in the registry (Claude, Gemini, GPT, Grok, Muse Spark, and other free-tier models) — those get their capabilities from the catalog rather than `modelMetadata`.
 
 `internal/client/opencode.go` routes Go provider models to Chat Completions; Zen models are classified by `models.ClassifyEndpoint()` in `internal/models/classifier.go`. If a model's upstream doesn't support Anthropic tool format, set `anthropic_tools_disabled: true` in config.
 
@@ -94,7 +98,7 @@ The three vision scenarios are `ScenarioVision`, `ScenarioVisionComplex`, and `S
 
 The `Reason` strings in `scenarios.go` describe only *why* a scenario matched and name no model. The resolved model is appended by `ModelRouter.Route` / `RouteForStreaming` (`describeRouting`), so the routing log line always reports the model that actually came from config — e.g. `scenario=complex (complex or tool-based operation keywords in latest user message) -> resolved model glm-5.2`. A test asserts detector reasons never name a model, so they cannot drift again.
 
-**Model overrides:** two config blocks bypass scenario routing based on the requested model. `model_overrides` matches the `model` string **exactly** (best with CC-Switch, which sends a custom model string). `model_family_overrides` maps a Claude family keyword (`opus`, `sonnet`, `haiku`) via **case-insensitive substring** match, so the versioned IDs Claude Code sends natively (`claude-opus-4-20250514`) route without CC-Switch. Precedence: exact `model_overrides` → `model_family_overrides` (longest key first) → `respect_requested_model` → scenario routing. Both are wired through `ModelRouter.RouteWithOverride` / `RouteWithFamilyOverride` (`internal/router/model_router.go`) and merged with a deduplicated scenario safety-net chain in `buildModelChain` (`internal/handlers/messages.go`).
+**Model overrides:** two config blocks bypass scenario routing based on the requested model. `model_overrides` matches the `model` string **exactly** (best with CC-Switch, which sends a custom model string). `model_family_overrides` maps a Claude family keyword (`opus`, `sonnet`, `haiku`) via **case-insensitive substring** match, so the versioned IDs Claude Code sends natively (`claude-opus-4-20250514`) route without CC-Switch. Precedence: exact `model_overrides` → `model_family_overrides` (longest key first) → `respect_requested_model` → scenario routing. Both are wired through `ModelRouter.RouteWithOverride` / `RouteWithFamilyOverride` (`internal/router/model_router.go`) and merged with a deduplicated scenario safety-net chain in `buildModelChain` (`internal/handlers/messages.go`). Override entries accept any provider `models` and `fallbacks` accept — `opencode-go`, `opencode-zen`, `aws-bedrock`, `openrouter` (underscore spellings normalized) — validated against `config.KnownProviders` in `internal/config/provider.go`, which is the single source for provider names and `NormalizeProvider`; `client.Provider*` are aliases of those constants.
 
 **Cost-based routing:** when `cost_routing.enabled` is set, `Selector` in `internal/router/selector.go` replaces the static primary model with automatic cheapest-model selection from the catalog. It applies `max_context_window` (hard cap on context window), `prefer_providers` (global provider filter, intersected with per-scenario preferences), and `penalty_per_provider` (per-provider cost penalty added during sort). Enabled via `cost_routing.enabled` or the legacy `enable_cost_based_routing` flag.
 

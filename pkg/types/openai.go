@@ -8,9 +8,10 @@ import "encoding/json"
 
 // ChatContentPart represents a single part in a multimodal message content array.
 type ChatContentPart struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *ImageURL `json:"image_url,omitempty"`
+	Type         string        `json:"type"`
+	Text         string        `json:"text,omitempty"`
+	ImageURL     *ImageURL     `json:"image_url,omitempty"`
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
 }
 
 // ImageURL represents the URL source for an image in a multimodal message.
@@ -103,8 +104,9 @@ type FunctionCall struct {
 
 // ToolDef represents a tool definition for function calling.
 type ToolDef struct {
-	Type     string      `json:"type"`
-	Function FunctionDef `json:"function"`
+	Type         string        `json:"type"`
+	Function     FunctionDef   `json:"function"`
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
 }
 
 // FunctionDef represents the function definition schema.

@@ -155,9 +155,9 @@ routatic-proxy models             列出所有可用模型（Go, Zen, Bedrock）
 routatic-proxy autostart enable   启用登录自启动
 routatic-proxy autostart disable  禁用登录自启动
 routatic-proxy autostart status   检查自启动状态
-routatic-proxy update             更新到最新版本
-routatic-proxy update --check     检查是否有可用更新
-routatic-proxy update --yes       静默更新，无需确认
+routatic-proxy update             更新到当前通道的最新版本
+routatic-proxy update check       检查是否有可用更新（不安装）
+routatic-proxy update-channel     查看或切换发布通道（stable|beta）
 routatic-proxy --version          显示版本
 ```
 
@@ -175,6 +175,18 @@ routatic-proxy --version          显示版本
 | [docs/howto-add-model.md](docs/howto-add-model.md) | 添加模型 - 零代码变更 |
 | [docs/howto-custom-routing.md](docs/howto-custom-routing.md) | 自定义路由 - 场景检测和模型选择 |
 | [docs/howto-debug-routing.md](docs/howto-debug-routing.md) | 路由调试 - 常见问题和排查方法 |
+
+## 发布通道
+
+本项目有两个发布通道。默认为 stable（稳定版），beta 可以更早获得新功能。
+
+```bash
+routatic-proxy update-channel beta     # 加入 beta 通道
+routatic-proxy update                  # 安装最新的 beta
+routatic-proxy update-channel stable   # 切回稳定版
+```
+
+完整说明（Docker 的 `beta` 标签、安装指定预发布版本、如何回到稳定版）见 [Beta 预览版](docs/zh/INSTALLATION.md#beta-预览版)。
 
 ## 贡献
 

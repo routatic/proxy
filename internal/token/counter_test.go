@@ -87,3 +87,44 @@ func mustHome() string {
 	}
 	return h
 }
+
+func TestCountTokensUsesBoundedCache(t *testing.T) {
+	counter, err := NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+	counter.ConfigureCache(true, 2)
+
+	first, err := counter.CountTokens("repeated prompt")
+	if err != nil {
+		t.Fatalf("first CountTokens: %v", err)
+	}
+	second, err := counter.CountTokens("repeated prompt")
+	if err != nil {
+		t.Fatalf("second CountTokens: %v", err)
+	}
+	if first != second {
+		t.Fatalf("cached count changed: first=%d second=%d", first, second)
+	}
+
+	size, capacity, enabled := counter.CacheStats()
+	if !enabled || capacity != 2 || size != 1 {
+		t.Fatalf("unexpected cache stats: size=%d capacity=%d enabled=%v", size, capacity, enabled)
+	}
+}
+
+func TestConfigureCacheReplacesCache(t *testing.T) {
+	counter, err := NewCounter()
+	if err != nil {
+		t.Fatalf("NewCounter: %v", err)
+	}
+	if _, err := counter.CountTokens("old prompt"); err != nil {
+		t.Fatalf("CountTokens: %v", err)
+	}
+
+	counter.ConfigureCache(false, 10)
+	size, capacity, enabled := counter.CacheStats()
+	if enabled || capacity != 10 || size != 0 {
+		t.Fatalf("cache was not replaced: size=%d capacity=%d enabled=%v", size, capacity, enabled)
+	}
+}

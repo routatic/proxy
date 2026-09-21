@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
 	"github.com/routatic/proxy/internal/debug"
 	"github.com/routatic/proxy/internal/models"
 	"github.com/routatic/proxy/pkg/types"
@@ -47,12 +47,17 @@ func (t *teeReadCloser) Read(p []byte) (n int, err error) {
 // These are used throughout the codebase for endpoint selection, timeout
 // configuration, and provider-specific error handling (e.g., auth error
 // short-circuit logic).
+// The canonical names live in the config package, which is the lowest layer
+// that knows every provider; these are aliases so call sites keep using
+// client.Provider*.
 const (
-	ProviderOpenCodeGo  = "opencode-go"
-	ProviderOpenCodeZen = "opencode-zen"
-	ProviderAWSBedrock  = "aws-bedrock"
-	ProviderOpenRouter  = "openrouter"
+	ProviderOpenCodeGo  = config.ProviderOpenCodeGo
+	ProviderOpenCodeZen = config.ProviderOpenCodeZen
+	ProviderAWSBedrock  = config.ProviderAWSBedrock
+	ProviderOpenRouter  = config.ProviderOpenRouter
+)
 
+const (
 	routaticUserAgent    = "routatic-proxy"
 	openRouterReferer    = "https://github.com/routatic/proxy"
 	openRouterTitle      = "routatic-proxy"
@@ -289,6 +294,29 @@ func IsAnthropicModel(modelID string) bool {
 	}
 }
 
+// GoWireFormat is the built-in wire-format classification for Go provider
+// models, used whenever no `wire_format` override is configured. The Go
+// provider only distinguishes Anthropic-native models from Chat Completions;
+// the Responses endpoint is opt-in via `wire_format: "responses"`.
+//
+// Both the provider dispatch and the legacy client resolve Go models through
+// this function so they always agree on the endpoint and the body format.
+func GoWireFormat(modelID string) core.WireFormat {
+	if IsAnthropicModel(modelID) {
+		return core.WireFormatAnthropic
+	}
+	return core.WireFormatOpenAIChat
+}
+
+// GoWireFormatFor resolves the effective wire format for a Go provider model,
+// giving the per-model `wire_format` override precedence over GoWireFormat.
+func GoWireFormatFor(modelConfig config.ModelConfig) core.WireFormat {
+	if wf, ok := core.ParseWireFormat(modelConfig.WireFormat); ok && wf != core.WireFormatGemini {
+		return wf
+	}
+	return GoWireFormat(modelConfig.ModelID)
+}
+
 // isZenAnthropicModel returns true for models on Zen that use the Anthropic endpoint.
 func isZenAnthropicModel(modelID string) bool {
 	return models.IsZenAnthropicModel(modelID)
@@ -298,18 +326,7 @@ func isZenAnthropicModel(modelID string) bool {
 // Normalizes underscores to hyphens so that both "aws_bedrock" and "aws-bedrock"
 // resolve to the same canonical form. Defaults to ProviderOpenCodeGo if empty.
 func Provider(model config.ModelConfig) string {
-	p := model.Provider
-	if p == "" {
-		return ProviderOpenCodeGo
-	}
-	// Normalize underscores to hyphens for consistent matching.
-	for i := range p {
-		if p[i] == '_' {
-			// strings.ReplaceAll would allocate; do an in-place scan + build only when needed.
-			return strings.ReplaceAll(p, "_", "-")
-		}
-	}
-	return p
+	return config.NormalizeProvider(model.Provider)
 }
 
 // IsZen returns true if the model uses the OpenCode Zen provider.
@@ -332,6 +349,16 @@ func setOpenRouterHeaders(req *http.Request) {
 	req.Header.Set("HTTP-Referer", openRouterReferer)
 	req.Header.Set("X-OpenRouter-Title", openRouterTitle)
 	req.Header.Set("X-OpenRouter-Categories", openRouterCategories)
+}
+
+// setOpenCodeSessionHeader forwards the OpenCode session ID from ctx to the
+// upstream request, but only for OpenCode Go models. Zen, Bedrock, and
+// OpenRouter do not receive it.
+func setOpenCodeSessionHeader(h http.Header, ctx context.Context, modelConfig config.ModelConfig) {
+	if config.NormalizeProvider(modelConfig.Provider) != config.ProviderOpenCodeGo {
+		return
+	}
+	core.SetOpenCodeSessionHeader(h, ctx)
 }
 
 // EndpointType determines which Zen endpoint format to use.
@@ -399,11 +426,21 @@ func (c *OpenCodeClient) getEndpoint(modelID string, modelConfig config.ModelCon
 		return endpointConfig{BaseURL: cfg.OpenRouter.BaseURL, APIKey: apiKey}
 	}
 
-	// Default: OpenCode Go
-	if models.IsAnthropicModel(modelID) {
+	// Default: OpenCode Go.
+	//
+	// Deliberately classifies by model ID only, ignoring modelConfig.WireFormat.
+	// getEndpoint is shared by ChatCompletion, ResponsesCompletion and
+	// GeminiCompletion, which each marshal a different body type, and it cannot
+	// tell which one is asking. The legacy path only ever calls the Responses
+	// handlers for Zen models, so honouring a "responses" override here would
+	// POST a Chat Completions body to /v1/responses. The Responses endpoint for
+	// Go models is served by the provider path (OpenCodeGoProvider.WireFormat).
+	switch {
+	case models.IsAnthropicModel(modelID):
 		return endpointConfig{BaseURL: cfg.OpenCodeGo.AnthropicBaseURL, APIKey: apiKey}
+	default:
+		return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
 	}
-	return endpointConfig{BaseURL: cfg.OpenCodeGo.BaseURL, APIKey: apiKey}
 }
 
 // endpointConfig holds configuration for a specific API endpoint.
@@ -446,6 +483,7 @@ func (c *OpenCodeClient) ChatCompletion(
 	if IsOpenRouter(modelConfig) {
 		setOpenRouterHeaders(httpReq)
 	}
+	setOpenCodeSessionHeader(httpReq.Header, ctx, modelConfig)
 
 	if req.Stream != nil && *req.Stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
@@ -548,6 +586,7 @@ func (c *OpenCodeClient) SendAnthropicRequest(
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	httpReq.Header.Set("x-api-key", apiKey)
+	setOpenCodeSessionHeader(httpReq.Header, ctx, modelConfig)
 
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
@@ -596,6 +635,7 @@ func (c *OpenCodeClient) ResponsesCompletion(
 	if IsOpenRouter(modelConfig) {
 		setOpenRouterHeaders(httpReq)
 	}
+	setOpenCodeSessionHeader(httpReq.Header, ctx, modelConfig)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -696,6 +736,7 @@ func (c *OpenCodeClient) GeminiCompletion(
 	if IsOpenRouter(modelConfig) {
 		setOpenRouterHeaders(httpReq)
 	}
+	setOpenCodeSessionHeader(httpReq.Header, ctx, modelConfig)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

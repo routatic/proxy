@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/routatic/proxy/internal/catalog"
@@ -18,25 +19,94 @@ import (
 var ErrUnknownProvider = errors.New("unknown provider")
 
 type ModelRouter struct {
-	atomic      *config.AtomicConfig
-	db          *storage.Database
-	catalogPath string
-	catMu       sync.Mutex
-	cat         *catalog.IndexedCatalog
-	catErr      error
-	catCache    time.Time
+	atomic       *config.AtomicConfig
+	db           *storage.Database
+	catalogPath  string
+	catMu        sync.Mutex
+	cat          atomic.Pointer[catalog.IndexedCatalog]
+	catErr       error
+	catCache     atomic.Int64
+	refreshing   atomic.Bool
+	refreshStop  chan struct{}
+	refreshDone  chan struct{}
+	updateSignal chan struct{}
+	refreshWG    sync.WaitGroup
 }
 
 func NewModelRouter(atomic *config.AtomicConfig) *ModelRouter {
-	return &ModelRouter{atomic: atomic}
+	return newModelRouter(atomic, nil, "")
 }
 
 func NewModelRouterWithDB(atomic *config.AtomicConfig, db *storage.Database) *ModelRouter {
-	return &ModelRouter{atomic: atomic, db: db}
+	return newModelRouter(atomic, db, "")
 }
 
 func NewModelRouterWithCatalog(atomic *config.AtomicConfig, catalogPath string) *ModelRouter {
-	return &ModelRouter{atomic: atomic, catalogPath: catalogPath}
+	return newModelRouter(atomic, nil, catalogPath)
+}
+
+func newModelRouter(atomic *config.AtomicConfig, db *storage.Database, catalogPath string) *ModelRouter {
+	return &ModelRouter{
+		atomic: atomic, db: db, catalogPath: catalogPath,
+		updateSignal: make(chan struct{}, 1),
+	}
+}
+
+// StartCatalogRefresh keeps a valid catalog snapshot warm in the background.
+// Requests continue using the last valid snapshot while a refresh is running.
+func (r *ModelRouter) StartCatalogRefresh(ctx context.Context) {
+	r.catMu.Lock()
+	if r.refreshStop != nil {
+		r.catMu.Unlock()
+		return
+	}
+	r.refreshStop = make(chan struct{})
+	r.refreshDone = make(chan struct{})
+	stop := r.refreshStop
+	done := r.refreshDone
+	updates := r.updateSignal
+	r.catMu.Unlock()
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		r.refreshCatalogAsync(context.Background())
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-stop:
+				return
+			case <-ticker.C:
+				r.refreshCatalogAsync(context.Background())
+			case <-updates:
+				r.refreshCatalogAsync(context.Background())
+			}
+		}
+	}()
+}
+
+// SignalCatalogUpdate asks the background refresher to publish a new snapshot.
+func (r *ModelRouter) SignalCatalogUpdate() {
+	select {
+	case r.updateSignal <- struct{}{}:
+	default:
+	}
+}
+
+// StopCatalogRefresh stops the background refresh loop.
+func (r *ModelRouter) StopCatalogRefresh() {
+	r.catMu.Lock()
+	stop, done := r.refreshStop, r.refreshDone
+	r.refreshStop, r.refreshDone = nil, nil
+	r.catMu.Unlock()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	<-done
+	r.refreshWG.Wait()
 }
 
 func (r *ModelRouter) catalog(ctx context.Context) (*catalog.IndexedCatalog, error) {
@@ -45,25 +115,56 @@ func (r *ModelRouter) catalog(ctx context.Context) (*catalog.IndexedCatalog, err
 		return nil, nil
 	}
 
-	r.catMu.Lock()
-	defer r.catMu.Unlock()
-
-	if r.cat != nil && time.Since(r.catCache) < 30*time.Second {
-		return r.cat, nil
+	current := r.cat.Load()
+	lastRefresh := time.Unix(0, r.catCache.Load())
+	if current != nil && time.Since(lastRefresh) < 30*time.Second {
+		return current, nil
+	}
+	if current != nil {
+		r.refreshCatalogAsync(ctx)
+		return current, nil
 	}
 
+	r.catMu.Lock()
+	defer r.catMu.Unlock()
+	if current = r.cat.Load(); current != nil {
+		return current, nil
+	}
+	return r.refreshCatalogLocked(ctx)
+}
+
+func (r *ModelRouter) refreshCatalogAsync(ctx context.Context) {
+	if !r.refreshing.CompareAndSwap(false, true) {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	r.refreshWG.Add(1)
+	go func() {
+		defer r.refreshWG.Done()
+		defer r.refreshing.Store(false)
+		r.catMu.Lock()
+		defer r.catMu.Unlock()
+		_, _ = r.refreshCatalogLocked(ctx)
+	}()
+}
+
+func (r *ModelRouter) refreshCatalogLocked(ctx context.Context) (*catalog.IndexedCatalog, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	var loaded *catalog.IndexedCatalog
+	var err error
 	if r.db != nil {
-		r.cat, r.catErr = catalog.LoadFromSQLite(ctx, r.db)
+		loaded, err = catalog.LoadFromSQLite(ctx, r.db)
 	} else if r.catalogPath != "" {
-		r.cat, r.catErr = catalog.Load(r.catalogPath)
+		loaded, err = catalog.Load(r.catalogPath)
 	}
-	if r.catErr == nil {
-		r.catCache = time.Now()
+	r.catErr = err
+	if err == nil {
+		r.cat.Store(loaded)
+		r.catCache.Store(time.Now().UnixNano())
 	}
-	return r.cat, r.catErr
+	return loaded, err
 }
 
 // isRespectRequestedModel returns true when the client-specified model should be

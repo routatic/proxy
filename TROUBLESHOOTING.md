@@ -80,6 +80,24 @@ The proxy counts tokens with tiktoken's `cl100k_base` encoding. If the numbers l
 2. The upstream models don't all use `cl100k_base`, so their own accounting will differ
 3. Long-context detection is driven by this estimate, so a request near the threshold (100K tokens by default) may route differently than you'd expect
 
+## `routatic-proxy update` Fails
+
+**"install directory ... is not writable by the current user"**
+
+The updater replaces the binary where it lives, and that directory is owned by another user — typically root, for `/usr/local/bin`. Nothing was downloaded and the current binary is untouched. Re-run with `sudo` (Unix) or from an Administrator terminal (Windows), or update through the package manager that installed it (`brew upgrade`, `scoop update`, `sudo dnf upgrade routatic-proxy`).
+
+**"no beta releases found"**
+
+The beta channel is selected but no prerelease could be resolved. Check the channel with `routatic-proxy update-channel`, and confirm prereleases exist on the [Releases page](https://github.com/routatic/proxy/releases). Versions before v0.6.4 could not match the `v{VERSION}-beta.{N}` tag format at all and always failed this way — install a current build manually to get past it, see [Install a specific beta manually](INSTALLATION.md#install-a-specific-beta-manually).
+
+**"You are already on the latest version" after switching to stable**
+
+Expected: a beta is newer than the current stable release, so there is nothing to update *to*. Switching channels never downgrades. Reinstall a stable build explicitly — see [Going back to stable](INSTALLATION.md#going-back-to-stable).
+
+**"GitHub API returned status 403"**
+
+Unauthenticated GitHub API requests are rate limited per IP. Wait for the window to reset, or download the release asset directly from the [Releases page](https://github.com/routatic/proxy/releases).
+
 ## Debug Mode
 
 For maximum logging, run with debug level:

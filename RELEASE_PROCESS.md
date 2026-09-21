@@ -27,6 +27,11 @@ The project uses a dual release channel system:
 - **Beta releases**: Automatically built and published when code is merged to `main`. These are marked as prereleases on GitHub and are intended for testing.
 - **Production releases**: Triggered manually on the `releases` branch. These are stable releases intended for end users.
 
+> This document covers **producing** releases. If you just want to *run* a beta,
+> see [Beta Releases](INSTALLATION.md#beta-releases) — in short,
+> `routatic-proxy update-channel beta && routatic-proxy update`, or the
+> `ghcr.io/routatic/proxy:beta` Docker tag.
+
 ## Version Naming Conventions
 
 ### Beta Versions

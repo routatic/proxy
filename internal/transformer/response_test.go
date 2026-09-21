@@ -453,3 +453,52 @@ func TestTransformResponse_ThinkingBlockCarriesSignature(t *testing.T) {
 		t.Error("Content[0].Signature is empty, want a non-empty signature")
 	}
 }
+
+// A Responses function_call becomes a tool_use block, so the turn has to report
+// stop_reason tool_use. Reporting end_turn instead makes the client treat the
+// turn as complete and skip running the tool.
+func TestTransformResponsesResponseStopReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantStop string
+	}{
+		{
+			name: "function_call reports tool_use",
+			body: `{
+				"id":"resp-tool",
+				"model":"muse-spark-1.3-contributor",
+				"output":[{"type":"function_call","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Jakarta\"}"}],
+				"usage":{"input_tokens":10,"output_tokens":5}
+			}`,
+			wantStop: "tool_use",
+		},
+		{
+			name: "text only reports end_turn",
+			body: `{
+				"id":"resp-text",
+				"model":"muse-spark-1.3-contributor",
+				"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}],
+				"usage":{"input_tokens":10,"output_tokens":5}
+			}`,
+			wantStop: "end_turn",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var responsesResp types.ResponsesResponse
+			if err := json.Unmarshal([]byte(tt.body), &responsesResp); err != nil {
+				t.Fatalf("unmarshal Responses response: %v", err)
+			}
+
+			resp, err := NewResponseTransformer().TransformResponsesResponse(&responsesResp, responsesResp.Model)
+			if err != nil {
+				t.Fatalf("TransformResponsesResponse() error = %v", err)
+			}
+			if got := resp.StopReason; got != tt.wantStop {
+				t.Fatalf("StopReason = %q, want %q", got, tt.wantStop)
+			}
+		})
+	}
+}

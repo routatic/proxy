@@ -63,6 +63,79 @@ func TestResolveExecutablePath_CurrentBinary(t *testing.T) {
 	}
 }
 
+func TestResolveExecutablePath_HomebrewStable(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Homebrew stable path preservation is darwin-only")
+	}
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"opt Homebrew Apple Silicon", "/opt/homebrew/opt/routatic-proxy/bin/routatic-proxy"},
+		{"bin Homebrew Apple Silicon", "/opt/homebrew/bin/routatic-proxy"},
+		{"opt Homebrew Intel", "/usr/local/opt/routatic-proxy/bin/routatic-proxy"},
+		{"bin Homebrew Intel", "/usr/local/bin/routatic-proxy"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveExecutablePath(tc.input)
+			if got != tc.input {
+				t.Errorf("resolveExecutablePath(%q) = %q, want preserved %q (darwin Homebrew stable path must not be resolved to Cellar)", tc.input, got, tc.input)
+			}
+			if got != "" && !isHomebrewStablePath(got) {
+				t.Errorf("resolveExecutablePath(%q) = %q no longer looks like a Homebrew stable path", tc.input, got)
+			}
+		})
+	}
+}
+
+func TestResolveExecutablePath_NonHomebrewSymlinkResolves(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("EvalSymlinks behavior is Windows-skipped")
+	}
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real-bin")
+	link := filepath.Join(dir, "link-bin")
+	if err := os.WriteFile(real, []byte("x"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	got := resolveExecutablePath(link)
+	// Non-brew symlink should still be resolved via EvalSymlinks.
+	want, _ := filepath.EvalSymlinks(link)
+	if got != want {
+		t.Errorf("resolveExecutablePath(%q) = %q, want resolved %q (non-brew symlinks must still resolve)", link, got, want)
+	}
+	if isHomebrewStablePath(link) {
+		t.Errorf("test link %q must not be considered a Homebrew stable path", link)
+	}
+}
+
+func TestIsHomebrewStablePath(t *testing.T) {
+	cases := []struct {
+		input string
+		want  bool
+	}{
+		{"/opt/homebrew/opt/routatic-proxy/bin/routatic-proxy", true},
+		{"/opt/homebrew/bin/routatic-proxy", true},
+		{"/usr/local/opt/routatic-proxy/bin/routatic-proxy", true},
+		{"/usr/local/bin/routatic-proxy", true},
+		{"/opt/homebrew/Cellar/routatic-proxy/0.6.4/bin/routatic-proxy", false},
+		{"/Users/alec/git/proxy/bin/routatic-proxy", false},
+		{"/tmp/link-bin", false},
+		{"/home/linuxbrew/.linuxbrew/bin/routatic-proxy", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		got := isHomebrewStablePath(tc.input)
+		if got != tc.want {
+			t.Errorf("isHomebrewStablePath(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestIsProcessRunning_CurrentProcess(t *testing.T) {
 	if !IsProcessRunning(os.Getpid()) {
 		t.Error("current process should be reported as running")

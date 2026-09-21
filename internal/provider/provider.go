@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/routatic/proxy/internal/config"
+	"github.com/routatic/proxy/internal/core"
 )
 
 const routaticUserAgent = "routatic-proxy"
@@ -18,6 +19,14 @@ type baseProvider struct {
 	atomic     *config.AtomicConfig
 	httpClient *http.Client
 	keyCounter atomic.Uint64
+}
+
+func validateRequest(p core.Provider, req *core.NormalizedRequest, model config.ModelConfig) error {
+	caps, ok := p.ModelCapabilities(model.ModelID)
+	if !ok {
+		return &core.CompatibilityError{Provider: p.Name(), ModelID: model.ModelID, Reason: "model is not known by provider"}
+	}
+	return core.ValidateRequestCompatibility(req, model, caps, p.WireFormat(model))
 }
 
 // newBaseProvider creates a baseProvider with a shared HTTP transport tuned
