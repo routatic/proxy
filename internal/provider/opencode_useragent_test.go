@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -260,5 +261,97 @@ func TestOpenCodeGoProvider_StreamAnthropic_OpencodeUserAgent(t *testing.T) {
 	buf := make([]byte, 1024)
 	if n, _ := body.Read(buf); n == 0 {
 		t.Error("Stream() returned empty body")
+	}
+}
+
+func TestOpenCodeZenProvider_ConfigUserAgentAndHeadersOverride(t *testing.T) {
+	var gotUA string
+	var gotClient string
+	var gotProject string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		gotClient = r.Header.Get("x-opencode-client")
+		gotProject = r.Header.Get("x-opencode-project")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.ChatCompletionResponse{
+			ID:    "cmpl-test",
+			Model: "test-model",
+			Choices: []types.Choice{
+				{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: json.RawMessage(`"hi"`)}, FinishReason: "stop"},
+			},
+			Usage: types.UsageInfo{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		APIKey: "test-key",
+		OpenCodeZen: config.OpenCodeZenConfig{
+			BaseURL: server.URL,
+			HeadersConfig: config.HeadersConfig{
+				UserAgent: "opencode/1.19.0",
+				Headers: map[string]string{
+					"x-opencode-client":  "desktop",
+					"x-opencode-project": "global",
+				},
+			},
+		},
+	}
+	atomic := config.NewAtomicConfig(cfg, "")
+	p := NewOpenCodeZenProvider(atomic)
+
+	req := &core.NormalizedRequest{Model: "deepseek-v4-flash-free", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
+	model := config.ModelConfig{ModelID: "deepseek-v4-flash-free"}
+	if _, err := p.Execute(context.Background(), req, model); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if gotUA != "opencode/1.19.0" {
+		t.Errorf("User-Agent = %q, want %q", gotUA, "opencode/1.19.0")
+	}
+	if gotClient != "desktop" {
+		t.Errorf("x-opencode-client = %q, want %q", gotClient, "desktop")
+	}
+	if gotProject != "global" {
+		t.Errorf("x-opencode-project = %q, want %q", gotProject, "global")
+	}
+}
+
+func TestOpenCodeGoProvider_DefaultFingerprintHeaders(t *testing.T) {
+	var client, project, request string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client = r.Header.Get("x-opencode-client")
+		project = r.Header.Get("x-opencode-project")
+		request = r.Header.Get("x-opencode-request")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(types.ChatCompletionResponse{
+			ID:    "cmpl-test",
+			Model: "test-model",
+			Choices: []types.Choice{
+				{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: json.RawMessage(`"hi"`)}, FinishReason: "stop"},
+			},
+			Usage: types.UsageInfo{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{APIKey: "test-key", OpenCodeGo: config.OpenCodeGoConfig{BaseURL: server.URL}}
+	atomic := config.NewAtomicConfig(cfg, "")
+	p := NewOpenCodeGoProvider(atomic)
+
+	req := &core.NormalizedRequest{Model: "deepseek-v4-flash", Messages: []core.NormalizedMessage{{Role: "user", Blocks: []core.NormalizedContentBlock{{Type: "text", Text: "Hi"}}}}}
+	model := config.ModelConfig{ModelID: "deepseek-v4-flash"}
+	if _, err := p.Execute(context.Background(), req, model); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if client != "desktop" {
+		t.Errorf("x-opencode-client = %q, want %q", client, "desktop")
+	}
+	if project != "global" {
+		t.Errorf("x-opencode-project = %q, want %q", project, "global")
+	}
+	if !regexp.MustCompile(`^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`).MatchString(request) {
+		t.Errorf("x-opencode-request = %q, want msg_<12hex><14base62>", request)
 	}
 }

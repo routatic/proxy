@@ -135,6 +135,24 @@ func (c *AWSBedrockConfig) EffectiveAPIKeys() []string {
 	return nil
 }
 
+// HeadersConfig allows overriding the outgoing User-Agent and injecting
+// arbitrary request headers on upstream calls. Every field is optional; when
+// unset the built-in defaults are preserved.
+//
+// Example (config.json):
+//
+//	"opencode_go": {
+//	  "user_agent": "opencode/1.19.0",
+//	  "headers": {
+//	    "x-opencode-client": "desktop",
+//	    "x-opencode-project": "global"
+//	  }
+//	}
+type HeadersConfig struct {
+	UserAgent string            `json:"user_agent,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+}
+
 // OpenCodeGoConfig holds the upstream OpenCode Go API settings.
 type OpenCodeGoConfig struct {
 	BaseURL            string   `json:"base_url"`
@@ -145,6 +163,7 @@ type OpenCodeGoConfig struct {
 	TimeoutMs          int      `json:"timeout_ms"`
 	StreamTimeoutMs    int      `json:"stream_timeout_ms"`
 	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
+	HeadersConfig
 }
 
 // EffectiveAPIKeys returns the pool of API keys for OpenCode Go. The APIKeys
@@ -194,6 +213,7 @@ type OpenCodeZenConfig struct {
 	TimeoutMs          int      `json:"timeout_ms"`
 	StreamTimeoutMs    int      `json:"stream_timeout_ms"`
 	StreamingTimeoutMs int      `json:"streaming_timeout_ms,omitempty"`
+	HeadersConfig
 }
 
 // EffectiveAPIKeys returns the pool of API keys for OpenCode Zen. The APIKeys

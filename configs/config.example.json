@@ -358,7 +358,9 @@
     "api_key": "",
     "api_keys": [],
     "timeout_ms": 300000,
-    "streaming_timeout_ms": 600000
+    "streaming_timeout_ms": 600000,
+    "user_agent": "opencode/1.19.0",
+    "headers": {}
   },
 
   "openrouter": {
@@ -396,7 +398,9 @@
     "api_key": "",
     "api_keys": [],
     "timeout_ms": 300000,
-    "streaming_timeout_ms": 600000
+    "streaming_timeout_ms": 600000,
+    "user_agent": "opencode/1.19.0",
+    "headers": {}
   },
 
   "logging": {

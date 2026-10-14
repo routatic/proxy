@@ -20,7 +20,7 @@ import (
 
 // upstreamUserAgent mirrors the opencode client User-Agent so Zen free-tier
 // rate limiting treats routatic-proxy traffic like the native client.
-const upstreamUserAgent = "opencode/routatic-proxy"
+const upstreamUserAgent = "opencode/1.19.0"
 
 // OpenCodeZenProvider implements core.Provider for the OpenCode Zen backend.
 // Zen supports four wire formats determined by model ID: Anthropic (Claude,
@@ -217,7 +217,8 @@ func (p *OpenCodeZenProvider) executeAnthropic(ctx context.Context, req *core.No
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("User-Agent", upstreamUserAgent)
+	setOpenCodeFingerprint(httpReq.Header)
+	applyHeaders(httpReq, cfg.OpenCodeZen.HeadersConfig, upstreamUserAgent)
 	httpReq.Header.Set("x-api-key", apiKey)
 
 	start := time.Now()
@@ -261,7 +262,8 @@ func (p *OpenCodeZenProvider) streamAnthropic(ctx context.Context, req *core.Nor
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("User-Agent", upstreamUserAgent)
+	setOpenCodeFingerprint(httpReq.Header)
+	applyHeaders(httpReq, cfg.OpenCodeZen.HeadersConfig, upstreamUserAgent)
 	httpReq.Header.Set("x-api-key", apiKey)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
@@ -396,6 +398,7 @@ func (p *OpenCodeZenProvider) streamGemini(ctx context.Context, req *core.Normal
 // ── HTTP helpers ──────────────────────────────────────────────────────
 
 func (p *OpenCodeZenProvider) doRequest(ctx context.Context, endpoint, apiKey string, req any, stream bool) (*http.Response, error) {
+	cfg := p.atomic.Get()
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -407,7 +410,8 @@ func (p *OpenCodeZenProvider) doRequest(ctx context.Context, endpoint, apiKey st
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("User-Agent", upstreamUserAgent)
+	setOpenCodeFingerprint(httpReq.Header)
+	applyHeaders(httpReq, cfg.OpenCodeZen.HeadersConfig, upstreamUserAgent)
 	if stream {
 		httpReq.Header.Set("Accept", "text/event-stream")
 	}
@@ -427,6 +431,7 @@ func (p *OpenCodeZenProvider) doRequest(ctx context.Context, endpoint, apiKey st
 }
 
 func (p *OpenCodeZenProvider) doJSONRequest(ctx context.Context, endpoint, apiKey string, req any) (*http.Response, error) {
+	cfg := p.atomic.Get()
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -438,7 +443,8 @@ func (p *OpenCodeZenProvider) doJSONRequest(ctx context.Context, endpoint, apiKe
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("User-Agent", upstreamUserAgent)
+	setOpenCodeFingerprint(httpReq.Header)
+	applyHeaders(httpReq, cfg.OpenCodeZen.HeadersConfig, upstreamUserAgent)
 
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
